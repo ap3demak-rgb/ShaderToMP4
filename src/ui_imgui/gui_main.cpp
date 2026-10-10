@@ -733,6 +733,14 @@ int runGui(const std::wstring& exeDir, const std::vector<std::wstring>& files) {
         glfwTerminate();
         return 1;
     }
+    {
+        std::vector<uint8_t> logoPixels;
+        int logoW = 0, logoH = 0;
+        if (rasterizeIcon("logo", 64, logoPixels, logoW, logoH)) {
+            GLFWimage logo{logoW, logoH, logoPixels.data()};
+            glfwSetWindowIcon(win, 1, &logo);  // sans effet sous macOS (l'icône vient du paquet .app)
+        }
+    }
     platform::setSharedGLWindow(hidden);
     glfwMakeContextCurrent(win);
     glfwSwapInterval(1);
