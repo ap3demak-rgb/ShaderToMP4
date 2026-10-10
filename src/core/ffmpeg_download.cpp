@@ -5,99 +5,79 @@
 #include "i18n.h"
 #include "process.h"
 #include "util.h"
+#include "platform/platform.h"
 
-static const wchar_t* kFfmpegUrl = L"https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
-static const wchar_t* kFfmpegShaUrl = L"https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip.sha256";
+// Source du téléchargement selon le système (builds statiques, empreinte SHA-256 publiée par la source).
+struct Source {
+    const wchar_t* url;
+    const wchar_t* shaUrl;    // fichier contenant l'empreinte (une seule, ou une liste « empreinte  nom »)
+    const wchar_t* archive;   // nom de l'archive dans la liste d'empreintes
+    const wchar_t* ffmpegIn;  // chemin de ffmpeg dans l'archive, sous le dossier racine
+};
+
+#if defined(_WIN32)
+static const Source kSource = {L"https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+                               L"https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip.sha256",
+                               L"ffmpeg-release-essentials.zip", L"bin/ffmpeg.exe"};
+static const bool kSupported = true;
+#elif defined(__linux__) && (defined(__aarch64__) || defined(__arm64__))
+static const Source kSource = {L"https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz",
+                               L"https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256",
+                               L"ffmpeg-master-latest-linuxarm64-gpl.tar.xz", L"bin/ffmpeg"};
+static const bool kSupported = true;
+#elif defined(__linux__)
+static const Source kSource = {L"https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz",
+                               L"https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256",
+                               L"ffmpeg-master-latest-linux64-gpl.tar.xz", L"bin/ffmpeg"};
+static const bool kSupported = true;
+#else  // macOS : aucune source publiant une empreinte SHA-256 vérifiable, donc pas de téléchargement automatique
+static const Source kSource = {L"", L"", L"", L""};
+static const bool kSupported = false;
+#endif
+
+using platform::httpGet;
+using platform::sha256File;
+
+bool ffmpegDownloadSupported() { return kSupported; }
 
 bool ffmpegPresent(const std::wstring& exeDir) {
-    if (fileExists(exeDir + L"ffmpeg.exe")) return true;
-    return SearchPathW(nullptr, L"ffmpeg.exe", nullptr, 0, nullptr, nullptr) > 0;
+    if (fileExists(exeDir + platform::exeFileName(L"ffmpeg"))) return true;
+    return !platform::findInPath(platform::exeFileName(L"ffmpeg")).empty();
 }
 
-static bool sha256File(const std::wstring& path, std::string& hex) {
-    HCRYPTPROV prov = 0;
-    HCRYPTHASH h = 0;
-    if (!CryptAcquireContextW(&prov, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) return false;
-    bool ok = false;
-    if (CryptCreateHash(prov, CALG_SHA_256, 0, 0, &h)) {
-        if (FILE* f = _wfopen(path.c_str(), L"rb")) {
-            std::vector<uint8_t> buf(1 << 20);
-            size_t n;
-            ok = true;
-            while ((n = fread(buf.data(), 1, buf.size(), f)) > 0)
-                if (!CryptHashData(h, buf.data(), (DWORD)n, 0)) { ok = false; break; }
-            fclose(f);
-        }
-        BYTE d[32];
-        DWORD len = sizeof(d);
-        if (ok && CryptGetHashParam(h, HP_HASHVAL, d, &len, 0)) {
-            char b[3];
-            hex.clear();
-            for (DWORD i = 0; i < len; i++) {
-                snprintf(b, sizeof(b), "%02x", d[i]);
-                hex += b;
-            }
-        } else {
-            ok = false;
-        }
-        CryptDestroyHash(h);
+// Empreinte de `name` dans `text` : liste « empreinte  nom » ou empreinte seule
+static std::string findHash(const std::string& text, const std::string& name) {
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t end = text.find('\n', pos);
+        if (end == std::string::npos) end = text.size();
+        const std::string line = trim(text.substr(pos, end - pos));
+        pos = end + 1;
+        if (line.size() >= 64 && line.find(name) != std::string::npos) return lower(line.substr(0, 64));
     }
-    CryptReleaseContext(prov, 0);
-    return ok;
-}
-
-static bool httpGet(const std::wstring& url, const std::function<bool(const uint8_t*, size_t, unsigned long long)>& sink,
-                    std::wstring& err) {
-    HINTERNET net = InternetOpenW(APP_NAME_WSTR L"/" APP_VER_WSTR, INTERNET_OPEN_TYPE_PRECONFIG, nullptr, nullptr, 0);
-    if (!net) { err = TX("error.net_unavailable"); return false; }
-    HINTERNET req = InternetOpenUrlW(net, url.c_str(), nullptr, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE, 0);
-    if (!req) {
-        err = TXF("error.net_unreachable", url.c_str());
-        InternetCloseHandle(net);
-        return false;
-    }
-    DWORD status = 0, sz = sizeof(status);
-    HttpQueryInfoW(req, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER, &status, &sz, nullptr);
-    if (status != 200) {
-        err = TXF("error.net_status", (unsigned long)status, url.c_str());
-        InternetCloseHandle(req);
-        InternetCloseHandle(net);
-        return false;
-    }
-    wchar_t lenBuf[32] = {0};
-    DWORD lsz = sizeof(lenBuf), idx = 0;
-    unsigned long long total = 0;
-    if (HttpQueryInfoW(req, HTTP_QUERY_CONTENT_LENGTH, lenBuf, &lsz, &idx)) total = _wcstoui64(lenBuf, nullptr, 10);
-    std::vector<uint8_t> buf(1 << 16);
-    bool ok = true;
-    for (;;) {
-        DWORD got = 0;
-        if (!InternetReadFile(req, buf.data(), (DWORD)buf.size(), &got)) { err = TX("error.net_interrupted"); ok = false; break; }
-        if (got == 0) break;
-        if (!sink(buf.data(), got, total)) { err = TX("error.net_cancelled"); ok = false; break; }
-    }
-    InternetCloseHandle(req);
-    InternetCloseHandle(net);
-    return ok;
+    const std::string t = trim(text);
+    return t.size() >= 64 && t.find('\n') == std::string::npos ? lower(t.substr(0, 64)) : std::string();
 }
 
 bool downloadFfmpeg(const std::wstring& exeDir, const std::function<void(int, const std::wstring&)>& progress,
                            const std::atomic<bool>* cancel, std::wstring& err) {
-    const std::wstring zip = exeDir + L"ffmpeg_download.zip", tmp = exeDir + L"ffmpeg_tmp";
+    if (!kSupported) { err = TX("error.download_unsupported"); return false; }
+    const std::wstring zip = exeDir + L"ffmpeg_download.tmp", tmp = exeDir + L"ffmpeg_tmp";
+    const std::wstring exeName = platform::exeFileName(L"ffmpeg");
     progress(0, TX("dl.sha_download"));
     std::string shaText;
-    if (!httpGet(kFfmpegShaUrl, [&](const uint8_t* d, size_t n, unsigned long long) {
+    if (!httpGet(kSource.shaUrl, [&](const uint8_t* d, size_t n, unsigned long long) {
             shaText.append((const char*)d, n);
-            return shaText.size() < 4096;
+            return shaText.size() < (1u << 20);
         }, err))
         return false;
-    std::string expected = lower(trim(shaText).substr(0, 64));
+    std::string expected = findHash(shaText, U8(kSource.archive));
     if (expected.size() != 64) { err = TX("error.sha_unreadable"); return false; }
 
-    FILE* f = _wfopen(zip.c_str(), L"wb");
+    FILE* f = platform::openFile(zip, "wb");
     if (!f) { err = TXF("error.write_failed", zip.c_str()); return false; }
     unsigned long long got = 0;
-    bool ok = httpGet(kFfmpegUrl, [&](const uint8_t* d, size_t n, unsigned long long total) {
+    bool ok = httpGet(kSource.url, [&](const uint8_t* d, size_t n, unsigned long long total) {
         if (cancel && cancel->load()) return false;
         fwrite(d, 1, n, f);
         got += n;
@@ -105,35 +85,34 @@ bool downloadFfmpeg(const std::wstring& exeDir, const std::function<void(int, co
         return true;
     }, err);
     fclose(f);
-    if (!ok) { DeleteFileW(zip.c_str()); return false; }
+    if (!ok) { platform::removeFile(zip); return false; }
 
     progress(92, TX("dl.verify"));
     std::string actual;
     if (!sha256File(zip, actual) || actual != expected) {
-        DeleteFileW(zip.c_str());
+        platform::removeFile(zip);
         err = TX("error.sha_mismatch");
         return false;
     }
 
     progress(95, TX("dl.extract"));
     removeTree(tmp);
-    CreateDirectoryW(tmp.c_str(), nullptr);
+    platform::makeDir(tmp);
     std::wstring tarLog;
-    int rc = runProcess(L"tar.exe -xf \"" + zip + L"\" -C \"" + tmp + L"\"", [&](const std::wstring& l) { tarLog += l + L" "; });
+    int rc = runProcess(L"tar -xf \"" + zip + L"\" -C \"" + tmp + L"\"", [&](const std::wstring& l) { tarLog += l + L" "; });
     bool installed = false;
     if (rc == 0) {  // le zip contient ffmpeg-<version>-essentials_build\bin\ffmpeg.exe
-        WIN32_FIND_DATAW fd;
-        HANDLE h = FindFirstFileW((tmp + L"\\*").c_str(), &fd);
-        if (h != INVALID_HANDLE_VALUE) {
-            do {
-                const std::wstring cand = tmp + L"\\" + fd.cFileName + L"\\bin\\ffmpeg.exe";
-                if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && fileExists(cand))
-                    installed = MoveFileExW(cand.c_str(), (exeDir + L"ffmpeg.exe").c_str(), MOVEFILE_REPLACE_EXISTING) != 0;
-            } while (!installed && FindNextFileW(h, &fd));
-            FindClose(h);
+        std::vector<platform::DirEntry> list;
+        platform::listDir(tmp, list);
+        for (const auto& en : list) {
+            const std::wstring cand = tmp + platform::pathSeparator() + en.name + platform::pathSeparator() + kSource.ffmpegIn;
+            if (en.isDir && fileExists(cand)) {
+                installed = platform::moveFile(cand, exeDir + exeName, true);
+                if (installed) break;
+            }
         }
     }
-    DeleteFileW(zip.c_str());
+    platform::removeFile(zip);
     removeTree(tmp);
     if (!installed) {
         err = rc != 0 ? TXF("error.extract_failed", tarLog.c_str()) : TX("error.ffmpeg_not_in_archive");

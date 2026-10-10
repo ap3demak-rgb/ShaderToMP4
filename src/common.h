@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Patrick JAILLET
 
-// En-tete commun : Windows, OpenGL 1.1 et bibliotheque standard (utilise comme en-tete precompile).
+// En-tete commun : Windows (ou GL seul ailleurs), OpenGL 1.1 et bibliotheque standard (utilise comme en-tete precompile).
 #pragma once
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -22,16 +23,34 @@
 #endif
 #include <GL/gl.h>
 
+#elif defined(__APPLE__)
+#define GL_SILENCE_DEPRECATION
+#include <OpenGL/gl.h>
+#ifndef APIENTRY
+#define APIENTRY
+#endif
+#else
+#include <GL/gl.h>
+#ifndef APIENTRY
+#define APIENTRY
+#endif
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdarg>
 #include <cstdint>
+#include <cerrno>
 #include <cstdio>
+#include <ctime>
+#include <cstring>
 #include <cmath>
 #include <functional>
 #include <map>
+#include <memory>
+#include <set>
 #include <mutex>
 #include <queue>
 #include <string>

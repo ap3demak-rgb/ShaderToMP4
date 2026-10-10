@@ -4,6 +4,7 @@
 #include "gl.h"
 #include "i18n.h"
 #include "util.h"
+#include "platform/platform.h"
 
 namespace ogl {
 #define F(r, n, a) PFN_##n n = nullptr;
@@ -13,7 +14,7 @@ GL_FUNCS(F)
 bool load() {
     bool ok = true;
 #define F(r, n, a)                                          \
-    n = (PFN_##n)(void*)wglGetProcAddress("gl" #n);         \
+    n = (PFN_##n)platform::glProc("gl" #n);         \
     if (!n) ok = false;
     GL_FUNCS(F)
 #undef F
@@ -21,53 +22,10 @@ bool load() {
 }
 }  // namespace ogl
 
-void destroyGLContext(GLContext& c) {
-    if (c.rc) {
-        wglMakeCurrent(nullptr, nullptr);
-        wglDeleteContext(c.rc);
-    }
-    if (c.wnd) {
-        if (c.dc) ReleaseDC(c.wnd, c.dc);
-        DestroyWindow(c.wnd);
-    }
-    c = GLContext{};
-}
+void destroyGLContext(GLContext& c) { platform::destroyGLContext(c.impl); }
 
 bool createGLContext(GLContext& c, std::wstring& err) {
-    HINSTANCE hi = GetModuleHandleW(nullptr);
-    WNDCLASSW wc{};
-    wc.lpfnWndProc = DefWindowProcW;
-    wc.hInstance = hi;
-    wc.lpszClassName = L"ShaderToMP4Hidden";
-    RegisterClassW(&wc);  // echoue sans gravite si deja enregistree
-    c.wnd = CreateWindowExW(0, wc.lpszClassName, L"ShaderToMP4", WS_OVERLAPPEDWINDOW, 0, 0, 64, 64,
-                            nullptr, nullptr, hi, nullptr);
-    if (!c.wnd) { err = TX("error.gl_window"); return false; }
-    c.dc = GetDC(c.wnd);
-
-    PIXELFORMATDESCRIPTOR pfd{};
-    pfd.nSize = sizeof(pfd);
-    pfd.nVersion = 1;
-    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-    pfd.iPixelType = PFD_TYPE_RGBA;
-    pfd.cColorBits = 32;
-    int pf = ChoosePixelFormat(c.dc, &pfd);
-    if (!pf || !SetPixelFormat(c.dc, pf, &pfd)) { err = TX("error.gl_pixelformat"); return false; }
-
-    HGLRC tmp = wglCreateContext(c.dc);
-    c.rc = tmp;
-    if (!tmp || !wglMakeCurrent(c.dc, tmp)) { err = TX("error.gl_context"); return false; }
-
-    typedef HGLRC(WINAPI * PFN_CCA)(HDC, HGLRC, const int*);
-    PFN_CCA cca = (PFN_CCA)(void*)wglGetProcAddress("wglCreateContextAttribsARB");
-    if (!cca) { err = TX("error.gl_version"); return false; }
-    const int attr[] = {0x2091, 3, 0x2092, 3, 0x9126, 0x1, 0};  // 3.3 core
-    HGLRC rc = cca(c.dc, nullptr, attr);
-    wglMakeCurrent(nullptr, nullptr);
-    wglDeleteContext(tmp);
-    c.rc = nullptr;
-    if (!rc || !wglMakeCurrent(c.dc, rc)) { err = TX("error.gl_core"); return false; }
-    c.rc = rc;
+    if (!platform::createGLContext(c.impl, err)) return false;
     if (!ogl::load()) { err = TX("error.gl_functions"); return false; }
     return true;
 }

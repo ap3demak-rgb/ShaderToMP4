@@ -3,7 +3,7 @@
 
 #include "i18n.h"
 #include "util.h"
-#include "../../res/resource.h"
+#include "platform/platform.h"
 #include <set>
 
 namespace i18n {
@@ -137,23 +137,8 @@ bool parse(const std::string& text, Table& out, std::string& err) {
     return true;
 }
 
-int embeddedId(const std::string& code) {
-    if (code == "en") return IDR_LANG_EN;
-    if (code == "fr") return IDR_LANG_FR;
-    return 0;
-}
-
 bool readEmbedded(const std::string& code, std::string& out) {
-    int id = embeddedId(code);
-    if (!id) return false;
-    HRSRC r = FindResourceW(nullptr, MAKEINTRESOURCEW(id), MAKEINTRESOURCEW(10) /* RT_RCDATA */);
-    if (!r) return false;
-    HGLOBAL g = LoadResource(nullptr, r);
-    const void* d = g ? LockResource(g) : nullptr;
-    DWORD n = SizeofResource(nullptr, r);
-    if (!d || !n) return false;
-    out.assign((const char*)d, n);
-    return true;
+    return platform::embeddedData(("lang/" + code + ".json").c_str(), out);
 }
 
 // Tables d'une langue : version embarquée, puis fichier lang/<code>.json (qui prime). Verrou S.m déjà pris par l'appelant.
@@ -167,7 +152,7 @@ bool loadLanguage(const std::string& code, Table& out) {
             any = true;
         }
     }
-    std::wstring path = S.exeDir + L"lang\\" + W(code) + L".json";
+    std::wstring path = S.exeDir + L"lang/" + W(code) + L".json";
     if (fileExists(path) && readFile(path, text)) {
         Table t;
         if (parse(text, t, err)) {
@@ -180,7 +165,11 @@ bool loadLanguage(const std::string& code, Table& out) {
 
 std::wstring vformat(const std::wstring& fmt, va_list a) {
     wchar_t b[2048];
+#ifdef _WIN32
     int n = _vswprintf_p(b, 2048, fmt.c_str(), a);
+#else
+    int n = vswprintf(b, 2048, fmt.c_str(), a);
+#endif
     if (n < 0) return fmt;
     b[2047] = 0;
     return b;
@@ -188,14 +177,7 @@ std::wstring vformat(const std::wstring& fmt, va_list a) {
 
 }  // namespace
 
-std::string systemLanguage() {
-    wchar_t name[LOCALE_NAME_MAX_LENGTH] = {0};
-    if (GetUserDefaultLocaleName(name, LOCALE_NAME_MAX_LENGTH) > 0) {
-        std::wstring n = name;
-        if (n.compare(0, 2, L"fr") == 0) return "fr";
-    }
-    return "en";
-}
+std::string systemLanguage() { return platform::systemLanguage() == "fr" ? "fr" : "en"; }
 
 bool init(const std::wstring& exeDir, const std::string& code) {
     {
@@ -225,15 +207,13 @@ std::string language() {
 std::vector<std::string> available() {
     std::set<std::string> codes = {"en", "fr"};
     std::lock_guard<std::mutex> l(S.m);
-    WIN32_FIND_DATAW fd;
-    HANDLE h = FindFirstFileW((S.exeDir + L"lang\\*.json").c_str(), &fd);
-    if (h != INVALID_HANDLE_VALUE) {
-        do {
-            std::wstring n = fd.cFileName;
-            n.erase(n.size() - 5);
-            if (!n.empty() && n.size() <= 8) codes.insert(U8(n));
-        } while (FindNextFileW(h, &fd));
-        FindClose(h);
+    std::vector<platform::DirEntry> list;
+    platform::listDir(S.exeDir + L"lang", list);
+    for (const auto& e : list) {
+        std::wstring n = e.name;
+        if (e.isDir || n.size() < 6 || n.compare(n.size() - 5, 5, L".json") != 0) continue;
+        n.erase(n.size() - 5);
+        if (n.size() <= 8) codes.insert(U8(n));
     }
     return std::vector<std::string>(codes.begin(), codes.end());
 }

@@ -119,10 +119,12 @@ foreach ($d in $docs) {
 
 # --- 5. Portabilite -------------------------------------------------------------------------------
 Section "Portabilite"
-$banned = 'RegOpenKey|RegCreateKey|RegSetValue|RegQueryValue|RegDeleteKey|RegDeleteValue|SHGetFolderPath|SHGetKnownFolderPath|CSIDL_|APPDATA|getenv\(|_wgetenv|SHGetSpecialFolder'
+$banned = 'RegOpenKey|RegCreateKey|RegSetValue|RegQueryValue|RegDeleteKey|RegDeleteValue|SHGetFolderPath|SHGetKnownFolderPath|CSIDL_|APPDATA|SHGetSpecialFolder'
 foreach ($f in $srcFiles) {
   $n = 0
-  foreach ($line in (Get-Content $f.FullName -Encoding UTF8)) { $n++; if ($line -match $banned -and $line -notmatch '^\s*//') { Fail "acces hors du dossier de l'application ($($f.Name):$n) : $($line.Trim())" } }
+  # La lecture des variables d'environnement (PATH, LANG) est reservee a la couche plateforme POSIX
+  $bannedHere = if ($f.FullName -match 'platform[\\/]posix') { $banned } else { $banned + '|getenv\(|_wgetenv' }
+  foreach ($line in (Get-Content $f.FullName -Encoding UTF8)) { $n++; if ($line -match $bannedHere -and $line -notmatch '^\s*//') { Fail "acces hors du dossier de l'application ($($f.Name):$n) : $($line.Trim())" } }
 }
 foreach ($f in $tracked) {
   if ($f -match "\.(exe|dll|obj|lib|pdb|msi|dmg|pkg)$") { Fail "binaire suivi par Git : $f" }

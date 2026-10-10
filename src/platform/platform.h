@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
+// Couche plateforme : seul endroit du programme qui appelle directement le système d'exploitation.
+// Une implémentation par système : src/platform/windows/ et src/platform/posix/ (Linux et macOS).
+// Le moteur garde std::wstring pour les textes et les chemins ; la conversion vers l'encodage natif se fait ici.
+#pragma once
+#include "common.h"
+
+namespace platform {
+
+// --- Chemins et fichiers -------------------------------------------------------------------------------------------
+std::wstring appDir();  // dossier de l'application, séparateur final inclus
+bool fileExists(const std::wstring& path);
+bool dirExists(const std::wstring& path);
+bool readFile(const std::wstring& path, std::string& out);  // contenu binaire complet
+FILE* openFile(const std::wstring& path, const char* mode);  // fopen avec chemin Unicode ("rb", "wb"...)
+bool makeDir(const std::wstring& path);                      // un niveau ; true aussi si le dossier existe déjà
+bool removeFile(const std::wstring& path);
+bool removeDir(const std::wstring& path);  // dossier vide
+bool moveFile(const std::wstring& from, const std::wstring& to, bool overwrite);
+bool freeSpace(const std::wstring& path, uint64_t& bytes);  // octets libres du volume contenant path
+struct DirEntry {
+    std::wstring name;
+    bool isDir = false;
+};
+bool listDir(const std::wstring& path, std::vector<DirEntry>& out);  // noms seulement, sans « . » ni « .. »
+wchar_t pathSeparator();  // '\\' ou '/'
+
+// --- Système -------------------------------------------------------------------------------------------------------
+std::string systemLanguage();                                    // code à deux lettres de la langue de l'utilisateur ("fr", "en"...)
+std::wstring exeFileName(const std::wstring& baseName);          // "ffmpeg" -> "ffmpeg.exe" ou "ffmpeg"
+std::wstring findInPath(const std::wstring& fileName);          // chemin complet du programme trouvé dans le PATH (et, sous macOS, dans les dossiers Homebrew), sinon vide
+void openWithDefault(const std::wstring& pathOrUrl);             // ouvre un fichier, un dossier ou une adresse
+void revealInFolder(const std::wstring& filePath);               // montre le fichier dans l'explorateur / le gestionnaire de fichiers
+void sleepMs(int ms);
+struct DateTime {
+    int year, month, day;  // month : 1..12
+    int hour, minute, second;
+};
+DateTime localTime();
+enum class MessageKind { Info, Warning, Error };
+void showMessage(const std::wstring& title, const std::wstring& text, MessageKind kind);  // boîte de message, ou stderr sans interface
+
+// --- Données embarquées dans l'exécutable (fichiers de langue) ---------------------------------------------------
+bool embeddedData(const char* name, std::string& out);  // ex. "lang/en.json"
+
+// --- Processus -----------------------------------------------------------------------------------------------------
+// Lance un programme sans fenêtre. argv[0] : chemin ou nom cherché dans le PATH.
+class Process {
+public:
+    // pipeStdin : le programme lit son entrée sur un tube (sinon vide) ; captureOutput : stdout et stderr fusionnés sur un tube.
+    static std::unique_ptr<Process> start(const std::vector<std::wstring>& argv, bool pipeStdin, bool captureOutput);
+    ~Process();                                          // tue le programme s'il tourne encore
+    bool writeStdin(const uint8_t* data, size_t size);   // bloquant ; false si le tube est cassé
+    void closeStdin();                                   // fin de l'entrée
+    size_t readOutput(char* buf, size_t capacity);       // bloquant ; 0 = fin du flux
+    void terminate();                                    // arrêt immédiat
+    int wait();                                          // attend la fin, renvoie le code de sortie
+    Process(const Process&) = delete;
+    Process& operator=(const Process&) = delete;
+
+private:
+    struct Impl;
+    explicit Process(std::unique_ptr<Impl> impl);
+    std::unique_ptr<Impl> impl_;
+};
+// "a \"b c\" d" -> {"a", "b c", "d"} (les guillemets doubles regroupent ; pas d'autre échappement)
+std::vector<std::wstring> splitCommand(const std::wstring& command);
+
+// --- Réseau et empreintes ------------------------------------------------------------------------------------------
+// Télécharge une adresse HTTPS ; sink(données, taille, taille totale ou 0) renvoie false pour arrêter.
+bool httpGet(const std::wstring& url, const std::function<bool(const uint8_t*, size_t, unsigned long long)>& sink, std::wstring& err);
+bool sha256File(const std::wstring& path, std::string& hexLower);
+
+// --- OpenGL --------------------------------------------------------------------------------------------------------
+// Contexte OpenGL 3.3 core caché, rendu courant dans le thread appelant. À détruire dans le même thread.
+// ctx reçoit un identifiant opaque (nul si échec).
+bool createGLContext(void*& ctx, std::wstring& err);
+void destroyGLContext(void*& ctx);
+void* glProc(const char* name);  // adresse d'une fonction OpenGL (contexte courant requis)
+
+}  // namespace platform

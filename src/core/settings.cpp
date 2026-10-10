@@ -4,6 +4,7 @@
 #include "settings.h"
 #include "i18n.h"
 #include "util.h"
+#include "platform/platform.h"
 
 bool sameSettings(const Settings& a, const Settings& b) {
     return a.width == b.width && a.height == b.height && a.fps == b.fps && a.duration == b.duration &&
@@ -75,7 +76,7 @@ void parseLines(Settings& s, const std::string& text, bool onlySlashComments) {
 }
 
 void writeIni(const std::wstring& path, const Settings& s) {
-    FILE* f = _wfopen(path.c_str(), L"wb");
+    FILE* f = platform::openFile(path, "wb");
     if (!f) return;
     // Les valeurs gardent toujours le point décimal ; seuls les commentaires suivent la langue de l'interface.
     auto num = [](double v) {

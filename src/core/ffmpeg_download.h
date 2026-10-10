@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Patrick JAILLET
 
-// Presence et telechargement automatique de ffmpeg.exe (build "essentials" de gyan.dev, verifie par SHA-256).
+// Presence et telechargement automatique de ffmpeg (builds statiques : gyan.dev sous Windows, BtbN sous Linux, verifies par SHA-256).
 #pragma once
 #include "common.h"
 
-bool ffmpegPresent(const std::wstring& exeDir);  // ffmpeg.exe a cote du programme ou dans le PATH
+bool ffmpegPresent(const std::wstring& exeDir);  // ffmpeg a cote du programme ou dans le PATH
+bool ffmpegDownloadSupported();                  // faux sous macOS (pas de source avec empreinte verifiable)
 
 // Telecharge, verifie et installe ffmpeg.exe dans exeDir. progress(pourcentage, message) ; cancel : arret demande (facultatif).
 bool downloadFfmpeg(const std::wstring& exeDir, const std::function<void(int, const std::wstring&)>& progress,

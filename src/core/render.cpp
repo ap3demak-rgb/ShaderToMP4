@@ -7,12 +7,13 @@
 #include "gl.h"
 #include "process.h"
 #include "util.h"
+#include "platform/platform.h"
 
 // ---------------------------------------------------------------------------
 //  Envoi des images a ffmpeg dans un thread dedie (rendu et encodage en parallele)
 // ---------------------------------------------------------------------------
 struct FrameQueue {
-    HANDLE pipe = nullptr;
+    platform::Process* proc = nullptr;
     size_t frameBytes = 0;
     std::vector<std::vector<uint8_t>> bufs;
     std::queue<int> freeQ, fullQ;
@@ -20,16 +21,6 @@ struct FrameQueue {
     std::condition_variable cv;
     bool finished = false, failed = false;
 };
-
-static bool writeAll(HANDLE h, const uint8_t* p, size_t n) {
-    while (n > 0) {
-        DWORD chunk = (DWORD)std::min<size_t>(n, 1u << 22), w = 0;
-        if (!WriteFile(h, p, chunk, &w, nullptr) || w == 0) return false;
-        p += w;
-        n -= w;
-    }
-    return true;
-}
 
 static void writerThread(FrameQueue* q) {
     for (;;) {
@@ -41,7 +32,7 @@ static void writerThread(FrameQueue* q) {
             idx = q->fullQ.front();
             q->fullQ.pop();
         }
-        bool ok = writeAll(q->pipe, q->bufs[idx].data(), q->frameBytes);
+        bool ok = q->proc->writeStdin(q->bufs[idx].data(), q->frameBytes);
         {
             std::lock_guard<std::mutex> l(q->m);
             if (!ok) q->failed = true;
@@ -134,7 +125,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     if (hasAudio && !fileExists(s.audio)) { err = TXF("error.audio_missing", s.audio.c_str()); return Result::Failed; }
 
     // Chemin de sortie : dossier choisi (sinon celui du shader), meme nom, extension du conteneur (ou .png)
-    if (!preview && !s.outdir.empty()) CreateDirectoryW(s.outdir.c_str(), nullptr);  // sans effet si deja present
+    if (!preview && !s.outdir.empty()) platform::makeDir(s.outdir);  // sans effet si deja present
     const std::wstring ext = H.snapshot ? L".png" : L"." + W(s.container);
     const std::wstring out = outputPath(shaderPath, s.outdir, ext);
     const std::wstring outDir = out.substr(0, out.find_last_of(L"\\/"));
@@ -143,13 +134,13 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     if (videoMode) {
         const double bpp = 0.3 * std::pow(2.0, -(s.crf - 12) / 6.0);  // ordre de grandeur, bits par pixel et par image
         const double est = s.bitrate > 0 ? s.bitrate * 125.0 * totalSec : (double)W_ * H_ * s.fps * totalSec * bpp / 8.0;
-        ULARGE_INTEGER freeB{};
-        if (GetDiskFreeSpaceExW(outDir.c_str(), &freeB, nullptr, nullptr)) {
-            H.log(L"  " + TXF("log.size_estimate", est / 1048576.0, freeB.QuadPart / 1048576.0));
+        uint64_t freeB = 0;
+        if (platform::freeSpace(outDir, freeB)) {
+            H.log(L"  " + TXF("log.size_estimate", est / 1048576.0, freeB / 1048576.0));
             const bool chunkedGuess = s.chunk > 0 && N > std::llround(s.chunk * s.fps);
             const double need = est * (chunkedGuess ? 2.2 : 1.2) + 50e6;  // les parties s'ajoutent au fichier final
-            if ((double)freeB.QuadPart < need) {
-                err = TXF("error.disk_full", outDir.c_str(), need / 1048576.0, freeB.QuadPart / 1048576.0);
+            if ((double)freeB < need) {
+                err = TXF("error.disk_full", outDir.c_str(), need / 1048576.0, freeB / 1048576.0);
                 return Result::Failed;
             }
         }
@@ -239,14 +230,13 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     ogl::Uniform4f(uMouse, 0, 0, 0, 0);
     ogl::Uniform1f(uSR, 44100.0f);
     ogl::Uniform1f(uWeight, 1.0f);
-    SYSTEMTIME st;
-    GetLocalTime(&st);
-    const float dateSec = st.wHour * 3600.f + st.wMinute * 60.f + st.wSecond;
+    const platform::DateTime st = platform::localTime();
+    const float dateSec = st.hour * 3600.f + st.minute * 60.f + st.second;
 
     auto drawAt = [&](double t, long long n) {
         ogl::Uniform1f(uTime, (float)t);
         ogl::Uniform1i(uFrame, (GLint)n);
-        ogl::Uniform4f(uDate, (float)st.wYear, (float)(st.wMonth - 1), (float)st.wDay, dateSec + (float)t);
+        ogl::Uniform4f(uDate, (float)st.year, (float)(st.month - 1), (float)st.day, dateSec + (float)t);
         glDrawArrays(GL_TRIANGLES, 0, 3);
     };
     // Rend l'image n (temps t, facteur de fondu "fade") dans fbo ;
@@ -301,8 +291,11 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     }
 
     // --- ffmpeg (ffmpeg.exe a cote du programme) ------------------------------
-    std::wstring ffmpeg = exeDir + L"ffmpeg.exe";
-    if (!fileExists(ffmpeg)) ffmpeg = L"ffmpeg.exe";  // sinon : PATH
+    std::wstring ffmpeg = exeDir + platform::exeFileName(L"ffmpeg");
+    if (!fileExists(ffmpeg)) {  // sinon : PATH
+        ffmpeg = platform::findInPath(platform::exeFileName(L"ffmpeg"));
+        if (ffmpeg.empty()) ffmpeg = platform::exeFileName(L"ffmpeg");
+    }
     const std::string enc = videoMode ? resolveEncoder(s, ffmpeg, H) : "cpu";
 
     const std::wstring fpsStr = wfmt(L"%g", s.fps);
@@ -348,42 +341,17 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         }
 
         // stdin de ffmpeg = les images ; stdout/stderr = tube lu par un thread et envoye au journal
-        SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-        HANDLE rd = nullptr, wr = nullptr, eRd = nullptr, eWr = nullptr;
-        if (!CreatePipe(&rd, &wr, &sa, 1 << 24)) { e = TX("error.pipe"); return Result::Failed; }
-        SetHandleInformation(wr, HANDLE_FLAG_INHERIT, 0);
-        if (!CreatePipe(&eRd, &eWr, &sa, 0)) {
-            e = TX("error.pipe");
-            CloseHandle(rd);
-            CloseHandle(wr);
-            return Result::Failed;
-        }
-        SetHandleInformation(eRd, HANDLE_FLAG_INHERIT, 0);
-
-        STARTUPINFOW si{};
-        si.cb = sizeof(si);
-        si.dwFlags = STARTF_USESTDHANDLES;
-        si.hStdInput = rd;
-        si.hStdOutput = eWr;
-        si.hStdError = eWr;
-        PROCESS_INFORMATION pi{};
-        std::wstring cmdBuf = cmd;
-        if (!CreateProcessW(nullptr, &cmdBuf[0], nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+        auto proc = platform::Process::start(platform::splitCommand(cmd), true, true);
+        if (!proc) {
             e = TX("error.ffmpeg_launch");
-            CloseHandle(rd);
-            CloseHandle(wr);
-            CloseHandle(eRd);
-            CloseHandle(eWr);
             return Result::Failed;
         }
-        CloseHandle(rd);
-        CloseHandle(eWr);
 
         std::thread errReader([&] {
             std::string acc;
             char buf[4096];
-            DWORD got = 0;
-            while (ReadFile(eRd, buf, sizeof(buf), &got, nullptr) && got > 0) {
+            size_t got;
+            while ((got = proc->readOutput(buf, sizeof(buf))) > 0) {
                 acc.append(buf, got);
                 size_t p;
                 while ((p = acc.find('\n')) != std::string::npos) {
@@ -397,7 +365,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         });
 
         FrameQueue q;
-        q.pipe = wr;
+        q.proc = proc.get();
         q.frameBytes = frameBytes;
         q.bufs.assign(4, std::vector<uint8_t>(frameBytes));
         for (int i = 0; i < 4; i++) q.freeQ.push(i);
@@ -442,7 +410,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         for (long long k = 0; k < cnt && !aborted; ++k) {
             if (H.paused()) {  // pause : on attend, sans compter ce temps dans la vitesse affichee
                 auto ps = clk::now();
-                while (H.paused() && !H.cancelled()) Sleep(50);
+                while (H.paused() && !H.cancelled()) platform::sleepMs(50);
                 auto d = clk::now() - ps;
                 t0 += d;
                 tLast += d;
@@ -470,24 +438,19 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
 
         // --- Fin : vider la file, fermer le pipe, attendre ffmpeg ----------------
         const bool cancelled = aborted && H.cancelled();
-        if (cancelled) TerminateProcess(pi.hProcess, 1);  // debloque aussi le thread d'ecriture
+        if (cancelled) proc->terminate();  // debloque aussi le thread d'ecriture
         {
             std::lock_guard<std::mutex> l(q.m);
             q.finished = true;
         }
         q.cv.notify_all();
         writer.join();
-        CloseHandle(wr);
-        WaitForSingleObject(pi.hProcess, INFINITE);
-        DWORD code2 = 1;
-        GetExitCodeProcess(pi.hProcess, &code2);
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
+        proc->closeStdin();
+        const int code2 = proc->wait();
         errReader.join();
-        CloseHandle(eRd);
 
         if (cancelled) {
-            DeleteFileW(dest.c_str());  // fichier partiel inutilisable
+            platform::removeFile(dest);  // fichier partiel inutilisable
             return Result::Cancelled;
         }
         if (aborted || code2 != 0) {
@@ -504,7 +467,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         result = encodeRange(0, N, out, hasAudio, 0, err);
     } else {
         const std::wstring partsDir = out.substr(0, out.find_last_of(L'.')) + L".parts";
-        CreateDirectoryW(partsDir.c_str(), nullptr);
+        platform::makeDir(partsDir);
         // Signature : tout ce qui change le resultat. Differente -> les anciennes parties sont jetees.
         std::string sigSrc;
         {
@@ -515,11 +478,11 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
             sigSrc = code + U8(tail);
         }
         const std::string sig = fnvHex(sigSrc);
-        const std::wstring sigFile = partsDir + L"\\signature.txt";
+        const std::wstring sigFile = partsDir + L"/signature.txt";
         std::string old;
         if (!readFile(sigFile, old) || trim(old) != sig) {
             clearDir(partsDir);
-            if (FILE* f = _wfopen(sigFile.c_str(), L"wb")) {
+            if (FILE* f = platform::openFile(sigFile, "wb")) {
                 fputs(sig.c_str(), f);
                 fclose(f);
             }
@@ -532,7 +495,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         std::vector<std::wstring> parts;
         for (long long i = 0; i < nChunks && result == Result::Ok; i++) {
             const long long n0 = i * chunkFrames, n1 = std::min(N, n0 + chunkFrames);
-            const std::wstring part = partsDir + L"\\" + wfmt(L"%05lld", i) + ext;
+            const std::wstring part = partsDir + L"/" + wfmt(L"%05lld", i) + ext;
             parts.push_back(part);
             if (fileExists(part)) {  // partie deja terminee lors d'un rendu precedent
                 done += n1 - n0;
@@ -543,10 +506,10 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
                 H.log(L"  " + TXF("log.resume", resumed, (long long)nChunks));
                 resumeLogged = true;
             }
-            const std::wstring tmp = partsDir + L"\\" + wfmt(L"%05lld", i) + L".part" + ext;
+            const std::wstring tmp = partsDir + L"/" + wfmt(L"%05lld", i) + L".part" + ext;
             result = encodeRange(n0, n1, tmp, false, done, err);
             if (result == Result::Ok) {
-                if (!MoveFileExW(tmp.c_str(), part.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+                if (!platform::moveFile(tmp, part, true)) {
                     err = TXF("error.part_finalize", partsDir.c_str());
                     result = Result::Failed;
                 }
@@ -555,10 +518,10 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         }
         if (result == Result::Ok) {  // assemblage : copie des flux, son ajoute ici
             H.log(L"  " + TX("log.assembling"));
-            const std::wstring listFile = partsDir + L"\\list.txt";
+            const std::wstring listFile = partsDir + L"/list.txt";
             std::string list;
             for (const auto& p : parts) list += "file '" + U8(p.substr(p.find_last_of(L'\\') + 1)) + "'\n";
-            if (FILE* f = _wfopen(listFile.c_str(), L"wb")) {
+            if (FILE* f = platform::openFile(listFile, "wb")) {
                 fputs(list.c_str(), f);
                 fclose(f);
             }
@@ -574,7 +537,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
                 result = Result::Failed;
             } else {
                 clearDir(partsDir);
-                RemoveDirectoryW(partsDir.c_str());
+                platform::removeDir(partsDir);
             }
         } else if (result == Result::Cancelled) {
             H.log(L"  " + TXF("log.interrupted",

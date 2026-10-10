@@ -64,9 +64,7 @@ constexpr GLenum K_RGBA32F = 0x8814;
 
 // Le contexte est lie au thread qui l'a cree : a creer et detruire dans le thread de rendu.
 struct GLContext {
-    HWND wnd = nullptr;
-    HDC dc = nullptr;
-    HGLRC rc = nullptr;
+    void* impl = nullptr;  // contexte de la couche plateforme
 };
 
 void destroyGLContext(GLContext& c);

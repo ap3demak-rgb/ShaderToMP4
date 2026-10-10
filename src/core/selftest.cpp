@@ -6,10 +6,11 @@
 #include "i18n.h"
 #include "render.h"
 #include "util.h"
+#include "platform/platform.h"
 
 int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
-    std::wstring dir = exeDir + L"tests\\";
-    if (GetFileAttributesW(dir.c_str()) == INVALID_FILE_ATTRIBUTES) dir = exeDir + L"..\\tests\\";
+    std::wstring dir = exeDir + L"tests/";
+    if (!platform::dirExists(dir)) dir = exeDir + L"../tests/";
     std::wstring report;
     int total = 0, fails = 0;
     GLContext gl;
@@ -23,15 +24,18 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
         base.height = 64;
         base.ss = 1;
         base.blur = 1;
-        WIN32_FIND_DATAW fd;
-        HANDLE h = FindFirstFileW((dir + L"*.glsl").c_str(), &fd);
-        if (h == INVALID_HANDLE_VALUE) {
+        std::vector<platform::DirEntry> entries, shaders;
+        platform::listDir(dir, entries);
+        for (const auto& en : entries)
+            if (!en.isDir && en.name.size() > 5 && en.name.compare(en.name.size() - 5, 5, L".glsl") == 0) shaders.push_back(en);
+        std::sort(shaders.begin(), shaders.end(), [](const platform::DirEntry& x, const platform::DirEntry& y) { return x.name < y.name; });
+        if (shaders.empty()) {
             report = TXF("selftest.no_shaders", dir.c_str()) + L"\r\n";
             fails = 1;
         } else {
-            do {
+            for (const auto& en : shaders) {
                 total++;
-                const std::wstring file = fd.cFileName;
+                const std::wstring file = en.name;
                 const std::wstring ref = dir + file.substr(0, file.find_last_of(L'.')) + L".ref";
                 std::vector<uint8_t> got;
                 Hooks H;
@@ -50,7 +54,7 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
                         if (!update) {
                             line = L"FAIL    " + file + L": " + TX("selftest.ref_missing");
                             fails++;
-                        } else if (FILE* f = _wfopen(ref.c_str(), L"wb")) {
+                        } else if (FILE* f = platform::openFile(ref, "wb")) {
                             fwrite(got.data(), 1, got.size(), f);
                             fclose(f);
                             line = L"UPDATED " + file + L": " + TX("selftest.ref_written");
@@ -73,19 +77,18 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
                     }
                 }
                 report += line + L"\r\n";
-            } while (FindNextFileW(h, &fd));
-            FindClose(h);
+            }
         }
         destroyGLContext(gl);
     }
     report += L"\r\n" + TXF("selftest.summary", total, fails) + L"\r\n";
-    if (FILE* f = _wfopen((dir + L"report.txt").c_str(), L"wb")) {
+    if (FILE* f = platform::openFile(dir + L"report.txt", "wb")) {
         std::string u = U8(report);
         fwrite(u.data(), 1, u.size(), f);
         fclose(f);
     }
     if (!quiet)
-        MessageBoxW(nullptr, report.c_str(), (APP_NAME_WSTR L" - " + TX("selftest.title")).c_str(),
-                    fails ? MB_ICONWARNING : MB_ICONINFORMATION);
+        platform::showMessage(APP_NAME_WSTR L" - " + TX("selftest.title"), report,
+                              fails ? platform::MessageKind::Warning : platform::MessageKind::Info);
     return fails ? 1 : 0;
 }

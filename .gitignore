@@ -5,3 +5,5 @@ bin/*
 tests/report.txt
 *.parts/
 *.mp4
+build-cmake/
+_deps/
