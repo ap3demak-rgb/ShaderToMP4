@@ -520,7 +520,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
             H.log(L"  " + TX("log.assembling"));
             const std::wstring listFile = partsDir + L"/list.txt";
             std::string list;
-            for (const auto& p : parts) list += "file '" + U8(p.substr(p.find_last_of(L'\\') + 1)) + "'\n";
+            for (const auto& p : parts) list += "file '" + U8(p.substr(p.find_last_of(L"\\/") + 1)) + "'\n";
             if (FILE* f = platform::openFile(listFile, "wb")) {
                 fputs(list.c_str(), f);
                 fclose(f);

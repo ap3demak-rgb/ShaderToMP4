@@ -55,17 +55,8 @@ jobs:
         run: |
           cmake -S . -B build-cmake -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
           cmake --build build-cmake
-      - name: Self-test
-        run: bin/ShaderToMP4 --selftest --quiet
-      - name: Window screenshots
-        continue-on-error: true
+      - name: Smoke test
+        # Hosted macOS runners have no GPU (no OpenGL 3.3 pixel format): rendering is checked on Linux and Windows only.
         run: |
-          mkdir -p shots
-          bin/ShaderToMP4 --screenshot shots/macos-main.png examples/*.glsl
-          bin/ShaderToMP4 --screenshot-about shots/macos-about.png
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: screenshots-macos
-          path: shots/*.png
-          if-no-files-found: ignore
+          lipo -info bin/ShaderToMP4
+          bin/ShaderToMP4 --version
