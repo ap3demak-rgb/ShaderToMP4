@@ -94,7 +94,7 @@ void icon(const char* name, float size, unsigned color, float alpha) {
     const ImVec2 sz(size, size);
     const float dy = (ImGui::GetTextLineHeight() - size) * 0.5f;
     if (dy > 0) ImGui::SetCursorPosY(ImGui::GetCursorPosY() + dy);
-    if (tex) ImGui::Image((ImTextureID)(intptr_t)tex, sz, ImVec2(0, 0), ImVec2(1, 1), colv(color, alpha));
+    if (tex) ImGui::ImageWithBg((ImTextureID)(intptr_t)tex, sz, ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0), colv(color, alpha));
     else ImGui::Dummy(sz);
 }
 
