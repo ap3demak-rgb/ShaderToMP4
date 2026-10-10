@@ -22,7 +22,7 @@ Le code est aujourd'hui découpé en deux couches :
 | **Garder Direct2D partout** | Déjà fait | API propre à Windows : impossible sur Linux et macOS. |
 | **Qt (statique)** | Widgets natifs, SVG intégré | Exécutable de plusieurs dizaines de Mo, compilation lourde, obligations LGPL/GPL à suivre, apparence sombre à refaire en feuilles de style. |
 | **wxWidgets** | Apparence native | L'apparence diffère selon le système, pas de thème sombre cohérent ni de SVG sans travail supplémentaire. |
-| **GLFW + Dear ImGui + NanoSVG** | Léger, même rendu partout via OpenGL (déjà requis), sources incluses dans le dépôt, licences MIT / zlib (compatibles GPL), dépôt de fichiers et DPI gérés par GLFW | Il faut recréer l'apparence actuelle avec le style d'ImGui ; pas de widgets natifs. |
+| **GLFW + Dear ImGui + NanoSVG** | Léger, même rendu partout via OpenGL (déjà requis), récupérés à la configuration avec des versions figées, licences MIT / zlib (compatibles GPL), dépôt de fichiers et DPI gérés par GLFW | Il faut recréer l'apparence actuelle avec le style d'ImGui ; pas de widgets natifs. |
 
 ## 3. Décision
 
@@ -61,7 +61,7 @@ Le moteur n'appelle jamais directement une API du système d'exploitation. Il ut
 |---|---|
 | Fichiers et chemins | dossier de l'application, existence, lecture/écriture, création/suppression de dossiers, renommage/déplacement, espace disque libre, liste d'un dossier, fichiers temporaires (tous les chemins sont en UTF-8 en interne) |
 | Processus | lancer un processus caché avec des tubes (stdin pour les images, stdout/stderr fusionnés), attendre, terminer |
-| Réseau et empreintes | téléchargement HTTPS avec progression et annulation, SHA-256, extraction d'archives (zip / tar) |
+| Réseau et empreintes | téléchargement HTTPS avec annulation (WinInet sous Windows, `curl` du système ailleurs), SHA-256 (CryptoAPI sous Windows, code intégré ailleurs), extraction d'archives par le `tar` du système |
 | OpenGL | créer un contexte caché, charger les pointeurs de fonctions, le rendre courant dans un thread |
 | Système | ouvrir un fichier, un dossier ou une adresse avec l'application par défaut, langue de l'utilisateur, horloge |
 | Données embarquées | lire une ressource embarquée (fichiers de langue, icônes) |
@@ -81,8 +81,8 @@ Le moteur garde `std::wstring` pour les textes et les chemins ; la couche platef
 | Système | Source |
 |---|---|
 | Windows | build « essentials » de gyan.dev (comportement actuel) |
-| Linux (x86-64, ARM64) | build statique GPL |
-| macOS (Intel, Apple Silicon) | build statique |
+| Linux (x86-64, ARM64) | build statique GPL de BtbN (SHA-256 pris dans le fichier de sommes publié avec lui) |
+| macOS (Intel, Apple Silicon) | pas de téléchargement automatique : aucune source ne publie d'empreinte SHA-256 vérifiable pour macOS. Le programme cherche à côté de l'application, dans le `PATH` et dans les dossiers Homebrew. |
 
 Les encodeurs matériels suivent le système : NVENC (Windows, Linux), AMF et QuickSync (Windows), VAAPI (Linux), VideoToolbox (macOS), avec la même sonde et le même repli sur le CPU.
 
@@ -97,4 +97,5 @@ Les encodeurs matériels suivent le système : NVENC (Windows, Linux), AMF et Qu
 - Deux interfaces à maintenir : la couche applicative commune garde la logique partagée, seuls le dessin et la gestion des événements diffèrent.
 - L'apparence Linux/macOS est une recréation en ImGui de celle de Windows ; de petites différences visuelles sont attendues et acceptables.
 - macOS plafonne OpenGL à 4.1 core (le 3.3 core suffit) et le déconseille ; un chemin Metal est hors périmètre.
-- Linux et macOS ne peuvent pas être lancés sur la machine du mainteneur : l'intégration continue sert de banc d'essai, et le rendu de la fenêtre est vérifié à partir de captures produites par l'intégration continue.
+- Linux et macOS ne peuvent pas être lancés sur la machine du mainteneur : l'intégration continue sert de banc d'essai. Sous Linux (x86-64 et ARM64) elle compile, lance l'auto-test avec le rendu logiciel de Mesa sous un affichage virtuel et produit des captures de la fenêtre. Les machines macOS hébergées n'ont pas de GPU (pas de format de pixels OpenGL 3.3) : macOS y est seulement compilé, empaqueté et testé sommairement (`--version`) ; la fenêtre macOS n'a pas été lancée sur du vrai matériel.
+- L'encodage VAAPI et VideoToolbox suit les options ffmpeg documentées mais n'a pas été testé sur du vrai matériel ; la sonde au démarrage retombe sur l'encodeur CPU en cas d'échec.

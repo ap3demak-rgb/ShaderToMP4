@@ -22,7 +22,7 @@ Today the code is split in two layers:
 | **Keep Direct2D on every system** | Already done | Windows-only API: impossible on Linux and macOS. |
 | **Qt (static)** | Native widgets, SVG built in | Executable of tens of MB, heavy build, LGPL/GPL obligations to track, dark look to rebuild with style sheets. |
 | **wxWidgets** | Native look | The look differs on each system, no coherent dark theme or SVG without extra work. |
-| **GLFW + Dear ImGui + NanoSVG** | Light, same rendering on every system through OpenGL (already required), sources vendored in the repository, licenses MIT / zlib (GPL-compatible), file drop and DPI handled by GLFW | The current look has to be recreated with ImGui styling; no native widgets. |
+| **GLFW + Dear ImGui + NanoSVG** | Light, same rendering on every system through OpenGL (already required), fetched at configuration time with pinned versions, licenses MIT / zlib (GPL-compatible), file drop and DPI handled by GLFW | The current look has to be recreated with ImGui styling; no native widgets. |
 
 ## 3. Decision
 
@@ -61,7 +61,7 @@ The engine never calls an operating-system API directly. It uses `platform::` fu
 |---|---|
 | Files and paths | application folder, existence, read/write, create/remove folders, rename/move, free disk space, directory listing, temporary files (all paths are UTF-8 internally) |
 | Processes | start a hidden process with pipes (stdin for frames, merged stdout/stderr), wait, terminate |
-| Network and hashing | HTTPS download with progress and cancellation, SHA-256, archive extraction (zip / tar) |
+| Network and hashing | HTTPS download with cancellation (WinInet on Windows, the system `curl` elsewhere), SHA-256 (CryptoAPI on Windows, built-in code elsewhere), archive extraction through the system `tar` |
 | OpenGL | create a hidden context, load function pointers, make current on a thread |
 | System | open a file, folder or URL with the default application, user language, clock |
 | Embedded data | read an embedded resource (language files, icons) |
@@ -81,8 +81,8 @@ The engine keeps `std::wstring` for text and paths; the platform layer converts 
 | System | Source |
 |---|---|
 | Windows | gyan.dev "essentials" build (current behaviour) |
-| Linux (x86-64, ARM64) | static GPL build |
-| macOS (Intel, Apple Silicon) | static build |
+| Linux (x86-64, ARM64) | static GPL build from BtbN (SHA-256 taken from the checksum file published with it) |
+| macOS (Intel, Apple Silicon) | no automatic download: no source publishes a verifiable SHA-256 for macOS builds. The program looks next to the app, in the `PATH` and in the Homebrew folders. |
 
 Hardware encoders follow the system: NVENC (Windows, Linux), AMF and QuickSync (Windows), VAAPI (Linux), VideoToolbox (macOS), with the same probe and CPU fallback.
 
@@ -97,4 +97,5 @@ Hardware encoders follow the system: NVENC (Windows, Linux), AMF and QuickSync (
 - Two interfaces to maintain: the shared application layer keeps the logic common so that only drawing and event handling differ.
 - The Linux/macOS look is an ImGui re-creation of the Windows one; small visual differences are expected and acceptable.
 - macOS caps OpenGL at 4.1 core (3.3 core is enough) and deprecates it; a Metal path is out of scope.
-- Linux and macOS cannot be run by the maintainer's machine: continuous integration is the test bed, and window rendering is checked from screenshots produced by the CI.
+- Linux and macOS cannot be run on the maintainer's machine: continuous integration is the test bed. On Linux (x86-64 and ARM64) it builds, runs the self-test with Mesa software rendering under a virtual display and produces window screenshots. Hosted macOS machines have no GPU (no OpenGL 3.3 pixel format), so macOS is only built, packaged and smoke-tested there (`--version`); the macOS window has not been run on real hardware.
+- VAAPI and VideoToolbox encoding follow the documented ffmpeg options but have not been tested on real hardware; the start-up probe falls back to the CPU encoder when they fail.

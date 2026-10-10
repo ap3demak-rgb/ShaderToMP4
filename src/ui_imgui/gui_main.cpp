@@ -219,7 +219,11 @@ void drawShaders(App& a, float height) {
     const std::string count = m.paths.size() == 1 ? TXF8("ui.files_one", 1) : TXF8("ui.files_many", (int)m.paths.size());
     if (beginCard("##shaders", "ui.card.shaders", "film", ImVec2(0, height), count)) {
         const float rowH = ImGui::GetFrameHeight() + S(4);
-        ImGui::BeginChild("##list", ImVec2(0, -(rowH + S(8))), ImGuiChildFlags_None);
+        float rowsW = 0;  // les boutons passent sur deux lignes si la carte est trop étroite (langues aux libellés longs)
+        for (const char* k : {"ui.btn.add", "ui.btn.remove", "ui.btn.clear", "ui.btn.folder", "ui.btn.png"})
+            rowsW += buttonWidth(k, true) + ImGui::GetStyle().ItemSpacing.x;
+        const int btnRows = rowsW > ImGui::GetContentRegionAvail().x ? 2 : 1;
+        ImGui::BeginChild("##list", ImVec2(0, -(rowH * btnRows + ImGui::GetStyle().ItemSpacing.y * btnRows + S(4))), ImGuiChildFlags_None);
         if (m.paths.empty()) {
             const ImVec2 avail = ImGui::GetContentRegionAvail();
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() + std::max(0.0f, avail.y * 0.5f - S(50)));

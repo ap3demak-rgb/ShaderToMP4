@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ShaderToMP4</title>
-<meta name="description" content="Turn Shadertoy shaders into video, frame by frame. Portable Windows app, no installer. / Transforme les shaders Shadertoy en vidéo, image par image. Application Windows portable, sans installeur.">
+<meta name="description" content="Turn Shadertoy shaders into video, frame by frame. Portable app for Windows, Linux and macOS, no installer. / Transforme les shaders Shadertoy en vidéo, image par image. Application portable pour Windows, Linux et macOS, sans installeur.">
 <meta property="og:title" content="ShaderToMP4">
 <meta property="og:description" content="Turn Shadertoy shaders into video, frame by frame.">
 <meta property="og:image" content="https://ap3demak-rgb.github.io/ShaderToMP4/screenshots/en/done.png">
@@ -80,10 +80,10 @@
       <h1><span>ShaderToMP4</span></h1>
       <p class="lead" data-lang="en">Turn a Shadertoy shader into video, <b>frame by frame</b>, with exact timing. No capture, no stutter, no installer.</p>
       <p class="lead" data-lang="fr">Transforme un shader Shadertoy en vidéo, <b>image par image</b>, avec un temps exact. Pas de capture, pas de saccades, pas d'installeur.</p>
-      <a class="btn" href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest"><span data-lang="en">Download for Windows</span><span data-lang="fr">Télécharger pour Windows</span></a>
+      <a class="btn" href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest"><span data-lang="en">Download</span><span data-lang="fr">Télécharger</span></a>
       <a class="btn sec" href="https://github.com/ap3demak-rgb/ShaderToMP4">GitHub</a>
       <div class="badges">
-        <span class="badge">v1.2.0</span><span class="badge">Windows 10 / 11</span>
+        <span class="badge">v1.2.0</span><span class="badge">Windows</span><span class="badge">Linux</span><span class="badge">macOS</span>
         <span class="badge" data-lang="en">Portable</span><span class="badge" data-lang="fr">Portable</span>
         <span class="badge">EN · FR</span><span class="badge">GPL-3.0-or-later</span>
       </div>
@@ -140,16 +140,16 @@
     <div class="wrap">
       <h2><span data-lang="en">Download and start</span><span data-lang="fr">Télécharger et démarrer</span></h2>
       <ol class="steps" data-lang="en">
-        <li>Download the portable archive from the <a href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest">Releases</a> page and unzip it anywhere.</li>
-        <li>Run <code>ShaderToMP4.exe</code>; it offers to download <code>ffmpeg.exe</code> the first time (SHA-256 checked).</li>
+        <li>Download the portable archive for your system (Windows, Linux x86-64 / ARM64, macOS) from the <a href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest">Releases</a> page and unpack it anywhere.</li>
+        <li>Run <code>ShaderToMP4.exe</code> (Windows), <code>./ShaderToMP4</code> (Linux) or <code>ShaderToMP4.app</code> (macOS); on Windows and Linux it offers to download <code>ffmpeg</code> the first time (SHA-256 checked); on macOS install it with Homebrew.</li>
         <li>Drop your <code>.glsl</code> shaders in the window and click <b>Start</b>.</li>
       </ol>
       <ol class="steps" data-lang="fr">
-        <li>Télécharge l'archive portable depuis la page <a href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest">Releases</a> et décompresse-la où tu veux.</li>
-        <li>Lance <code>ShaderToMP4.exe</code> ; il propose de télécharger <code>ffmpeg.exe</code> la première fois (empreinte SHA-256 vérifiée).</li>
+        <li>Télécharge l'archive portable de ton système (Windows, Linux x86-64 / ARM64, macOS) depuis la page <a href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest">Releases</a> et décompresse-la où tu veux.</li>
+        <li>Lance <code>ShaderToMP4.exe</code> (Windows), <code>./ShaderToMP4</code> (Linux) ou <code>ShaderToMP4.app</code> (macOS) ; sous Windows et Linux il propose de télécharger <code>ffmpeg</code> la première fois (empreinte SHA-256 vérifiée) ; sous macOS, installe-le avec Homebrew.</li>
         <li>Glisse tes shaders <code>.glsl</code> dans la fenêtre et clique sur <b>Démarrer</b>.</li>
       </ol>
-      <p style="color:var(--muted)"><span data-lang="en">Requires Windows 10 (1703 or newer) or Windows 11 and an OpenGL 3.3 graphics card.</span><span data-lang="fr">Nécessite Windows 10 (1703 ou plus récent) ou Windows 11 et une carte graphique OpenGL 3.3.</span></p>
+      <p style="color:var(--muted)"><span data-lang="en">Requires an OpenGL 3.3 graphics card and Windows 10 (1703 or newer) or 11, a Linux desktop (X11 / Wayland, glibc 2.35+), or macOS 10.13+.</span><span data-lang="fr">Nécessite une carte graphique OpenGL 3.3 et Windows 10 (1703 ou plus récent) ou 11, un bureau Linux (X11 / Wayland, glibc 2.35+) ou macOS 10.13+.</span></p>
     </div>
   </section>
 

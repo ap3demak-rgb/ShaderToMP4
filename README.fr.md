@@ -7,14 +7,14 @@
 <p align="center"><a href="README.md">English</a> · <b>Français</b></p>
 
 <p align="center">
-  <a href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest"><img alt="Télécharger" src="https://img.shields.io/badge/T%C3%A9l%C3%A9charger-Windows%2064%20bits-465AFF?style=for-the-badge&logo=windows&logoColor=white"></a>
+  <a href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest"><img alt="Télécharger" src="https://img.shields.io/badge/T%C3%A9l%C3%A9charger-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-465AFF?style=for-the-badge"></a>
   &nbsp;
   <a href="https://ap3demak-rgb.github.io/ShaderToMP4"><img alt="Site web" src="https://img.shields.io/badge/Site%20web-ShaderToMP4-FF5A96?style=for-the-badge"></a>
 </p>
 
 <p align="center">
   <img alt="Version" src="https://img.shields.io/badge/version-1.2.0-FF5A96?style=flat-square">
-  <img alt="Plateforme" src="https://img.shields.io/badge/plateforme-Windows%2010%20%2F%2011-0078D4?style=flat-square&logo=windows&logoColor=white">
+  <img alt="Plateforme" src="https://img.shields.io/badge/plateforme-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-0078D4?style=flat-square">
   <img alt="Portable" src="https://img.shields.io/badge/portable-sans%20installeur-3DDC97?style=flat-square">
   <img alt="Langues" src="https://img.shields.io/badge/langues-EN%20%C2%B7%20FR-7C6CFF?style=flat-square">
   <img alt="C++" src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white">
@@ -27,7 +27,7 @@
 
 **ShaderToMP4** convertit un shader [Shadertoy](https://www.shadertoy.com) (onglet *Image*) en vidéo, **image par image**, avec un temps exact (`iTime = image / fps`). Pas de capture d'écran, donc pas de saccades, pas de perte, quelle que soit la puissance de ta carte graphique : un shader qui tourne à 5 images par seconde en direct donne une vidéo parfaitement fluide.
 
-Un seul exécutable Windows portable, **sans installeur**, avec une interface sombre moderne en français et en anglais.
+Un seul programme portable pour **Windows, Linux et macOS**, **sans installeur**, avec une interface sombre moderne en français et en anglais.
 
 ---
 
@@ -37,10 +37,10 @@ Un seul exécutable Windows portable, **sans installeur**, avec une interface so
 |---|---|
 | **Temps exact** | Chaque image est rendue au temps `n / fps`, puis envoyée directement à ffmpeg par un tube : aucun fichier intermédiaire. |
 | **Qualité maximale** | Jusqu'à 16384 pixels de large, supersampling ×4, flou de mouvement (×4, ×8, ×16), conversion colorimétrique BT.709 correcte, encodage x264 / x265 sans perte si tu veux. |
-| **Rapide** | Rendu et encodage en parallèle, lecture GPU asynchrone, encodage matériel NVENC, AMF ou QuickSync en option. |
+| **Rapide** | Rendu et encodage en parallèle, lecture GPU asynchrone, encodage matériel (NVENC, AMF, QuickSync, VAAPI, VideoToolbox) en option. |
 | **Fiable** | Les longs rendus se font par parties : si quelque chose plante, tu reprends exactement où tu t'étais arrêté. |
 | **Pratique** | Aperçu intégré, préréglages (YouTube, 4K, vertical 9:16), audio avec fondus, boucle parfaite, file d'attente de plusieurs shaders, pause et annulation. |
-| **Portable** | Rien à installer : il n'utilise que des composants de Windows. Réglages, langues et `ffmpeg.exe` restent dans le dossier de l'application. |
+| **Portable** | Rien à installer, quel que soit le système. Réglages, langues et `ffmpeg` restent dans le dossier de l'application. |
 
 ## L'interface
 
@@ -74,6 +74,15 @@ Un seul exécutable Windows portable, **sans installeur**, avec une interface so
   <sub>La fenêtre « À propos » (<code>F1</code>) : version, copyright, licence, contact et site web. Le bouton globe change la langue instantanément.</sub>
 </p>
 
+### Sous Linux et macOS
+
+Windows garde son interface native Direct2D. Linux et macOS utilisent une seconde interface au même aspect (cartes sombres, accent en dégradé, mêmes icônes SVG), fondée sur GLFW et Dear ImGui et dessinée en OpenGL ; les deux interfaces partagent le même moteur de rendu, les mêmes réglages et les mêmes traductions.
+
+<p align="center">
+  <img src="docs/screenshots/linux/fr/main.png" alt="ShaderToMP4 sous Linux" width="860"><br>
+  <sub>L'interface Linux / macOS (capture produite par l'intégration continue sous Linux).</sub>
+</p>
+
 ## Exemples
 
 Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : plasma, anneaux, tunnel et aurore.
@@ -84,15 +93,26 @@ Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : 
 
 ## Démarrage rapide
 
-1. **Télécharge** la dernière archive portable depuis la page [Releases](https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest) et décompresse-la où tu veux (ou [compile le projet](#compiler)).
-2. Lance `ShaderToMP4.exe`. Si `ffmpeg.exe` est absent, le programme propose de le télécharger (environ 80 Mo depuis [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), vérifié par SHA-256) et l'installe à côté de lui.
+1. **Télécharge** l'archive portable de ton système depuis la page [Releases](https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest) et décompresse-la où tu veux (ou [compile le projet](#compiler)).
+
+   | Système | Archive | Lancer |
+   |---|---|---|
+   | Windows 10 / 11, 64 bits | `ShaderToMP4-<version>-win64.zip` | `ShaderToMP4.exe` |
+   | Linux x86-64 | `ShaderToMP4-<version>-linux-x86_64.tar.gz` | `./ShaderToMP4` |
+   | Linux ARM64 | `ShaderToMP4-<version>-linux-aarch64.tar.gz` | `./ShaderToMP4` |
+   | macOS 10.13+, Apple Silicon et Intel | `ShaderToMP4-<version>-macos-universal.zip` | `ShaderToMP4.app` |
+
+2. Si `ffmpeg` est absent, le programme propose de le télécharger (Windows : environ 80 Mo depuis [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) ; Linux : un build statique de [BtbN](https://github.com/BtbN/FFmpeg-Builds) ; vérifié par SHA-256) et l'installe à côté de lui. Sous macOS, installe-le avec Homebrew (`brew install ffmpeg`) ou place le binaire `ffmpeg` à côté du `.app` : aucune source ne publie d'empreinte SHA-256 vérifiable pour macOS, il n'y a donc pas de téléchargement automatique.
 3. **Glisse** un ou plusieurs fichiers shader (`.glsl` ou `.txt`) dans la fenêtre, ou clique sur **Ajouter**.
 4. Règle la vidéo (ou choisis un préréglage) puis clique sur **Démarrer**.
-5. La vidéo est créée à côté du shader, ou dans le dossier choisi dans **Sortie**. Double-clic sur un fichier terminé pour la lire.
+5. La vidéo est créée à côté du shader, ou dans le dossier choisi dans **Sortie**.
 
-> Glisser des fichiers directement sur `ShaderToMP4.exe` les ajoute et lance le rendu tout de suite.
+> Les fichiers passés en ligne de commande (ou glissés sur l'exécutable sous Windows) sont ajoutés et rendus tout de suite.
 
-**Prérequis** : Windows 10 (version 1703 ou plus récente) ou Windows 11, et une carte graphique compatible OpenGL 3.3.
+**Prérequis** : une carte graphique (ou un pilote) compatible OpenGL 3.3, et
+- **Windows** : Windows 10 (version 1703 ou plus récente) ou Windows 11.
+- **Linux** : un bureau X11 ou Wayland (XWayland), glibc 2.35 ou plus récente, le pilote OpenGL de ta carte graphique (Mesa convient), et `curl` ainsi que `tar` avec `xz` pour le téléchargement automatique de ffmpeg. Sur un portable à deux GPU, lance le programme avec `DRI_PRIME=1` pour utiliser le GPU puissant.
+- **macOS** : 10.13 ou plus récent. L'archive est signée « ad hoc », non notariée : au premier lancement, clic droit sur `ShaderToMP4.app` puis *Ouvrir* (ou `xattr -dr com.apple.quarantine ShaderToMP4.app`). Les réglages sont écrits dans le dossier qui contient le `.app` : garde-le dans un dossier où tu peux écrire (pas `/Applications`).
 
 ## Fonctions
 
@@ -165,18 +185,18 @@ Les vidéos plus longues que `chunk` secondes sont rendues par parties, dans un 
 
 | Commande | Effet |
 |---|---|
-| `ShaderToMP4.exe a.glsl b.glsl` | Ajoute les fichiers et lance le rendu |
-| `ShaderToMP4.exe --selftest [--update] [--quiet]` | Auto-test (voir plus bas) |
-| `ShaderToMP4.exe --get-ffmpeg [--quiet]` | Télécharge et installe `ffmpeg.exe` sans ouvrir la fenêtre |
-| `ShaderToMP4.exe --version` | Affiche la version, le copyright et la licence |
-| `ShaderToMP4.exe --help` | Affiche les options |
+| `ShaderToMP4 a.glsl b.glsl` | Ajoute les fichiers et lance le rendu |
+| `ShaderToMP4 --selftest [--update] [--quiet]` | Auto-test (voir plus bas) |
+| `ShaderToMP4 --get-ffmpeg [--quiet]` | Télécharge et installe `ffmpeg` sans ouvrir la fenêtre (Windows et Linux) |
+| `ShaderToMP4 --version` | Affiche la version, le copyright et la licence |
+| `ShaderToMP4 --help` | Affiche les options |
 
 </details>
 
 <details>
 <summary><b>Langues</b></summary>
 
-Tous les textes de l'interface viennent de `lang/en.json` et `lang/fr.json`, embarqués dans l'exécutable. La langue suit Windows par défaut, se change avec le bouton globe et est mémorisée dans `window.ini`. Pour ajouter ou corriger une langue sans recompiler, place un fichier `lang/<code>.json` à côté de l'exécutable (les clés qui y manquent retombent sur l'anglais) ; le bouton globe passe alors en revue toutes les langues disponibles.
+Tous les textes de l'interface viennent de `lang/en.json` et `lang/fr.json`, embarqués dans l'exécutable. La langue suit le système par défaut, se change avec le bouton globe et est mémorisée dans `window.ini`. Pour ajouter ou corriger une langue sans recompiler, place un fichier `lang/<code>.json` à côté de l'exécutable (les clés qui y manquent retombent sur l'anglais) ; le bouton globe passe alors en revue toutes les langues disponibles.
 
 </details>
 
@@ -194,13 +214,25 @@ Une capture dépend de la vitesse de ton PC : si le shader est lourd, la vidéo 
 **Mon rendu est long, que faire ?**
 Essaie l'encodeur matériel (`Encodeur : Auto`), un preset plus rapide, ou le préréglage *Brouillon* pour tester. Le journal indique si le goulot est le GPU ou l'encodeur.
 
-**Où est `ffmpeg.exe` ?**
-Il est téléchargé au premier lancement à côté de `ShaderToMP4.exe`. Tu peux aussi le placer toi-même dans le même dossier, ou le garder dans ton `PATH`.
+**Où est `ffmpeg` ?**
+Sous Windows et Linux, il est téléchargé à la demande à côté du programme. Tu peux aussi le placer toi-même dans le même dossier, ou le garder dans ton `PATH` (sous macOS, les dossiers Homebrew sont aussi parcourus).
+
+**Quels encodeurs matériels sont pris en charge ?**
+
+| Système | Encodeurs (réglage `Encodeur`) |
+|---|---|
+| Windows | NVENC (NVIDIA), AMF (AMD), QuickSync (Intel) |
+| Linux | NVENC, VAAPI (AMD / Intel), QuickSync |
+| macOS | VideoToolbox |
+
+`Auto` les essaie dans cet ordre par un encodage de test de 0,2 s et retombe sur le CPU si aucun ne fonctionne.
 
 **Est-ce que ça installe quelque chose ou écrit ailleurs sur mon PC ?**
-Non. Le programme est portable : réglages (`config.ini`, `window.ini`), langues et `ffmpeg.exe` vivent dans son propre dossier. Le programme lui-même n'écrit ni dans le registre ni dans ton profil utilisateur (les pilotes graphiques peuvent garder leurs propres caches).
+Non. Le programme est portable : réglages (`config.ini`, `window.ini`), langues et `ffmpeg` vivent dans son propre dossier. Le programme lui-même n'écrit ni dans le registre, ni dans ton profil utilisateur, ni dans un dossier système (les pilotes graphiques peuvent garder leurs propres caches).
 
 ## Compiler
+
+### Windows
 
 Avec les Build Tools de Visual Studio (le chemin de `vcvars64.bat` est écrit dans `scripts\build.bat`, à adapter si besoin) :
 
@@ -208,7 +240,20 @@ Avec les Build Tools de Visual Studio (le chemin de `vcvars64.bat` est écrit da
 .\scripts\build.bat
 ```
 
-Cela compile les ressources (manifeste, icône, icônes SVG, fichiers de langue, informations de version) puis tous les fichiers de `src` vers `bin\ShaderToMP4.exe`, lié statiquement (aucun runtime à installer), et copie les fichiers de licence et `lang/` à côté.
+Cela compile les ressources (manifeste, icône, icônes SVG, fichiers de langue, informations de version) puis tous les fichiers de `src` vers `bin\ShaderToMP4.exe`, lié statiquement (aucun runtime à installer), et copie les fichiers de licence et `lang/` à côté. CMake fonctionne aussi (`cmake -S . -B build-cmake` puis `cmake --build build-cmake --config Release`), et `scripts\package-windows.ps1` fabrique le zip portable.
+
+### Linux et macOS
+
+Il faut CMake 3.20+, un compilateur C++17 et, sous Linux, les paquets de développement X11 / Wayland (sous Debian et Ubuntu : `sudo apt install cmake ninja-build xorg-dev libgl1-mesa-dev libxkbcommon-dev libwayland-dev wayland-protocols`).
+
+```
+./scripts/build.sh          # configure, télécharge GLFW, Dear ImGui et NanoSVG (versions figées) et compile bin/ShaderToMP4
+./scripts/test.sh           # auto-test
+./scripts/package-linux.sh x86_64      # ou aarch64 : dist/ShaderToMP4-<version>-linux-<arch>.tar.gz
+./scripts/package-macos.sh             # dist/ShaderToMP4-<version>-macos-universal.zip (compiler avec -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64")
+```
+
+La première configuration demande une connexion internet pour récupérer les trois bibliothèques.
 
 <details>
 <summary>MinGW-w64 (non testé)</summary>
@@ -224,30 +269,35 @@ g++ -std=c++17 -O2 -finput-charset=UTF-8 -municode -mwindows -static -I src -o b
 ### Organisation du projet
 
 ```
-src/        code source : main.cpp, core/ (moteur de rendu, sans interface), gui/ (fenêtre et dessin Direct2D)
+src/        code source : core/ (moteur de rendu, sans interface), platform/ (seul code qui appelle le système : windows/, posix/),
+            gui/ (interface Windows, Direct2D), ui_imgui/ (interface Linux et macOS, GLFW + Dear ImGui), main.cpp, main_posix.cpp
+assets/     polices embarquées dans l'interface Linux / macOS (Inter)
+cmake/      embarquement des ressources pour les compilations CMake
 lang/       textes de l'interface : en.json, fr.json
 res/        manifeste (DPI, thème), icône, informations de version, icônes SVG (icons/)
-scripts/    build.bat (compiler), test.bat (auto-test), check-repo.ps1 (contrôle du dépôt)
+scripts/    build.bat / build.sh (compiler), test.bat / test.sh (auto-test), package-*.{ps1,sh} (archives portables), check-repo.ps1 (contrôle du dépôt)
 tests/      shaders de référence et leurs images .ref
 examples/   shaders d'exemple
 docs/       bannière, captures d'écran, site web
-bin/        dossier de travail : ShaderToMP4.exe (généré), ffmpeg.exe, config.ini
+bin/        dossier de travail : l'exécutable (généré), ffmpeg, config.ini
 ```
 
 ### Auto-test et contrôle du dépôt
 
-`scripts\test.bat` rend les shaders du dossier `tests` en 64×64 (à t = 1 s) et les compare à leurs images de référence `.ref` (écart moyen toléré : 2/255). Le rapport est dans `tests\report.txt` et le code de sortie vaut 0 si tout passe. Les références dépendent du GPU et du pilote : après un changement volontaire du rendu ou de matériel, régénère-les avec `scripts\test.bat --update`.
+`scripts\test.bat` (`./scripts/test.sh` sous Linux et macOS) rend les shaders du dossier `tests` en 64×64 (à t = 1 s) et les compare à leurs images de référence `.ref` (écart moyen toléré : 2/255). Le rapport est dans `tests\report.txt` et le code de sortie vaut 0 si tout passe. Les références dépendent du GPU et du pilote : après un changement volontaire du rendu ou de matériel, régénère-les avec `scripts\test.bat --update`.
 
 `scripts\check-repo.ps1` contrôle le dépôt avant chaque commit : en-têtes de licence, fichiers de langue concordants, aucun texte d'interface écrit en dur, documentation bilingue, règles de portabilité.
 
 ### Limites connues
 
 - L'interface s'adapte au DPI de l'écran mais n'a été vérifiée qu'à 100 %.
-- Les encodeurs matériels AMD et Intel n'ont pas été testés sur du matériel réel.
+- Les encodeurs matériels AMD et Intel (AMF, QuickSync, VAAPI) n'ont pas été testés sur du matériel réel.
+- macOS : le programme est compilé et empaqueté par l'intégration continue, mais les machines macOS hébergées n'ont pas de GPU : la fenêtre n'a donc pas été lancée sur un vrai Mac. Signale tout problème.
+- Linux et macOS : les boîtes de dialogue de fichiers sont intégrées au programme (pas de boîte système), et il n'y a pas d'indicateur de progression dans la barre des tâches ou le Dock.
 
 ## Informations sur le projet
 
 - **Copyright** © 2026 Patrick JAILLET
-- **Licence** : distribué sous licence GPL-3.0-or-later, voir [LICENSE](LICENSE) et [COPYING](COPYING). Composants tiers : [THIRD_PARTY_NOTICES.fr.md](THIRD_PARTY_NOTICES.fr.md). `ffmpeg.exe` est un programme séparé, non inclus dans ce dépôt : il est téléchargé à la demande depuis [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) et reste soumis à sa propre licence.
+- **Licence** : distribué sous licence GPL-3.0-or-later, voir [LICENSE](LICENSE) et [COPYING](COPYING). Composants tiers : [THIRD_PARTY_NOTICES.fr.md](THIRD_PARTY_NOTICES.fr.md). `ffmpeg` est un programme séparé, non inclus dans ce dépôt : il est téléchargé à la demande depuis [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) (Windows) ou [BtbN](https://github.com/BtbN/FFmpeg-Builds) (Linux) et reste soumis à sa propre licence.
 - **Contact** : [sandefjord.development@proton.me](mailto:sandefjord.development@proton.me)
 - **Site web** : <https://ap3demak-rgb.github.io/ShaderToMP4>
