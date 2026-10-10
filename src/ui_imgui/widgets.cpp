@@ -139,7 +139,7 @@ void tip(const char* key) {
 
 float buttonWidth(const char* labelKey, bool withIcon) {
     const std::string text = labelKey[0] == '=' ? std::string(labelKey + 1) : T(labelKey);
-    return (withIcon ? S(16) + (text.empty() ? 0.0f : S(8)) : 0) + ImGui::CalcTextSize(text.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f + S(8);
+    return (withIcon ? S(16) + (text.empty() ? 0.0f : S(8)) : 0) + ImGui::CalcTextSize(text.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
 }
 
 bool button(const char* labelKey, const char* iconName, int kind, bool enabled, float width, const char* tipKey) {
@@ -148,7 +148,7 @@ bool button(const char* labelKey, const char* iconName, int kind, bool enabled, 
     const ImGuiStyle& st = ImGui::GetStyle();
     const float gapW = text.empty() ? 0.0f : S(8);
     const float contentW = (iconName ? iconSize + gapW : 0) + ImGui::CalcTextSize(text.c_str()).x;
-    const ImVec2 size(width > 0 ? width : contentW + st.FramePadding.x * 2.0f + S(8), ImGui::GetFrameHeight() + S(4));
+    const ImVec2 size(width > 0 ? width : contentW + st.FramePadding.x * 2.0f, ImGui::GetFrameHeight() + S(4));
     ImGui::PushID(labelKey);
     ImGui::BeginDisabled(!enabled);
     ImVec4 base = colv(pal::FIELD);

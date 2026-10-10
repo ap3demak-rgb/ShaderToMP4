@@ -196,7 +196,6 @@ void drawHeader(App& a, GLFWwindow* win) {
     const std::string langLabel = "=" + up;
     const float wLang = buttonWidth(langLabel.c_str(), true), wAbout = buttonWidth("=", true);
     ImGui::SameLine(avail - wLang - wAbout - S(8));
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + S(4));
     if (button(langLabel.c_str(), "globe", 0, true, 0, "ui.tip.language")) ImGui::OpenPopup("##lang");
     ImGui::SameLine();
     if (button("=", "info", 0, true, 0, "ui.tip.about")) a.showAbout = true;
@@ -247,8 +246,9 @@ void drawShaders(App& a, float height) {
         }
         ImGui::EndChild();
         const bool any = !m.paths.empty();
-        auto fit = [](float w) {
-            if (ImGui::GetContentRegionAvail().x > w + ImGui::GetStyle().ItemSpacing.x) ImGui::SameLine();
+        const float rowRight = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+        auto fit = [rowRight](float w) {
+            if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + w <= rowRight) ImGui::SameLine();
         };
         if (button("ui.btn.add", "add", 0, !run, 0, "ui.tip.add"))
             openBrowser(a, BrowseMode::OpenFiles, "dialog.shaders", {L".glsl", L".txt"}, L"", [&a](const std::vector<std::wstring>& r) { a.model.addFiles(r); });
@@ -271,7 +271,7 @@ void drawPreview(App& a, float height) {
         m.prevFresh = false;
     }
     if (beginCard("##preview", "ui.card.preview", "eye", ImVec2(0, height))) {
-        const float controls = ImGui::GetFrameHeight() * 2.0f + S(20);
+        const float controls = ImGui::GetFrameHeight() + S(14);
         const ImVec2 avail = ImGui::GetContentRegionAvail();
         const ImVec2 box(avail.x, std::max(S(40), avail.y - controls));
         const ImVec2 p = ImGui::GetCursorScreenPos();
@@ -292,7 +292,7 @@ void drawPreview(App& a, float height) {
         if (!parseSeconds(W(m.f.start), st)) st = 0;
         if (!parseSeconds(W(m.f.dur), du)) du = 0;
         const double t = st + m.f.previewPos * du;
-        const std::string timeText = TXF8("ui.preview_time", U8(i18n::fixed(t, 2)).c_str());
+        const std::string timeText = TXF8("ui.preview_time", i18n::fixed(t, 2).c_str());
         ImGui::AlignTextToFramePadding();
         ImGui::TextColored(colv(pal::MUTED), "%s", timeText.c_str());
         ImGui::SameLine();
@@ -562,7 +562,7 @@ void drawAbout(App& a) {
     ImGui::Spacing();
     ImGui::TextColored(colv(pal::MUTED), "%s", T("about.copyright").c_str());
     ImGui::SameLine(S(110));
-    ImGui::Text("(C) %s %s", APP_COPYRIGHT_YEAR, APP_COPYRIGHT_OWNER);
+    ImGui::Text("© %s %s", APP_COPYRIGHT_YEAR, APP_COPYRIGHT_OWNER);
     ImGui::TextColored(colv(pal::MUTED), "%s", T("about.licence_label").c_str());
     ImGui::SameLine(S(110));
     ImGui::TextUnformatted(T("about.license").c_str());

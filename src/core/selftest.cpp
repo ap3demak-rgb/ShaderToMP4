@@ -87,6 +87,9 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
         fwrite(u.data(), 1, u.size(), f);
         fclose(f);
     }
+#ifndef _WIN32
+    if (quiet && fails) fputs(U8(report).c_str(), stderr);  // en ligne de commande, un echec doit rester lisible
+#endif
     if (!quiet)
         platform::showMessage(APP_NAME_WSTR L" - " + TX("selftest.title"), report,
                               fails ? platform::MessageKind::Warning : platform::MessageKind::Info);
