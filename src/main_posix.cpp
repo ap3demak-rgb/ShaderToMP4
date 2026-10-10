@@ -38,8 +38,7 @@ int renderCommandLine(const std::wstring& exeDir, const std::vector<std::wstring
     GLContext gl;
     std::wstring err;
     if (!createGLContext(gl, err)) {
-        fprintf(stderr, "%s
-", U8(TXF("log.error", err.c_str())).c_str());
+        fprintf(stderr, "%s\n", U8(TXF("log.error", err.c_str())).c_str());
         return 1;
     }
     Hooks H;
@@ -52,8 +51,7 @@ int renderCommandLine(const std::wstring& exeDir, const std::vector<std::wstring
         std::wstring e;
         puts(U8(f).c_str());
         if (convertFile(f, exeDir, base, H, e) != Result::Ok) {
-            fprintf(stderr, "%s
-", U8(TXF("log.error", e.c_str())).c_str());
+            fprintf(stderr, "%s\n", U8(TXF("log.error", e.c_str())).c_str());
             fails++;
         }
     }
