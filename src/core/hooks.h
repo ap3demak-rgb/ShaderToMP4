@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // Rappels du moteur de rendu vers l'appelant (interface graphique ou auto-test).
 #pragma once
 #include "common.h"

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // Progression dans le bouton de la barre des taches (ITaskbarList3).
 #pragma once
 #include "common.h"

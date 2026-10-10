@@ -1,18 +1,29 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 #include "app.h"
+#include "core/i18n.h"
 #include "core/util.h"
 
 // --- Panneau de reglages video ---
 const ResPreset kRes[] = {
-    {L"1280x720 (720p)", 1280, 720},
-    {L"1920x1080 (1080p)", 1920, 1080},
-    {L"2560x1440 (1440p)", 2560, 1440},
-    {L"3840x2160 (4K)", 3840, 2160},
-    {L"1080x1920 (vertical 9:16)", 1080, 1920},
-    {L"1080x1080 (carré 1:1)", 1080, 1080},
+    {L"720p", nullptr, 1280, 720},
+    {L"1080p", nullptr, 1920, 1080},
+    {L"1440p", nullptr, 2560, 1440},
+    {L"4K", nullptr, 3840, 2160},
+    {nullptr, "ui.res.vertical", 1080, 1920},
+    {nullptr, "ui.res.square", 1080, 1080},
 };
 const int kResCount = (int)(sizeof(kRes) / sizeof(kRes[0]));  // l'entree suivante = "Personnalise"
 const wchar_t* kPresets[] = {L"ultrafast", L"superfast", L"veryfast", L"faster", L"fast",
                                     L"medium",    L"slow",      L"slower",   L"veryslow"};
+
+std::wstring resName(const ResPreset& r) {
+    std::wstring s = wfmt(L"%dx%d", r.w, r.h);
+    if (r.tag) s += L" (" + std::wstring(r.tag) + L")";
+    else if (r.key) s += L" (" + TX(r.key) + L")";
+    return s;
+}
 
 std::wstring getText(HWND h) {
     wchar_t b[128] = {0};
@@ -50,17 +61,17 @@ void syncResCombo() {
 
 void updateCrfLabel() {
     int c = (int)SendMessageW(g.trkCrf, TBM_GETPOS, 0, 0);
-    const wchar_t* hint = c == 0 ? L"sans perte" : c <= 12 ? L"quasi parfait" : c <= 18 ? L"très bon"
-                          : c <= 23 ? L"bon" : L"qualité réduite";
-    SetWindowTextW(g.lblCrf, wfmt(L"%d  -  %ls", c, hint).c_str());
+    const char* hint = c == 0 ? "ui.crf.lossless" : c <= 12 ? "ui.crf.near_perfect" : c <= 18 ? "ui.crf.very_good"
+                       : c <= 23 ? "ui.crf.good" : "ui.crf.reduced";
+    SetWindowTextW(g.lblCrf, wfmt(L"%d  -  %ls", c, TX(hint).c_str()).c_str());
 }
 
 void settingsToUI(const Settings& s) {
     SetWindowTextW(g.edW, std::to_wstring(s.width).c_str());
     SetWindowTextW(g.edH, std::to_wstring(s.height).c_str());
-    SetWindowTextW(g.cmbFps, wfmt(L"%g", s.fps).c_str());
-    SetWindowTextW(g.edDur, wfmt(L"%g", s.duration).c_str());
-    SetWindowTextW(g.edStart, wfmt(L"%g", s.start).c_str());
+    SetWindowTextW(g.cmbFps, i18n::num(s.fps).c_str());
+    SetWindowTextW(g.edDur, i18n::num(s.duration).c_str());
+    SetWindowTextW(g.edStart, i18n::num(s.start).c_str());
     SendMessageW(g.trkCrf, TBM_SETPOS, TRUE, std::min(35, std::max(0, s.crf)));
     int p = (int)SendMessageW(g.cmbPreset, CB_FINDSTRINGEXACT, (WPARAM)-1, (LPARAM)W(s.preset).c_str());
     SendMessageW(g.cmbPreset, CB_SETCURSEL, (WPARAM)(p < 0 ? 6 : p), 0);
@@ -71,10 +82,10 @@ void settingsToUI(const Settings& s) {
     SetWindowTextW(g.edBitrate, std::to_wstring(s.bitrate).c_str());
     SendMessageW(g.cmbColor, CB_SETCURSEL, s.color == "bt709full" ? 1 : s.color == "srgb" ? 2 : s.color == "bt601" ? 3 : 0, 0);
     SendMessageW(g.cmbBlur, CB_SETCURSEL, s.blur >= 16 ? 3 : s.blur >= 8 ? 2 : s.blur >= 2 ? 1 : 0, 0);
-    SetWindowTextW(g.edLoop, wfmt(L"%g", s.loop).c_str());
+    SetWindowTextW(g.edLoop, i18n::num(s.loop).c_str());
     SetWindowTextW(g.edAudio, s.audio.c_str());
-    SetWindowTextW(g.edFadeIn, wfmt(L"%g", s.fadein).c_str());
-    SetWindowTextW(g.edFadeOut, wfmt(L"%g", s.fadeout).c_str());
+    SetWindowTextW(g.edFadeIn, i18n::num(s.fadein).c_str());
+    SetWindowTextW(g.edFadeOut, i18n::num(s.fadeout).c_str());
     SendMessageW(g.cmbEncoder, CB_SETCURSEL, s.encoder == "auto" ? 1 : s.encoder == "nvenc" ? 2 : s.encoder == "amf" ? 3 : s.encoder == "qsv" ? 4 : 0, 0);
     syncResCombo();
     updateCrfLabel();
@@ -82,16 +93,16 @@ void settingsToUI(const Settings& s) {
 
 bool uiToSettings(Settings& s, std::wstring& err) {
     int w = _wtoi(getText(g.edW).c_str()), h = _wtoi(getText(g.edH).c_str());
-    if (w < 16 || w > 16384 || h < 16 || h > 16384) { err = L"Résolution invalide (16 à 16384 pixels)."; return false; }
+    if (w < 16 || w > 16384 || h < 16 || h > 16384) { err = TX("error.res_invalid"); return false; }
     std::wstring ft = getText(g.cmbFps);
     for (auto& c : ft)
         if (c == L',') c = L'.';
     wchar_t* end = nullptr;
     double fps = wcstod(ft.c_str(), &end);
-    if (end == ft.c_str() || *end != 0 || fps <= 0 || fps > 240) { err = L"FPS invalide (0 à 240)."; return false; }
+    if (end == ft.c_str() || *end != 0 || fps <= 0 || fps > 240) { err = TX("error.fps_invalid"); return false; }
     double dur = 0, start = 0;
-    if (!parseSeconds(getText(g.edDur), dur) || dur <= 0) { err = L"Durée invalide (ex : 90 ou 1:30)."; return false; }
-    if (!parseSeconds(getText(g.edStart), start)) { err = L"Début invalide (ex : 0 ou 0:10)."; return false; }
+    if (!parseSeconds(getText(g.edDur), dur) || dur <= 0) { err = TX("error.duration_invalid"); return false; }
+    if (!parseSeconds(getText(g.edStart), start)) { err = TX("error.start_invalid"); return false; }
     s.width = w;
     s.height = h;
     s.fps = fps;
@@ -113,13 +124,13 @@ bool uiToSettings(Settings& s, std::wstring& err) {
     }
     {
         double lp = 0, fi = 0, fo = 0;
-        if (!parseSeconds(getText(g.edLoop), lp)) { err = L"Période de boucle invalide (secondes, 0 = libre)."; return false; }
+        if (!parseSeconds(getText(g.edLoop), lp)) { err = TX("error.loop_invalid"); return false; }
         if (!parseSeconds(getText(g.edFadeIn), fi) || !parseSeconds(getText(g.edFadeOut), fo)) {
-            err = L"Durée de fondu invalide (secondes).";
+            err = TX("error.fade_invalid");
             return false;
         }
         int br = _wtoi(getText(g.edBitrate).c_str());
-        if (br < 0 || br > 500000) { err = L"Débit invalide (kb/s, 0 = qualité constante)."; return false; }
+        if (br < 0 || br > 500000) { err = TX("error.bitrate_invalid"); return false; }
         s.bitrate = br;
         s.loop = lp;
         s.fadein = fi;
@@ -145,7 +156,8 @@ void saveSettings() { writeIni(g.exeDir + L"config.ini", g.base); }
 void browseOutDir() {
     BROWSEINFOW bi{};
     bi.hwndOwner = g.wnd;
-    bi.lpszTitle = L"Dossier de sortie des vidéos";
+    const std::wstring title = TX("dialog.out_folder");
+    bi.lpszTitle = title.c_str();
     bi.ulFlags = BIF_RETURNONLYDIRS;
     PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
     if (!pidl) return;
@@ -159,7 +171,9 @@ void browseAudio() {
     OPENFILENAMEW o{};
     o.lStructSize = sizeof(o);
     o.hwndOwner = g.wnd;
-    o.lpstrFilter = L"Audio (*.mp3;*.wav;*.flac;*.ogg;*.m4a;*.aac)\0*.mp3;*.wav;*.flac;*.ogg;*.m4a;*.aac\0Tous les fichiers\0*.*\0";
+    const std::wstring audioPat = L"*.mp3;*.wav;*.flac;*.ogg;*.m4a;*.aac";
+    const std::wstring filter = makeFilter({{TX("dialog.audio_files") + L" (" + audioPat + L")", audioPat}, {TX("dialog.all_files"), L"*.*"}});
+    o.lpstrFilter = filter.c_str();
     o.lpstrFile = buf.data();
     o.nMaxFile = (DWORD)buf.size();
     o.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
@@ -171,7 +185,8 @@ static bool pickIni(bool save, std::wstring& path) {
     OPENFILENAMEW o{};
     o.lStructSize = sizeof(o);
     o.hwndOwner = g.wnd;
-    o.lpstrFilter = L"Profils de réglages (*.ini)\0*.ini\0";
+    const std::wstring filter = makeFilter({{TX("dialog.profiles") + L" (*.ini)", L"*.ini"}});
+    o.lpstrFilter = filter.c_str();
     o.lpstrFile = buf.data();
     o.nMaxFile = (DWORD)buf.size();
     o.lpstrDefExt = L"ini";
@@ -186,25 +201,25 @@ void loadProfile() {
     std::string text;
     if (!pickIni(false, path)) return;
     if (!readFile(path, text)) {
-        MessageBoxW(g.wnd, L"Impossible de lire ce profil.", L"Profil", MB_ICONWARNING);
+        MessageBoxW(g.wnd, TX("error.profile_read").c_str(), TX("dialog.profile_title").c_str(), MB_ICONWARNING);
         return;
     }
     Settings p;  // valeurs par defaut + celles du profil
     parseLines(p, text, false);
     settingsToUI(p);
-    appendLog(L"Profil chargé : " + path);
+    appendLog(TXF("log.profile_loaded", path.c_str()));
 }
 
 void saveProfile() {
     Settings cur = g.base;
     std::wstring err, path;
     if (!uiToSettings(cur, err)) {
-        MessageBoxW(g.wnd, err.c_str(), L"Réglages invalides", MB_ICONWARNING);
+        MessageBoxW(g.wnd, err.c_str(), TX("dialog.invalid_settings").c_str(), MB_ICONWARNING);
         return;
     }
     if (!pickIni(true, path)) return;
     writeIni(path, cur);
-    appendLog(L"Profil enregistré : " + path);
+    appendLog(TXF("log.profile_saved", path.c_str()));
 }
 
 

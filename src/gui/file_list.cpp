@@ -1,4 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 #include "app.h"
+#include "core/i18n.h"
 #include "core/util.h"
 
 void addFiles(const std::vector<std::wstring>& files) {
@@ -46,7 +50,8 @@ void browseFiles() {
     OPENFILENAMEW o{};
     o.lStructSize = sizeof(o);
     o.hwndOwner = g.wnd;
-    o.lpstrFilter = L"Shaders (*.txt;*.glsl)\0*.txt;*.glsl\0Tous les fichiers\0*.*\0";
+    const std::wstring filter = makeFilter({{TX("dialog.shaders") + L" (*.txt;*.glsl)", L"*.txt;*.glsl"}, {TX("dialog.all_files"), L"*.*"}});
+    o.lpstrFilter = filter.c_str();
     o.lpstrFile = buf.data();
     o.nMaxFile = (DWORD)buf.size();
     o.Flags = OFN_EXPLORER | OFN_ALLOWMULTISELECT | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;

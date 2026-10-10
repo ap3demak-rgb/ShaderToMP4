@@ -1,4 +1,6 @@
 @echo off
+rem SPDX-License-Identifier: GPL-3.0-or-later
+rem Copyright (C) 2026 Patrick JAILLET
 rem Auto-test : rend les shaders de tests\ et les compare aux references (.ref). Code de sortie 0 = OK.
 rem Apres un changement voulu du rendu : scripts\test.bat --update
 cd /d "%~dp0.."

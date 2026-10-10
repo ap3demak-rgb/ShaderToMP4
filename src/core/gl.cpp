@@ -1,4 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 #include "gl.h"
+#include "i18n.h"
 #include "util.h"
 
 namespace ogl {
@@ -38,7 +42,7 @@ bool createGLContext(GLContext& c, std::wstring& err) {
     RegisterClassW(&wc);  // echoue sans gravite si deja enregistree
     c.wnd = CreateWindowExW(0, wc.lpszClassName, L"ShaderToMP4", WS_OVERLAPPEDWINDOW, 0, 0, 64, 64,
                             nullptr, nullptr, hi, nullptr);
-    if (!c.wnd) { err = L"Impossible de creer la fenetre OpenGL."; return false; }
+    if (!c.wnd) { err = TX("error.gl_window"); return false; }
     c.dc = GetDC(c.wnd);
 
     PIXELFORMATDESCRIPTOR pfd{};
@@ -48,23 +52,23 @@ bool createGLContext(GLContext& c, std::wstring& err) {
     pfd.iPixelType = PFD_TYPE_RGBA;
     pfd.cColorBits = 32;
     int pf = ChoosePixelFormat(c.dc, &pfd);
-    if (!pf || !SetPixelFormat(c.dc, pf, &pfd)) { err = L"Format de pixel OpenGL indisponible."; return false; }
+    if (!pf || !SetPixelFormat(c.dc, pf, &pfd)) { err = TX("error.gl_pixelformat"); return false; }
 
     HGLRC tmp = wglCreateContext(c.dc);
     c.rc = tmp;
-    if (!tmp || !wglMakeCurrent(c.dc, tmp)) { err = L"Impossible de creer le contexte OpenGL."; return false; }
+    if (!tmp || !wglMakeCurrent(c.dc, tmp)) { err = TX("error.gl_context"); return false; }
 
     typedef HGLRC(WINAPI * PFN_CCA)(HDC, HGLRC, const int*);
     PFN_CCA cca = (PFN_CCA)(void*)wglGetProcAddress("wglCreateContextAttribsARB");
-    if (!cca) { err = L"OpenGL 3.3 requis (pilote graphique trop ancien ?)."; return false; }
+    if (!cca) { err = TX("error.gl_version"); return false; }
     const int attr[] = {0x2091, 3, 0x2092, 3, 0x9126, 0x1, 0};  // 3.3 core
     HGLRC rc = cca(c.dc, nullptr, attr);
     wglMakeCurrent(nullptr, nullptr);
     wglDeleteContext(tmp);
     c.rc = nullptr;
-    if (!rc || !wglMakeCurrent(c.dc, rc)) { err = L"OpenGL 3.3 core indisponible. Mets a jour le pilote graphique."; return false; }
+    if (!rc || !wglMakeCurrent(c.dc, rc)) { err = TX("error.gl_core"); return false; }
     c.rc = rc;
-    if (!ogl::load()) { err = L"Fonctions OpenGL manquantes (pilote trop ancien ?)."; return false; }
+    if (!ogl::load()) { err = TX("error.gl_functions"); return false; }
     return true;
 }
 
@@ -78,7 +82,7 @@ static GLuint compileShader(GLenum type, const std::string& src, std::wstring& e
     if (!ok) {
         char log[4096] = {0};
         ogl::GetShaderInfoLog(sh, sizeof(log) - 1, nullptr, log);
-        err = L"Erreur de compilation du shader :\n" + W(log);
+        err = TX("error.shader_compile") + L"\n" + W(log);
         ogl::DeleteShader(sh);
         return 0;
     }
@@ -127,7 +131,7 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err) {
     if (!ok) {
         char log[4096] = {0};
         ogl::GetProgramInfoLog(prog, sizeof(log) - 1, nullptr, log);
-        err = L"Erreur d'edition de liens :\n" + W(log);
+        err = TX("error.shader_link") + L"\n" + W(log);
         return 0;
     }
     return prog;
@@ -156,7 +160,7 @@ GLuint buildPresentProgram(std::wstring& err) {
     GLint ok = 0;
     ogl::GetProgramiv(prog, ogl::K_LINK_STATUS, &ok);
     if (!ok) {
-        err = L"Erreur d'edition de liens (programme de recopie).";
+        err = TX("error.present_link");
         return 0;
     }
     return prog;

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // Aurore : rubans de lumiere ondulants sur un ciel etoile
 float band(vec2 uv, float k, float t) {
     float y = 0.18 * sin(uv.x * 2.2 + t * k) + 0.10 * sin(uv.x * 5.1 - t * 0.7 * k) + 0.12 * k;

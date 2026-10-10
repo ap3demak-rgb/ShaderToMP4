@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // Encodeurs ffmpeg (CPU ou materiel) et espaces colorimetriques.
 #pragma once
 #include "common.h"

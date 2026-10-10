@@ -1,5 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 #include "render.h"
 #include "encoder.h"
+#include "i18n.h"
 #include "gl.h"
 #include "process.h"
 #include "util.h"
@@ -70,7 +74,7 @@ static void normalizeShaderText(std::string& code, const Hooks& H) {
             w += (wchar_t)(le ? (a | (b << 8)) : ((a << 8) | b));
         }
         code = U8(w);
-        H.log(L"  Fichier shader en UTF-16 : converti en UTF-8.");
+        H.log(L"  " + TX("log.utf16_converted"));
     }
     if (code.size() >= 3 && (uint8_t)code[0] == 0xEF && (uint8_t)code[1] == 0xBB && (uint8_t)code[2] == 0xBF)
         code.erase(0, 3);  // BOM UTF-8
@@ -94,18 +98,18 @@ static void normalizeShaderText(std::string& code, const Hooks& H) {
 Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base,
                           const Hooks& H, std::wstring& err) {
     std::string code;
-    if (!readFile(shaderPath, code)) { err = L"Impossible de lire le fichier."; return Result::Failed; }
+    if (!readFile(shaderPath, code)) { err = TX("error.read_file"); return Result::Failed; }
     normalizeShaderText(code, H);
     if (code.find("mainImage") == std::string::npos) {
-        err = L"Aucune fonction mainImage trouvee : ce n'est pas un shader Shadertoy (onglet Image).";
+        err = TX("error.no_main_image");
         return Result::Failed;
     }
     if (code.find("iChannel") != std::string::npos)
-        H.log(L"  ATTENTION : le shader utilise iChannel (textures/buffers), non supportes : rendu noir pour ces entrees.");
+        H.log(L"  " + TX("log.warn_ichannel"));
 
     Settings s = base;
     parseLines(s, code, true);
-    if (!sameSettings(s, base)) H.log(L"  Reglages du shader (// cle=valeur) prioritaires sur ceux de la fenetre.");
+    if (!sameSettings(s, base)) H.log(L"  " + TX("log.shader_overrides"));
     s.width = std::max(16, s.width & ~1);
     s.height = std::max(16, s.height & ~1);
     if (s.fps <= 0) s.fps = 60;
@@ -127,7 +131,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     const int RW = W_ * SS, RH = H_ * SS;
     const size_t frameBytes = (size_t)RW * RH * 4;
     const bool hasAudio = videoMode && !s.audio.empty();
-    if (hasAudio && !fileExists(s.audio)) { err = L"Fichier audio introuvable : " + s.audio; return Result::Failed; }
+    if (hasAudio && !fileExists(s.audio)) { err = TXF("error.audio_missing", s.audio.c_str()); return Result::Failed; }
 
     // Chemin de sortie : dossier choisi (sinon celui du shader), meme nom, extension du conteneur (ou .png)
     if (!preview && !s.outdir.empty()) CreateDirectoryW(s.outdir.c_str(), nullptr);  // sans effet si deja present
@@ -141,20 +145,19 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         const double est = s.bitrate > 0 ? s.bitrate * 125.0 * totalSec : (double)W_ * H_ * s.fps * totalSec * bpp / 8.0;
         ULARGE_INTEGER freeB{};
         if (GetDiskFreeSpaceExW(outDir.c_str(), &freeB, nullptr, nullptr)) {
-            H.log(wfmt(L"  Taille estimee : ~%.0f Mo (espace libre : %.0f Mo)", est / 1048576.0, freeB.QuadPart / 1048576.0));
+            H.log(L"  " + TXF("log.size_estimate", est / 1048576.0, freeB.QuadPart / 1048576.0));
             const bool chunkedGuess = s.chunk > 0 && N > std::llround(s.chunk * s.fps);
             const double need = est * (chunkedGuess ? 2.2 : 1.2) + 50e6;  // les parties s'ajoutent au fichier final
             if ((double)freeB.QuadPart < need) {
-                err = wfmt(L"Espace disque insuffisant sur %ls : il faut environ %.0f Mo, %.0f Mo libres.", outDir.c_str(),
-                           need / 1048576.0, freeB.QuadPart / 1048576.0);
+                err = TXF("error.disk_full", outDir.c_str(), need / 1048576.0, freeB.QuadPart / 1048576.0);
                 return Result::Failed;
             }
         }
-        H.log(wfmt(L"  %dx%d  %g fps  %g s  (%lld images)  %ls  preset %ls  %ls", W_, H_, s.fps, totalSec, N,
+        H.log(TXF("log.render_summary", W_, H_, s.fps, totalSec, N,
                    s.bitrate > 0 ? wfmt(L"%d kb/s", s.bitrate).c_str() : wfmt(L"crf %d", s.crf).c_str(),
                    W(s.preset).c_str(), s.codec == "h265" ? L"H.265" : L"H.264"));
-        if (B > 1) H.log(wfmt(L"  Flou de mouvement : %d sous-images par image (obturateur %g)", B, s.shutter));
-        if (s.loop > 0) H.log(wfmt(L"  Boucle parfaite : periode %g s -> duree %g s", s.loop, duration));
+        if (B > 1) H.log(L"  " + TXF("log.motion_blur", B, s.shutter));
+        if (s.loop > 0) H.log(L"  " + TXF("log.perfect_loop", s.loop, duration));
     }
 
     // --- Shader + FBO + PBO ---------------------------------------------------
@@ -179,7 +182,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     GLint maxTex = 0;  // limite du GPU
     glGetIntegerv(0x0D33 /*GL_MAX_TEXTURE_SIZE*/, &maxTex);
     if (maxTex > 0 && (RW > maxTex || RH > maxTex)) {
-        err = wfmt(L"Taille de rendu %dx%d (resolution x lissage) superieure a la limite du GPU (%d).", RW, RH, (int)maxTex);
+        err = TXF("error.render_size", RW, RH, (int)maxTex);
         cleanupGL();
         return Result::Failed;
     }
@@ -195,7 +198,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
     ogl::FramebufferTexture2D(ogl::K_FRAMEBUFFER, ogl::K_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
     if (ogl::CheckFramebufferStatus(ogl::K_FRAMEBUFFER) != ogl::K_FRAMEBUFFER_COMPLETE) {
-        err = L"Framebuffer incomplet (resolution trop grande pour ce GPU ?).";
+        err = TX("error.framebuffer");
         cleanupGL();
         return Result::Failed;
     }
@@ -212,7 +215,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, accFbo);
         ogl::FramebufferTexture2D(ogl::K_FRAMEBUFFER, ogl::K_COLOR_ATTACHMENT0, GL_TEXTURE_2D, accTex, 0);
         if (ogl::CheckFramebufferStatus(ogl::K_FRAMEBUFFER) != ogl::K_FRAMEBUFFER_COMPLETE) {
-            err = L"Flou de mouvement indisponible (framebuffer flottant refuse par le GPU).";
+            err = TX("error.blur_unavailable");
             cleanupGL();
             return Result::Failed;
         }
@@ -347,10 +350,10 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         // stdin de ffmpeg = les images ; stdout/stderr = tube lu par un thread et envoye au journal
         SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
         HANDLE rd = nullptr, wr = nullptr, eRd = nullptr, eWr = nullptr;
-        if (!CreatePipe(&rd, &wr, &sa, 1 << 24)) { e = L"Impossible de creer le pipe."; return Result::Failed; }
+        if (!CreatePipe(&rd, &wr, &sa, 1 << 24)) { e = TX("error.pipe"); return Result::Failed; }
         SetHandleInformation(wr, HANDLE_FLAG_INHERIT, 0);
         if (!CreatePipe(&eRd, &eWr, &sa, 0)) {
-            e = L"Impossible de creer le pipe.";
+            e = TX("error.pipe");
             CloseHandle(rd);
             CloseHandle(wr);
             return Result::Failed;
@@ -366,7 +369,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         PROCESS_INFORMATION pi{};
         std::wstring cmdBuf = cmd;
         if (!CreateProcessW(nullptr, &cmdBuf[0], nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-            e = L"Impossible de lancer ffmpeg.exe. Place ffmpeg.exe dans le meme dossier que ShaderToMP4.exe.";
+            e = TX("error.ffmpeg_launch");
             CloseHandle(rd);
             CloseHandle(wr);
             CloseHandle(eRd);
@@ -386,11 +389,11 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
                 while ((p = acc.find('\n')) != std::string::npos) {
                     std::string line = trim(acc.substr(0, p));
                     acc.erase(0, p + 1);
-                    if (!line.empty()) H.log(L"  ffmpeg : " + W(line));
+                    if (!line.empty()) H.log(TX("log.ffmpeg_prefix") + W(line));
                 }
             }
             acc = trim(acc);
-            if (!acc.empty()) H.log(L"  ffmpeg : " + W(acc));
+            if (!acc.empty()) H.log(TX("log.ffmpeg_prefix") + W(acc));
         });
 
         FrameQueue q;
@@ -488,7 +491,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
             return Result::Cancelled;
         }
         if (aborted || code2 != 0) {
-            e = L"ffmpeg s'est arrete avec une erreur (voir le journal ci-dessus).";
+            e = TX("error.ffmpeg_failed");
             return Result::Failed;
         }
         return Result::Ok;
@@ -537,21 +540,21 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
                 continue;
             }
             if (resumed && !resumeLogged) {
-                H.log(wfmt(L"  Reprise : %d partie(s) deja terminee(s) sur %lld.", resumed, (long long)nChunks));
+                H.log(L"  " + TXF("log.resume", resumed, (long long)nChunks));
                 resumeLogged = true;
             }
             const std::wstring tmp = partsDir + L"\\" + wfmt(L"%05lld", i) + L".part" + ext;
             result = encodeRange(n0, n1, tmp, false, done, err);
             if (result == Result::Ok) {
                 if (!MoveFileExW(tmp.c_str(), part.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-                    err = L"Impossible de finaliser une partie dans " + partsDir;
+                    err = TXF("error.part_finalize", partsDir.c_str());
                     result = Result::Failed;
                 }
             }
             done += n1 - n0;
         }
         if (result == Result::Ok) {  // assemblage : copie des flux, son ajoute ici
-            H.log(L"  Assemblage des parties...");
+            H.log(L"  " + TX("log.assembling"));
             const std::wstring listFile = partsDir + L"\\list.txt";
             std::string list;
             for (const auto& p : parts) list += "file '" + U8(p.substr(p.find_last_of(L'\\') + 1)) + "'\n";
@@ -565,16 +568,16 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
             if (hasAudio) cmd += L" -map 1:a -c:a aac -b:a 192k -af \"" + audioFilter + L"\" -shortest";
             cmd += L" -c:v copy" + std::wstring(s.codec == "h265" ? L" -tag:v hvc1" : L"") +
                    (s.container == "mkv" ? L"" : L" -movflags +faststart") + L" \"" + out + L"\"";
-            int rc = runProcess(cmd, [&](const std::wstring& line) { H.log(L"  ffmpeg : " + line); });
+            int rc = runProcess(cmd, [&](const std::wstring& line) { H.log(TX("log.ffmpeg_prefix") + line); });
             if (rc != 0) {
-                err = L"L'assemblage des parties a echoue (voir le journal). Les parties sont conservees : relance pour reessayer.";
+                err = TX("error.assemble_failed");
                 result = Result::Failed;
             } else {
                 clearDir(partsDir);
                 RemoveDirectoryW(partsDir.c_str());
             }
         } else if (result == Result::Cancelled) {
-            H.log(wfmt(L"  Interrompu : %lld/%lld parties terminees, conservees dans %ls (relance pour reprendre).",
+            H.log(L"  " + TXF("log.interrupted",
                        (long long)std::count_if(parts.begin(), parts.end(), [](const std::wstring& p) { return fileExists(p); }),
                        (long long)nChunks, partsDir.c_str()));
         }
@@ -583,12 +586,11 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
 
     if (result == Result::Ok) {
         if (videoMode && loopSec > 1.0 && waitSec > 0.3 * loopSec)
-            H.log(wfmt(L"  Mesure : le rendu a attendu l'encodeur %.0f%% du temps (l'encodage est le goulot : "
-                       L"essaie un preset plus rapide ou encoder=auto).",
+            H.log(L"  " + TXF("log.measure_encoder_bound",
                        100.0 * waitSec / loopSec));
         else if (videoMode && loopSec > 1.0)
-            H.log(wfmt(L"  Mesure : attente de l'encodeur %.0f%% du temps (le GPU est le goulot).", 100.0 * waitSec / loopSec));
-        H.log(L"  OK -> " + out);
+            H.log(L"  " + TXF("log.measure_gpu_bound", 100.0 * waitSec / loopSec));
+        H.log(L"  " + TXF("log.ok_output", out.c_str()));
     }
     return result;
 }

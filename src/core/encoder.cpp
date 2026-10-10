@@ -1,4 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 #include "encoder.h"
+#include "i18n.h"
 #include "process.h"
 #include "util.h"
 
@@ -49,11 +53,11 @@ std::string resolveEncoder(const Settings& s, const std::wstring& ffmpeg, const 
     else cands = {s.encoder};
     for (const auto& c : cands) {
         if (probeEncoder(ffmpeg, hwCodecName(c, h265))) {
-            H.log(L"  Encodeur materiel : " + W(hwCodecName(c, h265)));
+            H.log(L"  " + TXF("log.hw_encoder", W(hwCodecName(c, h265)).c_str()));
             return c;
         }
     }
-    if (s.encoder != "auto") H.log(L"  Encodeur " + W(s.encoder) + L" indisponible sur ce PC : repli sur le CPU.");
+    if (s.encoder != "auto") H.log(L"  " + TXF("log.encoder_unavailable", W(s.encoder).c_str()));
     return "cpu";
 }
 

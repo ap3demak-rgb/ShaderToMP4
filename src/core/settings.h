@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // Reglages de la video : config.ini (a cote du .exe), commentaires `// cle=valeur` des shaders, fenetre.
 #pragma once
 #include "common.h"
@@ -21,7 +24,6 @@ struct Settings {
     std::string encoder = "cpu";    // cpu | auto | nvenc | amf | qsv (encodage materiel)
     int pbo = 3;                    // profondeur de la file de lecture GPU (2..8)
     double chunk = 30;              // rendu par parties de N secondes, reprenables (0 = jamais)
-    std::string gpu = "auto";       // auto | high | low : preference Windows pour les PC a deux GPU
 };
 
 bool sameSettings(const Settings& a, const Settings& b);

@@ -1,0 +1,193 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later - Copyright (C) 2026 Patrick JAILLET -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShaderToMP4</title>
+<meta name="description" content="Turn Shadertoy shaders into video, frame by frame. Portable Windows app, no installer. / Transforme les shaders Shadertoy en vidéo, image par image. Application Windows portable, sans installeur.">
+<meta property="og:title" content="ShaderToMP4">
+<meta property="og:description" content="Turn Shadertoy shaders into video, frame by frame.">
+<meta property="og:image" content="https://ap3demak-rgb.github.io/ShaderToMP4/screenshots/en/done.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23FF5A96'/%3E%3Cstop offset='1' stop-color='%23465AFF'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='3' y='3' width='58' height='58' rx='15' fill='url(%23g)'/%3E%3Cpath d='M25 19l21 13-21 13z' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0E1014; --card: #161920; --border: #252A35; --text: #E8EAF0; --muted: #8B93A7;
+    --a: #FF5A96; --b: #465AFF; --ok: #3DDC97;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif; }
+  a { color: #9DA8FF; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+  header.top { position: sticky; top: 0; z-index: 10; background: rgba(14,16,20,.85); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
+  header.top .wrap { display: flex; align-items: center; gap: 18px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--text); text-decoration: none; }
+  .brand svg { width: 30px; height: 30px; }
+  nav { display: flex; gap: 18px; margin-left: auto; align-items: center; }
+  nav a { color: var(--muted); text-decoration: none; font-size: 15px; }
+  nav a:hover { color: var(--text); }
+  .lang { border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 999px; padding: 4px 14px; font: inherit; cursor: pointer; }
+  .lang:hover { border-color: #465066; }
+  .hero { text-align: center; padding: 72px 0 40px; background: radial-gradient(600px 300px at 80% 0%, rgba(70,90,255,.28), transparent), radial-gradient(500px 260px at 10% 10%, rgba(255,90,150,.22), transparent); }
+  .hero h1 { font-size: clamp(36px, 7vw, 64px); line-height: 1.1; margin: 0 0 14px; letter-spacing: -1px; }
+  .hero h1 span { background: linear-gradient(90deg, var(--a), var(--b)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p.lead { font-size: 20px; color: var(--muted); max-width: 720px; margin: 0 auto 28px; }
+  .btn { display: inline-block; padding: 12px 26px; border-radius: 12px; font-weight: 600; text-decoration: none; color: #fff; background: linear-gradient(135deg, var(--a), var(--b)); }
+  .btn:hover { filter: brightness(1.12); }
+  .btn.sec { background: var(--card); border: 1px solid var(--border); color: var(--text); margin-left: 10px; }
+  .badges { margin-top: 22px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .badge { border: 1px solid var(--border); background: var(--card); border-radius: 999px; padding: 3px 12px; font-size: 13px; color: var(--muted); }
+  .shot { display: block; max-width: 100%; border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 30px 80px rgba(0,0,0,.55); margin: 36px auto 0; }
+  section { padding: 56px 0; }
+  h2 { font-size: 30px; margin: 0 0 24px; letter-spacing: -.5px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 22px; }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: var(--muted); }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+  .two figure, .gallery figure { margin: 0; }
+  .two img, .gallery img { width: 100%; border-radius: 14px; border: 1px solid var(--border); display: block; }
+  figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+  ol.steps { padding-left: 22px; } ol.steps li { margin: 8px 0; }
+  .about { display: grid; gap: 6px; color: var(--muted); }
+  .about b { color: var(--text); }
+  footer { border-top: 1px solid var(--border); padding: 28px 0 40px; color: var(--muted); font-size: 14px; text-align: center; }
+  html[lang="en"] [data-lang="fr"], html[lang="fr"] [data-lang="en"] { display: none !important; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF5A96"/><stop offset="1" stop-color="#465AFF"/></linearGradient></defs><rect x="3" y="3" width="58" height="58" rx="15" fill="url(#g)"/><path d="M25 19l21 13-21 13z" fill="#fff"/></svg>
+      ShaderToMP4
+    </a>
+    <nav>
+      <a href="#features"><span data-lang="en">Features</span><span data-lang="fr">Fonctions</span></a>
+      <a href="#screens"><span data-lang="en">Screenshots</span><span data-lang="fr">Captures</span></a>
+      <a href="#download"><span data-lang="en">Download</span><span data-lang="fr">Télécharger</span></a>
+      <a href="#about"><span data-lang="en">About</span><span data-lang="fr">À propos</span></a>
+      <button class="lang" id="langBtn" type="button" aria-label="Language">EN | FR</button>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <div class="hero">
+    <div class="wrap">
+      <h1><span>ShaderToMP4</span></h1>
+      <p class="lead" data-lang="en">Turn a Shadertoy shader into video, <b>frame by frame</b>, with exact timing. No capture, no stutter, no installer.</p>
+      <p class="lead" data-lang="fr">Transforme un shader Shadertoy en vidéo, <b>image par image</b>, avec un temps exact. Pas de capture, pas de saccades, pas d'installeur.</p>
+      <a class="btn" href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest"><span data-lang="en">Download for Windows</span><span data-lang="fr">Télécharger pour Windows</span></a>
+      <a class="btn sec" href="https://github.com/ap3demak-rgb/ShaderToMP4">GitHub</a>
+      <div class="badges">
+        <span class="badge">v1.2.0</span><span class="badge">Windows 10 / 11</span>
+        <span class="badge" data-lang="en">Portable</span><span class="badge" data-lang="fr">Portable</span>
+        <span class="badge">EN · FR</span><span class="badge">GPL-3.0-or-later</span>
+      </div>
+      <img class="shot" id="hero" src="screenshots/en/done.png" alt="ShaderToMP4" width="1016" height="939">
+    </div>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <h2><span data-lang="en">Why ShaderToMP4?</span><span data-lang="fr">Pourquoi ShaderToMP4 ?</span></h2>
+      <div class="grid">
+        <div class="card"><h3 data-lang="en">Exact timing</h3><h3 data-lang="fr">Temps exact</h3>
+          <p data-lang="en">Each frame is rendered at time n / fps and sent straight to ffmpeg. A shader running at 5 fps live still gives a perfectly smooth video.</p>
+          <p data-lang="fr">Chaque image est rendue au temps n / fps et envoyée directement à ffmpeg. Un shader à 5 images par seconde en direct donne une vidéo parfaitement fluide.</p></div>
+        <div class="card"><h3 data-lang="en">Maximum quality</h3><h3 data-lang="fr">Qualité maximale</h3>
+          <p data-lang="en">Up to 16384 px wide, ×4 supersampling, motion blur, correct BT.709 colour, lossless x264 / x265.</p>
+          <p data-lang="fr">Jusqu'à 16384 px de large, supersampling ×4, flou de mouvement, couleur BT.709 correcte, x264 / x265 sans perte.</p></div>
+        <div class="card"><h3 data-lang="en">Fast and reliable</h3><h3 data-lang="fr">Rapide et fiable</h3>
+          <p data-lang="en">Parallel render and encode, optional hardware encoders, and long renders made in parts that resume after any interruption.</p>
+          <p data-lang="fr">Rendu et encodage en parallèle, encodeurs matériels en option, et longs rendus par parties qui reprennent après toute interruption.</p></div>
+        <div class="card"><h3 data-lang="en">Practical</h3><h3 data-lang="fr">Pratique</h3>
+          <p data-lang="en">Built-in preview, presets (YouTube, 4K, vertical), audio with fades, perfect loop, queue, pause and cancel.</p>
+          <p data-lang="fr">Aperçu intégré, préréglages (YouTube, 4K, vertical), audio avec fondus, boucle parfaite, file d'attente, pause et annulation.</p></div>
+        <div class="card"><h3 data-lang="en">Portable</h3><h3 data-lang="fr">Portable</h3>
+          <p data-lang="en">Nothing to install. Settings, languages and ffmpeg stay in the application folder.</p>
+          <p data-lang="fr">Rien à installer. Réglages, langues et ffmpeg restent dans le dossier de l'application.</p></div>
+        <div class="card"><h3 data-lang="en">Free software</h3><h3 data-lang="fr">Logiciel libre</h3>
+          <p data-lang="en">Distributed under the GPL-3.0-or-later license, interface in English and French.</p>
+          <p data-lang="fr">Distribué sous licence GPL-3.0-or-later, interface en français et en anglais.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="screens">
+    <div class="wrap">
+      <h2><span data-lang="en">Screenshots</span><span data-lang="fr">Captures d'écran</span></h2>
+      <div class="two">
+        <figure><img data-shot="empty" src="screenshots/en/empty.png" alt="" loading="lazy">
+          <figcaption data-lang="en">Drop your shaders in the illustrated drop zone.</figcaption><figcaption data-lang="fr">Glisse tes shaders dans la zone de dépôt illustrée.</figcaption></figure>
+        <figure><img data-shot="running" src="screenshots/en/running.png" alt="" loading="lazy">
+          <figcaption data-lang="en">Rendering: speed, time left, pause, cancel.</figcaption><figcaption data-lang="fr">Rendu en cours : vitesse, temps restant, pause, annulation.</figcaption></figure>
+        <figure><img data-shot="settings" src="screenshots/en/settings.png" alt="" loading="lazy">
+          <figcaption data-lang="en">All video settings, with one-click presets.</figcaption><figcaption data-lang="fr">Tous les réglages vidéo, avec préréglages en un clic.</figcaption></figure>
+        <figure><img data-shot="about" src="screenshots/en/about.png" alt="" loading="lazy">
+          <figcaption data-lang="en">The About window: version, copyright, license, contact.</figcaption><figcaption data-lang="fr">La fenêtre À propos : version, copyright, licence, contact.</figcaption></figure>
+      </div>
+      <h2 style="margin-top:44px"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></h2>
+      <div class="gallery"><figure><img src="screenshots/gallery.png" alt="Plasma, rings, tunnel, aurora" loading="lazy">
+        <figcaption data-lang="en">Four example shaders are included in the repository.</figcaption><figcaption data-lang="fr">Quatre shaders d'exemple sont fournis dans le dépôt.</figcaption></figure></div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap">
+      <h2><span data-lang="en">Download and start</span><span data-lang="fr">Télécharger et démarrer</span></h2>
+      <ol class="steps" data-lang="en">
+        <li>Download the portable archive from the <a href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest">Releases</a> page and unzip it anywhere.</li>
+        <li>Run <code>ShaderToMP4.exe</code>; it offers to download <code>ffmpeg.exe</code> the first time (SHA-256 checked).</li>
+        <li>Drop your <code>.glsl</code> shaders in the window and click <b>Start</b>.</li>
+      </ol>
+      <ol class="steps" data-lang="fr">
+        <li>Télécharge l'archive portable depuis la page <a href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest">Releases</a> et décompresse-la où tu veux.</li>
+        <li>Lance <code>ShaderToMP4.exe</code> ; il propose de télécharger <code>ffmpeg.exe</code> la première fois (empreinte SHA-256 vérifiée).</li>
+        <li>Glisse tes shaders <code>.glsl</code> dans la fenêtre et clique sur <b>Démarrer</b>.</li>
+      </ol>
+      <p style="color:var(--muted)"><span data-lang="en">Requires Windows 10 (1703 or newer) or Windows 11 and an OpenGL 3.3 graphics card.</span><span data-lang="fr">Nécessite Windows 10 (1703 ou plus récent) ou Windows 11 et une carte graphique OpenGL 3.3.</span></p>
+    </div>
+  </section>
+
+  <section id="about">
+    <div class="wrap">
+      <h2><span data-lang="en">About</span><span data-lang="fr">À propos</span></h2>
+      <div class="about">
+        <div><b>Copyright</b> © 2026 Patrick JAILLET</div>
+        <div><b data-lang="en">License</b><b data-lang="fr">Licence</b> <span data-lang="en">Distributed under the GPL-3.0-or-later license</span><span data-lang="fr">Distribué sous licence GPL-3.0-or-later</span></div>
+        <div><b>Contact</b> <a href="mailto:sandefjord.development@proton.me">sandefjord.development@proton.me</a></div>
+        <div><b data-lang="en">Website</b><b data-lang="fr">Site web</b> <a href="https://ap3demak-rgb.github.io/ShaderToMP4">https://ap3demak-rgb.github.io/ShaderToMP4</a></div>
+        <div><b data-lang="en">Source code</b><b data-lang="fr">Code source</b> <a href="https://github.com/ap3demak-rgb/ShaderToMP4">github.com/ap3demak-rgb/ShaderToMP4</a></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">© 2026 Patrick JAILLET · GPL-3.0-or-later · <a href="mailto:sandefjord.development@proton.me">sandefjord.development@proton.me</a></div>
+</footer>
+
+<script>
+  (function () {
+    var html = document.documentElement, btn = document.getElementById('langBtn');
+    function apply(l) {
+      html.lang = l;
+      try { localStorage.setItem('stm-lang', l); } catch (e) {}
+      btn.textContent = l === 'fr' ? 'FR | EN' : 'EN | FR';
+      var hero = document.getElementById('hero');
+      if (hero) hero.src = 'screenshots/' + l + '/done.png';
+      document.querySelectorAll('img[data-shot]').forEach(function (i) { i.src = 'screenshots/' + l + '/' + i.getAttribute('data-shot') + '.png'; });
+    }
+    var saved = null;
+    try { saved = localStorage.getItem('stm-lang'); } catch (e) {}
+    var initial = saved || ((navigator.language || 'en').toLowerCase().indexOf('fr') === 0 ? 'fr' : 'en');
+    apply(initial);
+    btn.addEventListener('click', function () { apply(html.lang === 'fr' ? 'en' : 'fr'); });
+  })();
+</script>
+</body>
+</html>

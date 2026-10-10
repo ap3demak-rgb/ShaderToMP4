@@ -1,0 +1,10 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Patrick JAILLET
+# Hook pre-commit : controle du depot (voir scripts/check-repo.ps1). Activation : git config core.hooksPath .githooks
+cd "$(git rev-parse --show-toplevel)" || exit 1
+if command -v pwsh >/dev/null 2>&1; then
+  exec pwsh -NoProfile -File scripts/check-repo.ps1 -Quiet
+else
+  exec powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-repo.ps1 -Quiet
+fi

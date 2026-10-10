@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // Interface Windows : etat global, identifiants, messages et fonctions partagees entre les fichiers de src/gui.
 #pragma once
 #include "common.h"
@@ -7,7 +10,7 @@ enum {
     ID_LIST = 101, ID_ADD, ID_REMOVE, ID_CLEAR, ID_START, ID_CANCEL, ID_PROG, ID_STATUS, ID_LOG,
     ID_RES = 120, ID_W, ID_H, ID_FPS, ID_DUR, ID_START_T, ID_CODEC, ID_PRESET, ID_CRF, ID_SNAP, ID_CONTAINER, ID_SS, ID_OUT, ID_BROWSE, ID_LOADP, ID_SAVEP,
     ID_BITRATE, ID_COLOR, ID_BLUR, ID_LOOP, ID_AUDIO, ID_AUDIOB, ID_FADEIN, ID_FADEOUT, ID_PAUSE, ID_FOLDER, ID_PREVIEW,
-    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3
+    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_ABOUT, ID_LANG
 };
 enum {
     WM_APP_LOG = WM_APP + 1,  // lParam = std::wstring* (a liberer)
@@ -46,6 +49,8 @@ struct App {
     HBRUSH brCard = nullptr, brField = nullptr;
     HWND chips[4] = {nullptr, nullptr, nullptr, nullptr};  // preselections rapides
     HWND tip = nullptr;
+    HWND bAbout = nullptr, bLang = nullptr;  // en-tête : À propos, langue
+    int chipRight = 0;                       // bord droit de la pastille de version (à gauche des boutons de l'en-tête)
     struct Card {
         RECT r;
         std::wstring title;
@@ -69,7 +74,7 @@ struct App {
 extern App g;
 
 // --- app_state.cpp : etat de la fenetre ---
-const wchar_t* statusText(int st);
+std::wstring statusText(int st);  // état d'un shader dans la liste, dans la langue courante
 void setItemText(int i, int sub, const std::wstring& t);
 void setStatus(const std::wstring& t);
 void appendLog(const std::wstring& text);
@@ -82,7 +87,12 @@ void clearAll();
 void browseFiles();
 
 // --- settings_panel.cpp : panneau "Reglages video" ---
-struct ResPreset { const wchar_t* name; int w, h; };
+struct ResPreset {
+    const wchar_t* tag;  // texte technique (720p, 4K...) ou nullptr
+    const char* key;     // clé i18n du libellé (vertical, carré...) ou nullptr
+    int w, h;
+};
+std::wstring resName(const ResPreset& r);  // "1280x720 (720p)" dans la langue courante
 extern const ResPreset kRes[6];
 extern const int kResCount;  // l'entree suivante de la liste = "Personnalise"
 extern const wchar_t* kPresets[9];
@@ -110,4 +120,6 @@ void openFolder();
 LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp);
 void restoreWindowPlacement(HWND wnd, int showCmd);  // window.ini : position et taille memorisees
 void saveWindowPlacement(HWND wnd);
+std::string readSavedLanguage();  // langue mémorisée dans window.ini ("" si aucune)
+void showAbout(HWND parent);      // fenêtre « À propos » (about.cpp)
 void setDropHot(bool hot);  // illumine / eteint la zone de depot (fondu)

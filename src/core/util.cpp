@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 #include "util.h"
 
 std::wstring W(const std::string& s) {
@@ -101,6 +104,18 @@ void removeTree(const std::wstring& dir) {
         FindClose(h);
     }
     RemoveDirectoryW(dir.c_str());
+}
+
+std::wstring makeFilter(const std::vector<std::pair<std::wstring, std::wstring>>& pairs) {
+    std::wstring f;
+    for (const auto& p : pairs) {
+        f += p.first;
+        f += L'\0';
+        f += p.second;
+        f += L'\0';
+    }
+    f += L'\0';
+    return f;
 }
 
 std::wstring outputPath(const std::wstring& shaderPath, const std::wstring& outdir, const std::wstring& ext) {

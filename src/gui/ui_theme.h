@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // Palette sombre et constantes d'interface (couleurs 0xRRGGBB).
 #pragma once
 #include "common.h"

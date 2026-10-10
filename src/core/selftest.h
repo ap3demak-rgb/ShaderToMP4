@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // Auto-test : ShaderToMP4.exe --selftest [--update] [--quiet]
 #pragma once
 #include "common.h"

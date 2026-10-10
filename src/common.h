@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // En-tete commun : Windows, OpenGL 1.1 et bibliotheque standard (utilise comme en-tete precompile).
 #pragma once
 #define WIN32_LEAN_AND_MEAN
@@ -35,4 +38,4 @@
 #include <thread>
 #include <vector>
 
-#include "version.h"
+#include "app_info.h"

@@ -1,4 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 #include "ffmpeg_download.h"
+#include "i18n.h"
 #include "process.h"
 #include "util.h"
 
@@ -44,18 +48,18 @@ static bool sha256File(const std::wstring& path, std::string& hex) {
 
 static bool httpGet(const std::wstring& url, const std::function<bool(const uint8_t*, size_t, unsigned long long)>& sink,
                     std::wstring& err) {
-    HINTERNET net = InternetOpenW(L"ShaderToMP4/" L"" , INTERNET_OPEN_TYPE_PRECONFIG, nullptr, nullptr, 0);
-    if (!net) { err = L"Connexion Internet indisponible."; return false; }
+    HINTERNET net = InternetOpenW(APP_NAME_WSTR L"/" APP_VER_WSTR, INTERNET_OPEN_TYPE_PRECONFIG, nullptr, nullptr, 0);
+    if (!net) { err = TX("error.net_unavailable"); return false; }
     HINTERNET req = InternetOpenUrlW(net, url.c_str(), nullptr, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE, 0);
     if (!req) {
-        err = L"Impossible de joindre " + url;
+        err = TXF("error.net_unreachable", url.c_str());
         InternetCloseHandle(net);
         return false;
     }
     DWORD status = 0, sz = sizeof(status);
     HttpQueryInfoW(req, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER, &status, &sz, nullptr);
     if (status != 200) {
-        err = wfmt(L"Le serveur a repondu %lu pour %ls", (unsigned long)status, url.c_str());
+        err = TXF("error.net_status", (unsigned long)status, url.c_str());
         InternetCloseHandle(req);
         InternetCloseHandle(net);
         return false;
@@ -68,9 +72,9 @@ static bool httpGet(const std::wstring& url, const std::function<bool(const uint
     bool ok = true;
     for (;;) {
         DWORD got = 0;
-        if (!InternetReadFile(req, buf.data(), (DWORD)buf.size(), &got)) { err = L"Telechargement interrompu."; ok = false; break; }
+        if (!InternetReadFile(req, buf.data(), (DWORD)buf.size(), &got)) { err = TX("error.net_interrupted"); ok = false; break; }
         if (got == 0) break;
-        if (!sink(buf.data(), got, total)) { err = L"Telechargement annule."; ok = false; break; }
+        if (!sink(buf.data(), got, total)) { err = TX("error.net_cancelled"); ok = false; break; }
     }
     InternetCloseHandle(req);
     InternetCloseHandle(net);
@@ -80,7 +84,7 @@ static bool httpGet(const std::wstring& url, const std::function<bool(const uint
 bool downloadFfmpeg(const std::wstring& exeDir, const std::function<void(int, const std::wstring&)>& progress,
                            const std::atomic<bool>* cancel, std::wstring& err) {
     const std::wstring zip = exeDir + L"ffmpeg_download.zip", tmp = exeDir + L"ffmpeg_tmp";
-    progress(0, L"Telechargement de l'empreinte SHA-256...");
+    progress(0, TX("dl.sha_download"));
     std::string shaText;
     if (!httpGet(kFfmpegShaUrl, [&](const uint8_t* d, size_t n, unsigned long long) {
             shaText.append((const char*)d, n);
@@ -88,30 +92,30 @@ bool downloadFfmpeg(const std::wstring& exeDir, const std::function<void(int, co
         }, err))
         return false;
     std::string expected = lower(trim(shaText).substr(0, 64));
-    if (expected.size() != 64) { err = L"Empreinte SHA-256 illisible."; return false; }
+    if (expected.size() != 64) { err = TX("error.sha_unreadable"); return false; }
 
     FILE* f = _wfopen(zip.c_str(), L"wb");
-    if (!f) { err = L"Impossible d'ecrire " + zip; return false; }
+    if (!f) { err = TXF("error.write_failed", zip.c_str()); return false; }
     unsigned long long got = 0;
     bool ok = httpGet(kFfmpegUrl, [&](const uint8_t* d, size_t n, unsigned long long total) {
         if (cancel && cancel->load()) return false;
         fwrite(d, 1, n, f);
         got += n;
-        if (total) progress((int)(got * 90 / total), wfmt(L"Telechargement de ffmpeg : %.0f / %.0f Mo", got / 1048576.0, total / 1048576.0));
+        if (total) progress((int)(got * 90 / total), TXF("dl.progress", got / 1048576.0, total / 1048576.0));
         return true;
     }, err);
     fclose(f);
     if (!ok) { DeleteFileW(zip.c_str()); return false; }
 
-    progress(92, L"Verification de l'empreinte SHA-256...");
+    progress(92, TX("dl.verify"));
     std::string actual;
     if (!sha256File(zip, actual) || actual != expected) {
         DeleteFileW(zip.c_str());
-        err = L"L'empreinte SHA-256 du fichier telecharge ne correspond pas : fichier rejete.";
+        err = TX("error.sha_mismatch");
         return false;
     }
 
-    progress(95, L"Extraction...");
+    progress(95, TX("dl.extract"));
     removeTree(tmp);
     CreateDirectoryW(tmp.c_str(), nullptr);
     std::wstring tarLog;
@@ -132,9 +136,9 @@ bool downloadFfmpeg(const std::wstring& exeDir, const std::function<void(int, co
     DeleteFileW(zip.c_str());
     removeTree(tmp);
     if (!installed) {
-        err = rc != 0 ? L"Extraction impossible (tar.exe) : " + tarLog : L"ffmpeg.exe introuvable dans l'archive.";
+        err = rc != 0 ? TXF("error.extract_failed", tarLog.c_str()) : TX("error.ffmpeg_not_in_archive");
         return false;
     }
-    progress(100, L"ffmpeg.exe installe.");
+    progress(100, TX("dl.installed"));
     return true;
 }

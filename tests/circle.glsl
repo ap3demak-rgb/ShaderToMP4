@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // Disque centre : verifie la geometrie (centre, rayon) et le fond
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 p = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;

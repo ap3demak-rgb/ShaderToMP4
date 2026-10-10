@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // OpenGL 3.3 : fonctions chargees a la main (pas de GLEW/GLAD), contexte sur fenetre cachee, programmes de shaders.
 #pragma once
 #include "common.h"

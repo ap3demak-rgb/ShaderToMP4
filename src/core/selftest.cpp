@@ -1,5 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 #include "selftest.h"
 #include "gl.h"
+#include "i18n.h"
 #include "render.h"
 #include "util.h"
 
@@ -11,7 +15,7 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
     GLContext gl;
     std::wstring err;
     if (!createGLContext(gl, err)) {
-        report = L"ERREUR : " + err + L"\r\n";
+        report = TXF("selftest.error", err.c_str()) + L"\r\n";
         fails = 1;
     } else {
         Settings base;
@@ -22,7 +26,7 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
         WIN32_FIND_DATAW fd;
         HANDLE h = FindFirstFileW((dir + L"*.glsl").c_str(), &fd);
         if (h == INVALID_HANDLE_VALUE) {
-            report = L"Aucun shader dans " + dir + L"\r\n";
+            report = TXF("selftest.no_shaders", dir.c_str()) + L"\r\n";
             fails = 1;
         } else {
             do {
@@ -37,22 +41,22 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
                 std::wstring e;
                 std::wstring line;
                 if (convertFile(dir + file, exeDir, base, H, e) != Result::Ok || got.empty()) {
-                    line = L"ECHEC  " + file + L" : " + (e.empty() ? L"rendu impossible" : e);
+                    line = L"FAIL    " + file + L": " + (e.empty() ? TX("selftest.render_failed") : e);
                     fails++;
                 } else {
                     std::string want;
                     const bool have = readFile(ref, want);
                     if (update || !have) {
                         if (!update) {
-                            line = L"ECHEC  " + file + L" : reference absente (lance --selftest --update)";
+                            line = L"FAIL    " + file + L": " + TX("selftest.ref_missing");
                             fails++;
                         } else if (FILE* f = _wfopen(ref.c_str(), L"wb")) {
                             fwrite(got.data(), 1, got.size(), f);
                             fclose(f);
-                            line = L"MAJ    " + file + L" : reference ecrite";
+                            line = L"UPDATED " + file + L": " + TX("selftest.ref_written");
                         }
                     } else if (want.size() != got.size()) {
-                        line = L"ECHEC  " + file + L" : taille de reference differente";
+                        line = L"FAIL    " + file + L": " + TX("selftest.ref_size");
                         fails++;
                     } else {
                         double sum = 0;
@@ -63,8 +67,8 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
                             cnt++;
                         }
                         const double mad = cnt ? sum / cnt : 0;  // ecart moyen sur 255
-                        line = wfmt(mad <= 2.0 ? L"OK     %ls (ecart moyen %.2f/255)" : L"ECHEC  %ls (ecart moyen %.2f/255, max 2)",
-                                    file.c_str(), mad);
+                        line = (mad <= 2.0 ? L"PASS    " : L"FAIL    ") + file + L" (" +
+                               TXF(mad <= 2.0 ? "selftest.diff_ok" : "selftest.diff_bad", mad) + L")";
                         if (mad > 2.0) fails++;
                     }
                 }
@@ -74,12 +78,14 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
         }
         destroyGLContext(gl);
     }
-    report += wfmt(L"\r\n%d test(s), %d echec(s)\r\n", total, fails);
+    report += L"\r\n" + TXF("selftest.summary", total, fails) + L"\r\n";
     if (FILE* f = _wfopen((dir + L"report.txt").c_str(), L"wb")) {
         std::string u = U8(report);
         fwrite(u.data(), 1, u.size(), f);
         fclose(f);
     }
-    if (!quiet) MessageBoxW(nullptr, report.c_str(), L"ShaderToMP4 - auto-test", fails ? MB_ICONWARNING : MB_ICONINFORMATION);
+    if (!quiet)
+        MessageBoxW(nullptr, report.c_str(), (APP_NAME_WSTR L" - " + TX("selftest.title")).c_str(),
+                    fails ? MB_ICONWARNING : MB_ICONINFORMATION);
     return fails ? 1 : 0;
 }

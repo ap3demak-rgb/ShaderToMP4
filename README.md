@@ -1,112 +1,126 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later - Copyright (C) 2026 Patrick JAILLET -->
+
 <p align="center">
-  <img src="docs/banner.svg" alt="ShaderToMP4 : transforme un shader Shadertoy en vidéo, image par image" width="100%">
+  <img src="docs/banner.svg" alt="ShaderToMP4: turn a Shadertoy shader into video, frame by frame" width="100%">
+</p>
+
+<p align="center"><b>English</b> · <a href="README.fr.md">Français</a></p>
+
+<p align="center">
+  <a href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest"><img alt="Download" src="https://img.shields.io/badge/Download-Windows%2064--bit-465AFF?style=for-the-badge&logo=windows&logoColor=white"></a>
+  &nbsp;
+  <a href="https://ap3demak-rgb.github.io/ShaderToMP4"><img alt="Website" src="https://img.shields.io/badge/Website-ShaderToMP4-FF5A96?style=for-the-badge"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest"><img alt="Télécharger" src="https://img.shields.io/badge/T%C3%A9l%C3%A9charger-Windows%2064%20bits-465AFF?style=for-the-badge&logo=windows&logoColor=white"></a>
+  <img alt="Version" src="https://img.shields.io/badge/version-1.2.0-FF5A96?style=flat-square">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-0078D4?style=flat-square&logo=windows&logoColor=white">
+  <img alt="Portable" src="https://img.shields.io/badge/portable-no%20installer-3DDC97?style=flat-square">
+  <img alt="Languages" src="https://img.shields.io/badge/languages-EN%20%C2%B7%20FR-7C6CFF?style=flat-square">
+  <img alt="C++" src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0--or--later-3DDC97?style=flat-square"></a>
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.1.0-FF5A96?style=flat-square">
-  <img alt="Plateforme" src="https://img.shields.io/badge/plateforme-Windows%2010%20%2F%2011-0078D4?style=flat-square&logo=windows&logoColor=white">
-  <img alt="Langage" src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white">
-  <img alt="OpenGL" src="https://img.shields.io/badge/OpenGL-3.3-5586A4?style=flat-square&logo=opengl&logoColor=white">
-  <a href="LICENSE"><img alt="Licence" src="https://img.shields.io/badge/licence-GPL--3.0-3DDC97?style=flat-square"></a>
+  <img src="docs/screenshots/demo.gif" alt="A plasma shader being rendered" width="520">
 </p>
 
-<p align="center">
-  <img src="docs/screenshots/demo.gif" alt="Rendu d'un shader plasma" width="520">
-</p>
+**ShaderToMP4** converts a [Shadertoy](https://www.shadertoy.com) shader (*Image* tab) into a video, **frame by frame**, with exact timing (`iTime = frame / fps`). No screen capture, so no stutter and no loss, whatever the power of your graphics card: a shader that runs at 5 frames per second in real time still gives a perfectly smooth video.
 
-**ShaderToMP4** convertit un shader [Shadertoy](https://www.shadertoy.com) (onglet *Image*) en vidéo **image par image**, avec un temps exact (`iTime = image / fps`). Pas de capture d'écran, donc pas de saccades, pas de perte, quelle que soit la puissance de ta carte graphique : un shader qui tourne à 5 images par seconde en direct donne une vidéo parfaitement fluide.
-
-Un seul exécutable Windows, sans installation, avec une interface sombre moderne.
+One portable Windows executable, **no installer**, with a modern dark interface in English and French.
 
 ---
 
-## Pourquoi ShaderToMP4 ?
+## Why ShaderToMP4?
 
 | | |
 |---|---|
-| **Temps exact** | Chaque image est rendue au temps `n / fps`, puis envoyée directement à ffmpeg par un tube : aucun fichier intermédiaire. |
-| **Qualité maximale** | Jusqu'à 16384 pixels de large, supersampling ×4, flou de mouvement (×4, ×8, ×16), conversion colorimétrique BT.709 correcte, encodage x264 / x265 sans perte si tu veux. |
-| **Rapide** | Rendu et encodage en parallèle, lecture GPU asynchrone, encodage matériel NVENC, AMF ou QuickSync en option. |
-| **Fiable** | Les longs rendus se font par parties : si quelque chose plante, tu reprends exactement où tu t'étais arrêté. |
-| **Pratique** | Aperçu intégré, préréglages (YouTube, 4K, vertical 9:16), audio avec fondus, boucle parfaite, file d'attente de plusieurs shaders, pause et annulation. |
-| **Léger** | Aucune dépendance à installer : Win32, OpenGL et Direct2D. `ffmpeg.exe` est téléchargé automatiquement au premier lancement. |
+| **Exact timing** | Each frame is rendered at time `n / fps`, then piped straight to ffmpeg: no intermediate file. |
+| **Maximum quality** | Up to 16384 pixels wide, ×4 supersampling, motion blur (×4, ×8, ×16), correct BT.709 colour conversion, lossless x264 / x265 if you want it. |
+| **Fast** | Rendering and encoding run in parallel, asynchronous GPU read-back, optional NVENC, AMF or QuickSync hardware encoding. |
+| **Reliable** | Long renders are made in parts: if anything fails, you resume exactly where you stopped. |
+| **Practical** | Built-in preview, presets (YouTube, 4K, vertical 9:16), audio with fades, perfect loop, queue of several shaders, pause and cancel. |
+| **Portable** | Nothing to install: it only uses Windows components. Settings, languages and `ffmpeg.exe` stay in the application folder. |
 
-## Aperçu de l'interface
+## The interface
 
 <p align="center">
-  <img src="docs/screenshots/termine.png" alt="Interface de ShaderToMP4 après un rendu" width="860">
+  <img src="docs/screenshots/en/done.png" alt="ShaderToMP4 after a render" width="860">
 </p>
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/vide.png" alt="Zone de dépôt illustrée"></td>
-    <td width="50%"><img src="docs/screenshots/rendu.png" alt="Rendu en cours, avec progression"></td>
+    <td width="50%"><img src="docs/screenshots/en/empty.png" alt="Illustrated drop zone"></td>
+    <td width="50%"><img src="docs/screenshots/en/running.png" alt="Render in progress"></td>
   </tr>
   <tr>
-    <td align="center"><sub><b>Glisse tes shaders</b> dans la zone de dépôt, ou clique sur « Ajouter ».</sub></td>
-    <td align="center"><sub><b>Rendu en cours</b> : vitesse, temps restant, pause et annulation. La progression s'affiche aussi dans la barre des tâches.</sub></td>
+    <td align="center"><sub><b>Drop your shaders</b> in the drop zone, or click “Add”.</sub></td>
+    <td align="center"><sub><b>Render in progress</b>: speed, time left, pause and cancel. Progress also shows in the taskbar.</sub></td>
   </tr>
 </table>
 
 <p align="center">
-  <img src="docs/screenshots/reglages.png" alt="Panneau des réglages vidéo" width="860"><br>
-  <sub>Tous les réglages vidéo au même endroit, avec des <b>préréglages en un clic</b> (Brouillon, YouTube, 4K 60, Vertical) et une info-bulle sur chaque champ.</sub>
+  <img src="docs/screenshots/en/settings.png" alt="Video settings" width="860"><br>
+  <sub>All video settings in one place, with <b>one-click presets</b> (Draft, YouTube, 4K 60, Vertical) and a tooltip on every field.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/liste-apercu.png" alt="Liste des shaders et aperçu" width="860"><br>
-  <sub>La file d'attente avec le statut de chaque shader, et un <b>aperçu</b> à l'instant de ton choix, sans lancer ffmpeg.</sub>
+  <img src="docs/screenshots/en/list-preview.png" alt="Shader list and preview" width="860"><br>
+  <sub>The queue with the status of each shader, and a <b>preview</b> at the time of your choice, without starting ffmpeg.</sub>
 </p>
-
-## Exemples
-
-Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : plasma, anneaux, tunnel et aurore.
 
 <p align="center">
-  <img src="docs/screenshots/galerie.png" alt="Galerie : plasma, anneaux, tunnel, aurore" width="860">
+  <img src="docs/screenshots/en/about.png" alt="About window" width="420"><br>
+  <sub>The “About” window (<code>F1</code>): version, copyright, license, contact and website. The globe button switches the language instantly.</sub>
 </p>
 
-## Démarrage rapide
+## Examples
 
-1. **Télécharge** la dernière version depuis la page [Releases](https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest) et décompresse l'archive (ou [compile le projet](#compiler)).
-2. Lance `ShaderToMP4.exe`. Si `ffmpeg.exe` est absent, le programme propose de le télécharger (environ 80 Mo depuis [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), vérifié par SHA-256) et l'installe à côté de lui.
-3. **Glisse** un ou plusieurs fichiers shader (`.glsl` ou `.txt`) dans la fenêtre, ou clique sur **Ajouter**.
-4. Règle la vidéo (ou choisis un préréglage) puis clique sur **Démarrer**.
-5. La vidéo est créée à côté du shader, ou dans le dossier choisi dans **Sortie**. Double-clic sur un fichier terminé pour la lire.
+The [`examples`](examples) folder contains four shaders ready to convert: plasma, rings (“anneaux”), tunnel and aurora (“aurore”).
 
-> Glisser des fichiers directement sur `ShaderToMP4.exe` les ajoute et lance le rendu tout de suite.
+<p align="center">
+  <img src="docs/screenshots/gallery.png" alt="Gallery: plasma, rings, tunnel, aurora" width="860">
+</p>
 
-**Prérequis** : Windows 10 (version 1703 ou plus récente) ou Windows 11, et une carte graphique compatible OpenGL 3.3.
+## Quick start
 
-## Fonctions
+1. **Download** the latest portable archive from the [Releases](https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest) page and unzip it anywhere (or [build the project](#building)).
+2. Run `ShaderToMP4.exe`. If `ffmpeg.exe` is missing, the program offers to download it (about 80 MB from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), SHA-256 checked) and installs it next to itself.
+3. **Drop** one or more shader files (`.glsl` or `.txt`) in the window, or click **Add**.
+4. Adjust the video (or pick a preset), then click **Start**.
+5. The video is created next to the shader, or in the folder chosen in **Output**. Double-click a finished file to play it.
+
+> Dropping files directly on `ShaderToMP4.exe` adds them and starts the render right away.
+
+**Requirements**: Windows 10 (version 1703 or newer) or Windows 11, and a graphics card supporting OpenGL 3.3.
+
+## Features
 
 <details>
-<summary><b>Les boutons et les raccourcis</b></summary>
+<summary><b>Buttons and keyboard shortcuts</b></summary>
 
-| Bouton | Raccourci | Rôle |
+| Button | Shortcut | Role |
 |---|---|---|
-| **Ajouter** | `Ctrl+O` | Ajouter des shaders à la file |
-| **Démarrer** | `F5` | Rend tous les fichiers de la liste qui ne sont pas déjà terminés |
-| **Pause** / **Reprendre** | `F6` | Suspend le rendu (le temps de pause n'est pas compté dans la vitesse) |
-| **Annuler** | `Échap` | Arrête le rendu ; les parties déjà terminées sont conservées |
-| **Image PNG** | | Rend une seule image, au temps « Début », et l'ouvre |
-| **Aperçu** et curseur | `Ctrl+P` | Affiche une image du shader à un instant choisi, sans ffmpeg |
-| **Retirer** | `Suppr` (dans la liste) | Retire les shaders sélectionnés |
-| **Dossier** | | Ouvre l'explorateur sur la vidéo du shader sélectionné |
-| **Profil / Enregistrer** | | Charge ou enregistre tous les réglages dans un fichier `.ini` |
+| **Add** | `Ctrl+O` | Add shaders to the queue |
+| **Start** | `F5` | Render every file of the list that is not already finished |
+| **Pause** / **Resume** | `F6` | Suspend the render (paused time is not counted in the speed) |
+| **Cancel** | `Esc` | Stop the render; finished parts are kept |
+| **PNG image** | | Render a single image at the “Start” time and open it |
+| **Preview** and slider | `Ctrl+P` | Show a frame of the shader at a chosen time, without ffmpeg |
+| **Remove** | `Del` (in the list) | Remove the selected shaders |
+| **Folder** | | Open the folder of the selected shader's video |
+| **Profile / Save** | | Load or save all settings in an `.ini` file |
+| **About** | `F1` | Version, copyright, license, contact, website |
+| **EN / FR** | | Switch the interface language |
 
-`Tab` passe d'un réglage au suivant.
+`Tab` moves from one setting to the next.
 
 </details>
 
 <details>
-<summary><b>Tous les réglages</b> (fenêtre, <code>config.ini</code> ou commentaires du shader)</summary>
+<summary><b>All settings</b> (window, <code>config.ini</code> or shader comments)</summary>
 
-Les réglages sont enregistrés dans `config.ini` à côté du `.exe`, et peuvent être imposés **par shader** avec un commentaire (prioritaire sur la fenêtre ; le journal le signale) :
+Settings are saved in `config.ini` next to the `.exe`, and can be forced **per shader** with a comment (it takes priority over the window; the log says so):
 
 ```glsl
 // fps=30
@@ -116,79 +130,90 @@ Les réglages sont enregistrés dans `config.ini` à côté du `.exe`, et peuven
 void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 ```
 
-| Réglage (fenêtre) | Clé | Valeurs |
+| Setting (window) | Key | Values |
 |---|---|---|
-| Résolution | `width`, `height` | 16 à 16384 (arrondi au nombre pair) |
-| FPS | `fps` | 1 à 240 |
-| Durée, Début | `duration`, `start` | secondes (`90`) ou `mm:ss` dans la fenêtre |
+| Resolution | `width`, `height` | 16 to 16384 (rounded to an even number) |
+| FPS | `fps` | 1 to 240 |
+| Duration, Start | `duration`, `start` | seconds (`90`) or `mm:ss` in the window |
 | Codec | `codec` | `h264`, `h265` |
 | Preset | `preset` | `ultrafast` ... `veryslow` |
-| Qualité CRF | `crf` | 0 (sans perte), 12 (quasi parfait), 18 (très bon) |
-| Débit | `bitrate` | kb/s ; 0 = qualité constante (CRF) |
-| Conteneur | `container` | `mp4`, `mov`, `mkv` |
-| Encodeur | `encoder` | `cpu`, `auto`, `nvenc`, `amf`, `qsv` (repli sur le CPU si indisponible) |
-| Lissage | `ss` | 1 à 4 : rendu à N× la taille puis réduction (supersampling) |
-| Couleur | `color` | `bt709`, `bt709full` (pleine plage), `srgb`, `bt601` |
-| Flou | `blur`, `shutter` | 1, 4, 8, 16 sous-images par image ; obturateur (0,5 = 180°) |
-| Boucle (s) | `loop` | période du shader : la durée devient un multiple entier, la dernière image précède exactement la première |
-| Audio | `audio` | fichier son, calé sur le temps « Début », complété par du silence s'il est plus court |
-| Fondu entrée / sortie | `fadein`, `fadeout` | secondes, image et son |
-| Sortie | `outdir` | dossier de sortie (vide = à côté du shader) |
-| (config.ini seulement) | `chunk` | rendu par parties de N secondes (30 par défaut, 0 = jamais) |
-| (config.ini seulement) | `pbo` | profondeur de la file de lecture GPU (2 à 8, 3 par défaut) |
-| (config.ini seulement) | `gpu` | `auto`, `high`, `low` : GPU préféré de Windows (PC à deux cartes) |
+| Quality (CRF) | `crf` | 0 (lossless), 12 (nearly perfect), 18 (very good) |
+| Bitrate | `bitrate` | kb/s; 0 = constant quality (CRF) |
+| Container | `container` | `mp4`, `mov`, `mkv` |
+| Encoder | `encoder` | `cpu`, `auto`, `nvenc`, `amf`, `qsv` (falls back to the CPU if unavailable) |
+| Smoothing | `ss` | 1 to 4: render at N× the size, then downscale (supersampling) |
+| Color | `color` | `bt709`, `bt709full` (full range), `srgb`, `bt601` |
+| Blur | `blur`, `shutter` | 1, 4, 8, 16 sub-frames per frame; shutter (0.5 = 180°) |
+| Loop (s) | `loop` | shader period: the duration becomes a whole multiple, the last frame comes exactly before the first |
+| Audio | `audio` | sound file, aligned with the “Start” time, padded with silence if shorter |
+| Fade in / out | `fadein`, `fadeout` | seconds, picture and sound |
+| Output | `outdir` | output folder (empty = next to the shader) |
+| (config.ini only) | `chunk` | render in parts of N seconds (30 by default, 0 = never) |
+| (config.ini only) | `pbo` | depth of the GPU read-back queue (2 to 8, 3 by default) |
 
 </details>
 
 <details>
-<summary><b>Reprise après interruption</b></summary>
+<summary><b>Resuming after an interruption</b></summary>
 
-Les vidéos plus longues que `chunk` secondes sont rendues par parties, dans un dossier `<nom>.parts` à côté de la vidéo. Si le rendu est annulé, plante ou échoue, les parties terminées restent : relance le même rendu **avec les mêmes réglages** et il reprend où il s'était arrêté, puis assemble les parties (copie des flux, sans réencodage). Si le shader ou un réglage a changé, les anciennes parties sont jetées.
+Videos longer than `chunk` seconds are rendered in parts, in a `<name>.parts` folder next to the video. If the render is cancelled, crashes or fails, the finished parts stay: run the same render **with the same settings** and it resumes where it stopped, then assembles the parts (stream copy, no re-encoding). If the shader or a setting changed, the old parts are discarded.
 
 </details>
 
 <details>
-<summary><b>Ligne de commande</b></summary>
+<summary><b>Command line</b></summary>
 
-| Commande | Effet |
+| Command | Effect |
 |---|---|
-| `ShaderToMP4.exe a.glsl b.glsl` | Ajoute les fichiers et lance le rendu |
-| `ShaderToMP4.exe --selftest [--update] [--quiet]` | Auto-test (voir plus bas) |
-| `ShaderToMP4.exe --get-ffmpeg [--quiet]` | Télécharge et installe `ffmpeg.exe` sans ouvrir la fenêtre |
+| `ShaderToMP4.exe a.glsl b.glsl` | Add the files and start rendering |
+| `ShaderToMP4.exe --selftest [--update] [--quiet]` | Self-test (see below) |
+| `ShaderToMP4.exe --get-ffmpeg [--quiet]` | Download and install `ffmpeg.exe` without opening the window |
+| `ShaderToMP4.exe --version` | Print version, copyright and license |
+| `ShaderToMP4.exe --help` | Print the options |
 
 </details>
 
-## Questions fréquentes
+<details>
+<summary><b>Languages</b></summary>
 
-**Quels shaders Shadertoy sont supportés ?**
-Ceux qui n'utilisent que l'onglet *Image* et les entrées `iResolution`, `iTime`, `iTimeDelta`, `iFrame`, `iFrameRate`, `iDate`. Copie le code dans un fichier `.glsl` : la fonction `mainImage` suffit.
+All interface texts come from `lang/en.json` and `lang/fr.json`, embedded in the executable. The language follows Windows by default, can be switched with the globe button, and is remembered in `window.ini`. To add or fix a language without rebuilding, put a `lang/<code>.json` file next to the executable (keys missing from it fall back to English); the globe button then cycles through every available language.
 
-**Et les textures, les buffers, le son ou la souris ?**
-Pas encore : `iChannel0` à `iChannel3` (textures, buffers, multipasse), `iMouse` (fixe à 0) et le son Shadertoy ne sont pas supportés. Un shader qui les utilise s'affiche avec un avertissement et un rendu noir pour ces entrées.
+</details>
 
-**Pourquoi pas une simple capture d'écran ?**
-Une capture dépend de la vitesse de ton PC : si le shader est lourd, la vidéo saccade. Ici chaque image est rendue au temps exact, aussi lentement que nécessaire.
+## FAQ
 
-**Mon rendu est long, que faire ?**
-Essaie l'encodeur matériel (`Encodeur : Auto`), un preset plus rapide, ou le préréglage *Brouillon* pour tester. Le journal indique si le goulot est le GPU ou l'encodeur.
+**Which Shadertoy shaders are supported?**
+Those that only use the *Image* tab and the `iResolution`, `iTime`, `iTimeDelta`, `iFrame`, `iFrameRate`, `iDate` inputs. Paste the code in a `.glsl` file: the `mainImage` function is enough.
 
-**Où est `ffmpeg.exe` ?**
-Il est téléchargé au premier lancement à côté de `ShaderToMP4.exe`. Tu peux aussi le placer toi-même dans le même dossier, ou le garder dans ton `PATH`.
+**What about textures, buffers, sound or the mouse?**
+Not yet: `iChannel0` to `iChannel3` (textures, buffers, multipass), `iMouse` (fixed at 0) and Shadertoy sound are not supported. A shader using them shows a warning and renders black for those inputs.
 
-## Compiler
+**Why not a simple screen capture?**
+A capture depends on your PC's speed: if the shader is heavy, the video stutters. Here each frame is rendered at its exact time, as slowly as needed.
 
-Avec les Build Tools de Visual Studio (le chemin de `vcvars64.bat` est écrit dans `scripts\build.bat`, à adapter si besoin) :
+**My render is slow. What can I do?**
+Try hardware encoding (`Encoder: Auto`), a faster preset, or the *Draft* preset to test. The log tells you whether the GPU or the encoder is the bottleneck.
+
+**Where is `ffmpeg.exe`?**
+It is downloaded on first launch next to `ShaderToMP4.exe`. You can also place it there yourself, or keep it in your `PATH`.
+
+**Does it install anything or write elsewhere on my PC?**
+No. The program is portable: settings (`config.ini`, `window.ini`), languages and `ffmpeg.exe` live in its own folder. The program itself does not write to the registry or to your user profile (graphics drivers may keep their own caches).
+
+## Building
+
+With the Visual Studio Build Tools (the path of `vcvars64.bat` is written in `scripts\build.bat`; adjust it if needed):
 
 ```
 .\scripts\build.bat
 ```
 
-Cela compile les ressources (manifeste, icône, icônes SVG, informations de version) puis tous les fichiers de `src` vers `bin\ShaderToMP4.exe`.
+This compiles the resources (manifest, icon, SVG icons, language files, version information) then every file of `src` into `bin\ShaderToMP4.exe`, statically linked (no runtime to install), and copies the license files and `lang/` next to it.
 
 <details>
-<summary>MinGW-w64 (non testé)</summary>
+<summary>MinGW-w64 (untested)</summary>
 
-Le rendu SVG de Direct2D demande des en-têtes MinGW récents.
+Direct2D's SVG rendering needs recent MinGW headers.
 
 ```
 g++ -std=c++17 -O2 -finput-charset=UTF-8 -municode -mwindows -static -I src -o bin/ShaderToMP4.exe src/main.cpp src/core/*.cpp src/gui/*.cpp -lopengl32 -lgdi32 -luser32 -lcomctl32 -lcomdlg32 -lshell32 -ladvapi32 -lwininet -ld2d1 -ld3d11 -ldxgi -ldwrite -lshlwapi -luxtheme -ldwmapi -lole32
@@ -196,27 +221,33 @@ g++ -std=c++17 -O2 -finput-charset=UTF-8 -municode -mwindows -static -I src -o b
 
 </details>
 
-### Organisation du projet
+### Project layout
 
 ```
-src/        code source : main.cpp, core/ (moteur de rendu, sans interface), gui/ (fenêtre et rendu Direct2D)
-res/        manifeste (DPI, thème), icône, informations de version, icônes SVG (icons/)
-scripts/    build.bat (compiler), test.bat (auto-test)
-tests/      shaders de référence et leurs images .ref
-examples/   shaders d'exemple
-docs/       bannière et captures d'écran
-bin/        dossier de travail : ShaderToMP4.exe (généré), ffmpeg.exe, config.ini
+src/        source code: main.cpp, core/ (rendering engine, no UI), gui/ (window and Direct2D drawing)
+lang/       interface texts: en.json, fr.json
+res/        manifest (DPI, theme), icon, version information, SVG icons (icons/)
+scripts/    build.bat (build), test.bat (self-test), check-repo.ps1 (repository check)
+tests/      reference shaders and their .ref images
+examples/   example shaders
+docs/       banner, screenshots, website
+bin/        working folder: ShaderToMP4.exe (generated), ffmpeg.exe, config.ini
 ```
 
-### Auto-test
+### Self-test and repository check
 
-`scripts\test.bat` rend les shaders du dossier `tests` en 64×64 (à t = 1 s) et les compare à leurs images de référence `.ref` (écart moyen toléré : 2/255). Le rapport est dans `tests\report.txt` et le code de sortie vaut 0 si tout passe. Les références dépendent du GPU et du pilote : après un changement volontaire du rendu ou de matériel, régénère-les avec `scripts\test.bat --update`.
+`scripts\test.bat` renders the shaders of the `tests` folder at 64×64 (at t = 1 s) and compares them with their `.ref` reference images (mean difference tolerated: 2/255). The report is in `tests\report.txt` and the exit code is 0 when everything passes. References depend on the GPU and driver: after an intended rendering change or on new hardware, regenerate them with `scripts\test.bat --update`.
 
-### Limites connues
+`scripts\check-repo.ps1` checks the repository before each commit: license headers, matching language files, no hard-coded interface text, bilingual documentation, portability rules.
 
-- Le choix du GPU (`gpu=high|low`) et les encodeurs AMD et Intel n'ont pas été testés sur du matériel réel.
-- L'interface est réglée pour s'adapter au DPI de l'écran, mais n'a été vérifiée qu'à 100 %.
+### Known limits
 
-## Licence
+- The interface adapts to the screen DPI but has only been checked at 100 %.
+- AMD and Intel hardware encoders have not been tested on real hardware.
 
-ShaderToMP4 est distribué sous licence [GPL-3.0](LICENSE). `ffmpeg.exe` est un programme séparé, non inclus dans ce dépôt : il est téléchargé à la demande depuis [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) et reste soumis à sa propre licence.
+## Project information
+
+- **Copyright** © 2026 Patrick JAILLET
+- **License**: distributed under the GPL-3.0-or-later license, see [LICENSE](LICENSE) and [COPYING](COPYING). Third-party components: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). `ffmpeg.exe` is a separate program, not included in this repository: it is downloaded on request from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) and remains under its own license.
+- **Contact**: [sandefjord.development@proton.me](mailto:sandefjord.development@proton.me)
+- **Website**: <https://ap3demak-rgb.github.io/ShaderToMP4>

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // Controles dessines (boutons, curseur, barre de progression) et assombrissement des controles natifs.
 #pragma once
 #include "common.h"

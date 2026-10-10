@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // Moteur de rendu : shader Shadertoy -> images -> ffmpeg (video), image PNG ou apercu. Independant de l'interface.
 #pragma once
 #include "common.h"

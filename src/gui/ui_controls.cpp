@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 #include "ui_controls.h"
 #include "ui_render.h"
 #include "ui_theme.h"

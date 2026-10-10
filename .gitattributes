@@ -1,3 +1,5 @@
 *.ref binary
 *.png binary
 *.ico binary
+.githooks/* text eol=lf
+*.sh text eol=lf

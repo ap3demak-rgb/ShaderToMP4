@@ -1,5 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 #include "app.h"
 #include "core/ffmpeg_download.h"
+#include "core/i18n.h"
 #include "core/util.h"
 #include "drop_target.h"
 #include "taskbar.h"
@@ -30,6 +34,14 @@ void layout() {
 
     // --- En-tete et barre d'outils ---
     g.headerRect = {0, 0, w, S(64)};
+    {  // boutons « langue » et « À propos » à droite de l'en-tête ; la pastille de version se place à leur gauche
+        const int hh = S(32), hy = S(16);
+        int hx = w - m - S(40);
+        MoveWindow(g.bAbout, hx, hy, S(40), hh, TRUE);
+        hx -= gap + S(64);
+        MoveWindow(g.bLang, hx, hy, S(64), hh, TRUE);
+        g.chipRight = hx - gap;
+    }
     int y = S(64);
     const int bh = S(36);
     int x = m;
@@ -56,7 +68,7 @@ void layout() {
     // --- Carte des reglages ---
     const int titleH = S(48), rows = 6;
     RECT sc{m, y, w - m, y + titleH + rows * rowH() + S(8)};
-    g.cards.push_back({sc, L"Réglages vidéo", IC_SLIDERS});
+    g.cards.push_back({sc, TX("ui.card.settings"), IC_SLIDERS});
     {  // preselections rapides, alignees a droite du titre
         static const int cw[4] = {112, 100, 76, 96};
         int cx = sc.right - pad;
@@ -87,7 +99,7 @@ void layout() {
     put(g.edH, 60);
     put(g.labels[2], 30, 2);
     put(g.cmbFps, 72, 1);
-    put(g.labels[9], 56, 2);
+    put(g.labels[9], 70, 2);
     put(g.cmbSS, 80, 1);
     nextRow();
     put(g.labels[3], 80, 2);
@@ -145,8 +157,8 @@ void layout() {
     int bandH = std::max(S(222), avail * 60 / 100);
     int listW = (w - 2 * m - S(14)) * 55 / 100;
     RECT fr{m, y, m + listW, y + bandH}, pr{m + listW + S(14), y, w - m, y + bandH};
-    g.cards.push_back({fr, L"Shaders", IC_FILM});
-    g.cards.push_back({pr, L"Aperçu", IC_EYE});
+    g.cards.push_back({fr, TX("ui.card.shaders"), IC_FILM});
+    g.cards.push_back({pr, TX("ui.card.preview"), IC_EYE});
     g.bandRect = fr;
     RECT lr{fr.left + S(8), fr.top + S(46), fr.right - S(8), fr.bottom - S(10)};
     g.dropRect = lr;
@@ -170,7 +182,7 @@ void layout() {
 
     // --- Journal ---
     RECT lc{m, y, w - m, std::max((int)y + S(60), h - m)};
-    g.cards.push_back({lc, L"Journal", IC_TERMINAL});
+    g.cards.push_back({lc, TX("ui.card.log"), IC_TERMINAL});
     MoveWindow(g.log, lc.left + S(8), lc.top + S(44), lc.right - lc.left - S(16), std::max(S(20), (int)(lc.bottom - lc.top) - S(52)), TRUE);
     InvalidateRect(g.wnd, nullptr, FALSE);
 }
@@ -202,15 +214,6 @@ void createFonts() {
     SendMessageW(g.log, EM_SETCHARFORMAT, SCF_DEFAULT, (LPARAM)&cf);
 }
 
-void addTip(HWND ctl, const wchar_t* text) {
-    TTTOOLINFOW ti{};
-    ti.cbSize = sizeof(ti);
-    ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
-    ti.hwnd = g.wnd;
-    ti.uId = (UINT_PTR)ctl;
-    ti.lpszText = const_cast<LPWSTR>(text);
-    SendMessageW(g.tip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
-}
 
 // ---------------------------------------------------------------------------
 //  Peinture de la fenetre : en-tete, cartes, zone de depot
@@ -225,12 +228,12 @@ void paintMain(HWND hw) {
 
     // En-tete
     f.icon(IC_LOGO, ui::rectf((float)m, F(14), (float)m + F(38), F(14) + F(38)), false, ui::rgb(0));
-    f.text(L"ShaderToMP4", ui::rectf(m + F(50), F(10), m + F(300), F(36)), F(20), true, ui::rgb(TEXT));
-    f.text(L"Shadertoy vers vidéo, image par image", ui::rectf(m + F(50), F(35), m + F(420), F(56)), F(12), false, ui::rgb(MUTED));
+    f.text(APP_NAME_WSTR, ui::rectf(m + F(50), F(10), m + F(300), F(36)), F(20), true, ui::rgb(TEXT));
+    f.text(TX("ui.tagline"), ui::rectf(m + F(50), F(35), m + F(520), F(56)), F(12), false, ui::rgb(MUTED));
     {
         std::wstring ver = L"v" APP_VER_WSTR;
         float tw = ui::measureText(ver, F(12), false) + F(20);
-        float x1 = (float)rc.right - m, x0 = x1 - tw;
+        float x1 = (float)g.chipRight, x0 = x1 - tw;
         f.fillRound(ui::rectf(x0, F(20), x1, F(44)), F(12), ui::rgb(FIELD));
         f.strokeRound(ui::rectf(x0, F(20), x1, F(44)), F(12), ui::rgb(FIELD_BORDER), 1.0f);
         f.text(ver, ui::rectf(x0, F(20), x1, F(44)), F(12), false, ui::rgb(MUTED), ui::Center);
@@ -248,8 +251,8 @@ void paintMain(HWND hw) {
     }
     // Nombre de fichiers dans l'en-tete de la carte des shaders
     for (const auto& c : g.cards) {
-        if (c.title == L"Shaders" && !g.paths.empty()) {
-            std::wstring n = wfmt(L"%d fichier%ls", (int)g.paths.size(), g.paths.size() > 1 ? L"s" : L"");
+        if (c.icon == IC_FILM && !g.paths.empty()) {
+            std::wstring n = TXF(g.paths.size() == 1 ? "ui.files_one" : "ui.files_many", (int)g.paths.size());
             f.text(n, ui::rectf((float)c.r.right - F(160), (float)c.r.top + F(8), (float)c.r.right - pad, (float)c.r.top + F(40)), F(12), false,
                    ui::rgb(MUTED), ui::Right);
         }
@@ -258,7 +261,7 @@ void paintMain(HWND hw) {
     const float da = g.dropAmt;
     if (da > 0.01f) {
         for (const auto& c : g.cards) {
-            if (c.title != L"Shaders") continue;
+            if (c.icon != IC_FILM) continue;
             D2D1_RECT_F r = ui::rectf(c.r);
             f.fillRound(r, F(14), ui::rgb(ACCENT, 0.08f * da));
             f.strokeRound(r, F(14), ui::rgb(ACCENT, 0.9f * da), 2.0f);
@@ -273,9 +276,9 @@ void paintMain(HWND hw) {
         if (da > 0.01f) f.strokeRound(dr, F(12), ui::rgb(ACCENT, 0.95f * da), 1.5f);
         f.icon(IC_DROP, ui::rectf(cx - F(36), cy - F(62) - F(4) * da, cx + F(36), cy + F(10) - F(4) * da), true,
                da > 0.01f ? ui::rgb(ACCENT, 0.7f + 0.3f * da) : ui::rgb(MUTED, 0.7f));
-        f.text(da > 0.5f ? L"Relâchez pour ajouter" : L"Déposez vos shaders ici",
+        f.text(TX(da > 0.5f ? "ui.drop.release" : "ui.drop.title"),
                ui::rectf(d.left + F(10), cy + F(14), d.right - F(10), cy + F(38)), F(15), true, ui::rgb(TEXT), ui::Center);
-        f.text(L"ou cliquez sur « Ajouter »  ·  .glsl, .txt", ui::rectf(d.left + F(10), cy + F(38), d.right - F(10), cy + F(58)), F(12), false,
+        f.text(TX("ui.drop.hint"), ui::rectf(d.left + F(10), cy + F(38), d.right - F(10), cy + F(58)), F(12), false,
                ui::rgb(MUTED), ui::Center);
     }
     f.present(hdc);
@@ -290,8 +293,8 @@ void drawPreview(const DRAWITEMSTRUCT* d) {
         f.fillRound(ui::rectf(0, 0, (float)cw, (float)ch), F(10), ui::rgb(0x090A0D));
         if (!(g.prevBmp && g.prevW > 0 && g.prevH > 0)) {
             f.icon(IC_EYE, ui::rectf(cw / 2.0f - F(20), ch / 2.0f - F(34), cw / 2.0f + F(20), ch / 2.0f + F(6)), true, ui::rgb(FAINT));
-            f.text(L"Aucun aperçu", ui::rectf(0, ch / 2.0f + F(8), (float)cw, ch / 2.0f + F(28)), F(13), true, ui::rgb(MUTED), ui::Center);
-            f.text(L"Choisissez un instant puis cliquez sur « Aperçu »", ui::rectf(F(8), ch / 2.0f + F(28), cw - F(8), ch / 2.0f + F(48)), F(11),
+            f.text(TX("ui.preview.none"), ui::rectf(0, ch / 2.0f + F(8), (float)cw, ch / 2.0f + F(28)), F(13), true, ui::rgb(MUTED), ui::Center);
+            f.text(TX("ui.preview.hint"), ui::rectf(F(8), ch / 2.0f + F(28), cw - F(8), ch / 2.0f + F(48)), F(11),
                    false, ui::rgb(FAINT), ui::Center);
         }
         f.present(d->hDC, r.left, r.top);
@@ -320,7 +323,50 @@ COLORREF statusColor(int st) {
     }
 }
 
-// Cree un controle fils et le range dans g (voir WM_CREATE)
+// Textes dépendant de la langue : clés enregistrées à la création, appliquées par applyLanguage()
+const char* const kLabelKeys[19] = {
+    "ui.lbl.resolution", "ui.lbl.times",    "ui.lbl.fps",      "ui.lbl.duration", "ui.lbl.start",
+    "ui.lbl.codec",      "ui.lbl.preset",   "ui.lbl.quality",  "ui.lbl.container", "ui.lbl.smoothing",
+    "ui.lbl.output",     "ui.lbl.bitrate",  "ui.lbl.color",    "ui.lbl.blur",     "ui.lbl.loop",
+    "ui.lbl.audio",      "ui.lbl.fade_in",  "ui.lbl.fade_out", "ui.lbl.encoder"};
+std::vector<std::pair<HWND, const char*>> g_btnKeys;  // boutons : texte
+std::vector<std::pair<HWND, const char*>> g_tips;     // info-bulles : texte
+
+void addTip(HWND ctl, const char* key) {
+    g_tips.push_back({ctl, key});
+    TTTOOLINFOW ti{};
+    ti.cbSize = sizeof(ti);
+    ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+    ti.hwnd = g.wnd;
+    ti.uId = (UINT_PTR)ctl;
+    ti.lpszText = LPSTR_TEXTCALLBACKW;  // le texte est demandé à l'affichage (TTN_GETDISPINFO) : suit la langue
+    SendMessageW(g.tip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
+}
+
+std::wstring langLabel() {
+    std::wstring s = W(i18n::language());
+    for (auto& c : s) c = (wchar_t)towupper(c);
+    return s;
+}
+
+void fillCombo(HWND c, const std::vector<std::wstring>& items) {
+    int sel = (int)SendMessageW(c, CB_GETCURSEL, 0, 0);
+    SendMessageW(c, CB_RESETCONTENT, 0, 0);
+    for (const auto& t : items) SendMessageW(c, CB_ADDSTRING, 0, (LPARAM)t.c_str());
+    if (sel >= 0) SendMessageW(c, CB_SETCURSEL, (WPARAM)sel, 0);
+}
+
+void fillCombos() {
+    std::vector<std::wstring> res;
+    for (const auto& r : kRes) res.push_back(resName(r));
+    res.push_back(TX("ui.res.custom"));
+    fillCombo(g.cmbRes, res);
+    fillCombo(g.cmbSS, {TX("ui.opt.none"), L"x2", L"x3", L"x4"});
+    fillCombo(g.cmbColor, {TX("ui.color.bt709tv"), TX("ui.color.bt709pc"), TX("ui.color.srgb"), TX("ui.color.bt601")});
+    fillCombo(g.cmbBlur, {TX("ui.opt.none"), L"x4", L"x8", L"x16"});
+    fillCombo(g.cmbEncoder, {TX("ui.enc.cpu"), TX("ui.enc.auto"), L"NVIDIA NVENC", L"AMD AMF", L"Intel QuickSync"});
+}
+
 HWND mk(HWND parent, const wchar_t* cls, const wchar_t* txt, DWORD style, int id, DWORD ex = 0) {
     return CreateWindowExW(ex, cls, txt, WS_CHILD | WS_VISIBLE | style, 0, 0, 10, 10, parent, (HMENU)(INT_PTR)id,
                            GetModuleHandleW(nullptr), nullptr);
@@ -328,21 +374,24 @@ HWND mk(HWND parent, const wchar_t* cls, const wchar_t* txt, DWORD style, int id
 
 void createControls(HWND hw) {
     using ui::BtnStyle;
-    auto button = [&](const wchar_t* txt, int id, int icon, BtnStyle st, unsigned bg) {
-        HWND b = mk(hw, L"BUTTON", txt, WS_TABSTOP | BS_OWNERDRAW, id);
+    auto button = [&](const char* key, int id, int icon, BtnStyle st, unsigned bg) {
+        HWND b = mk(hw, L"BUTTON", L"", WS_TABSTOP | BS_OWNERDRAW, id);
         ui::setupButton(b, icon, st, bg);
+        if (key) g_btnKeys.push_back({b, key});
         return b;
     };
-    g.bAdd = button(L"Ajouter", ID_ADD, IC_ADD, BtnStyle::Secondary, BG);
-    g.bRemove = button(L"Retirer", ID_REMOVE, IC_TRASH, BtnStyle::Secondary, BG);
-    g.bClear = button(L"Vider", ID_CLEAR, IC_CLEAR, BtnStyle::Secondary, BG);
-    g.bFolder = button(L"Dossier", ID_FOLDER, IC_FOLDER, BtnStyle::Secondary, BG);
-    g.bSnap = button(L"Image PNG", ID_SNAP, IC_IMAGE, BtnStyle::Secondary, BG);
-    g.bStart = button(L"Démarrer", ID_START, IC_PLAY, BtnStyle::Primary, BG);
-    g.bPause = button(L"Pause", ID_PAUSE, IC_PAUSE, BtnStyle::Secondary, BG);
-    g.bCancel = button(L"Annuler", ID_CANCEL, IC_STOP, BtnStyle::Danger, BG);
+    g.bAbout = button(nullptr, ID_ABOUT, IC_INFO, BtnStyle::Ghost, BG);
+    g.bLang = button(nullptr, ID_LANG, IC_GLOBE, BtnStyle::Ghost, BG);
+    g.bAdd = button("ui.btn.add", ID_ADD, IC_ADD, BtnStyle::Secondary, BG);
+    g.bRemove = button("ui.btn.remove", ID_REMOVE, IC_TRASH, BtnStyle::Secondary, BG);
+    g.bClear = button("ui.btn.clear", ID_CLEAR, IC_CLEAR, BtnStyle::Secondary, BG);
+    g.bFolder = button("ui.btn.folder", ID_FOLDER, IC_FOLDER, BtnStyle::Secondary, BG);
+    g.bSnap = button("ui.btn.png", ID_SNAP, IC_IMAGE, BtnStyle::Secondary, BG);
+    g.bStart = button("ui.btn.start", ID_START, IC_PLAY, BtnStyle::Primary, BG);
+    g.bPause = button(nullptr, ID_PAUSE, IC_PAUSE, BtnStyle::Secondary, BG);  // texte : Pause / Reprendre
+    g.bCancel = button("ui.btn.cancel", ID_CANCEL, IC_STOP, BtnStyle::Danger, BG);
 
-    // Liste des shaders (sans en-tete, colonnes : fichier / statut)
+    // Liste des shaders (sans en-tête, colonnes : fichier / statut)
     g.list = mk(hw, L"SysListView32", L"", WS_TABSTOP | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER, ID_LIST);
     SendMessageW(g.list, LVM_SETEXTENDEDLISTVIEWSTYLE, 0, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
     SendMessageW(g.list, LVM_SETBKCOLOR, 0, cref(CARD));
@@ -350,21 +399,16 @@ void createControls(HWND hw) {
     SendMessageW(g.list, LVM_SETTEXTCOLOR, 0, cref(TEXT));
     ui::darkTheme(g.list, L"DarkMode_Explorer");
     LVCOLUMNW col{};
-    col.mask = LVCF_TEXT | LVCF_WIDTH;
+    col.mask = LVCF_WIDTH;
     col.cx = 400;
-    col.pszText = const_cast<LPWSTR>(L"Fichier shader");
     SendMessageW(g.list, LVM_INSERTCOLUMNW, 0, (LPARAM)&col);
     col.cx = 130;
-    col.pszText = const_cast<LPWSTR>(L"Statut");
     SendMessageW(g.list, LVM_INSERTCOLUMNW, 1, (LPARAM)&col);
 
-    auto label = [&](const wchar_t* t) {
-        HWND l = mk(hw, L"STATIC", t, SS_LEFT | SS_NOPREFIX, 0);
+    auto label = [&]() {
+        HWND l = mk(hw, L"STATIC", L"", SS_LEFT | SS_NOPREFIX, 0);
         g.labels.push_back(l);
         return l;
-    };
-    auto addItems = [&](HWND c, std::initializer_list<const wchar_t*> items) {
-        for (auto t : items) SendMessageW(c, CB_ADDSTRING, 0, (LPARAM)t);
     };
     auto edit = [&](int id, DWORD extra = 0) {
         HWND e = mk(hw, L"EDIT", L"", WS_TABSTOP | ES_AUTOHSCROLL | extra, id, WS_EX_CLIENTEDGE);
@@ -378,75 +422,66 @@ void createControls(HWND hw) {
         return c;
     };
 
-    label(L"Résolution");  // 0
+    label();  // 0 résolution
     g.cmbRes = combo(ID_RES);
-    for (const auto& r : kRes) SendMessageW(g.cmbRes, CB_ADDSTRING, 0, (LPARAM)r.name);
-    SendMessageW(g.cmbRes, CB_ADDSTRING, 0, (LPARAM)L"Personnalisé");
     g.edW = edit(ID_W, ES_NUMBER);
-    label(L"×");  // 1
+    label();  // 1 ×
     g.edH = edit(ID_H, ES_NUMBER);
-    label(L"FPS");  // 2
+    label();  // 2 FPS
     g.cmbFps = combo(ID_FPS, CBS_DROPDOWN | CBS_AUTOHSCROLL);
-    addItems(g.cmbFps, {L"24", L"30", L"60", L"120"});
-    label(L"Durée (s)");  // 3
+    for (const wchar_t* f : {L"24", L"30", L"60", L"120"}) SendMessageW(g.cmbFps, CB_ADDSTRING, 0, (LPARAM)f);
+    label();  // 3 durée
     g.edDur = edit(ID_DUR);
-    label(L"Début (s)");  // 4
+    label();  // 4 début
     g.edStart = edit(ID_START_T);
-    label(L"Codec");  // 5
+    label();  // 5 codec
     g.cmbCodec = combo(ID_CODEC);
-    addItems(g.cmbCodec, {L"H.264", L"H.265"});
-    label(L"Preset");  // 6
+    for (const wchar_t* c : {L"H.264", L"H.265"}) SendMessageW(g.cmbCodec, CB_ADDSTRING, 0, (LPARAM)c);
+    label();  // 6 preset
     g.cmbPreset = combo(ID_PRESET);
     for (auto p : kPresets) SendMessageW(g.cmbPreset, CB_ADDSTRING, 0, (LPARAM)p);
-    label(L"Qualité");  // 7
+    label();  // 7 qualité
     g.trkCrf = mk(hw, L"STSlider", L"", WS_TABSTOP, ID_CRF);
     SendMessageW(g.trkCrf, TBM_SETRANGE, TRUE, MAKELPARAM(0, 35));
     g.lblCrf = mk(hw, L"STATIC", L"", SS_LEFT | SS_NOPREFIX, 0);
-    label(L"Conteneur");  // 8
+    label();  // 8 conteneur
     g.cmbContainer = combo(ID_CONTAINER);
-    addItems(g.cmbContainer, {L"MP4", L"MOV", L"MKV"});
-    label(L"Lissage");  // 9
+    for (const wchar_t* c : {L"MP4", L"MOV", L"MKV"}) SendMessageW(g.cmbContainer, CB_ADDSTRING, 0, (LPARAM)c);
+    label();  // 9 lissage
     g.cmbSS = combo(ID_SS);
-    addItems(g.cmbSS, {L"Aucun", L"x2", L"x3", L"x4"});
-    label(L"Sortie");  // 10
+    label();  // 10 sortie
     g.edOut = edit(ID_OUT);
-    SendMessageW(g.edOut, EM_SETCUEBANNER, TRUE, (LPARAM)L"vide = à côté du fichier shader");
-    g.bBrowse = button(L"Parcourir", ID_BROWSE, IC_FOLDER, BtnStyle::Secondary, CARD);
-    g.bLoadP = button(L"Profil", ID_LOADP, IC_DOWNLOAD, BtnStyle::Secondary, CARD);
-    g.bSaveP = button(L"Enregistrer", ID_SAVEP, IC_SAVE, BtnStyle::Secondary, CARD);
-    label(L"Débit (kb/s)");  // 11
+    g.bBrowse = button("ui.btn.browse", ID_BROWSE, IC_FOLDER, BtnStyle::Secondary, CARD);
+    g.bLoadP = button("ui.btn.profile", ID_LOADP, IC_DOWNLOAD, BtnStyle::Secondary, CARD);
+    g.bSaveP = button("ui.btn.save", ID_SAVEP, IC_SAVE, BtnStyle::Secondary, CARD);
+    label();  // 11 débit
     g.edBitrate = edit(ID_BITRATE, ES_NUMBER);
-    SendMessageW(g.edBitrate, EM_SETCUEBANNER, TRUE, (LPARAM)L"0 = CRF");
-    label(L"Couleur");  // 12
+    label();  // 12 couleur
     g.cmbColor = combo(ID_COLOR);
-    addItems(g.cmbColor, {L"BT.709 TV (standard)", L"BT.709 PC (pleine plage)", L"sRGB (TV)", L"BT.601 TV (ancien)"});
-    label(L"Flou");  // 13
+    label();  // 13 flou
     g.cmbBlur = combo(ID_BLUR);
-    addItems(g.cmbBlur, {L"Aucun", L"x4", L"x8", L"x16"});
-    label(L"Boucle (s)");  // 14
+    label();  // 14 boucle
     g.edLoop = edit(ID_LOOP);
-    SendMessageW(g.edLoop, EM_SETCUEBANNER, TRUE, (LPARAM)L"0 = libre");
-    label(L"Audio");  // 15
+    label();  // 15 audio
     g.edAudio = edit(ID_AUDIO);
-    SendMessageW(g.edAudio, EM_SETCUEBANNER, TRUE, (LPARAM)L"fichier son (mp3, wav...) - vide = aucun");
-    g.bAudio = button(L"Parcourir", ID_AUDIOB, IC_AUDIO, BtnStyle::Secondary, CARD);
-    label(L"Fondu entrée");  // 16
+    g.bAudio = button("ui.btn.browse", ID_AUDIOB, IC_AUDIO, BtnStyle::Secondary, CARD);
+    label();  // 16 fondu entrée
     g.edFadeIn = edit(ID_FADEIN);
-    label(L"sortie");  // 17
+    label();  // 17 fondu sortie
     g.edFadeOut = edit(ID_FADEOUT);
-    label(L"Encodeur");  // 18
+    label();  // 18 encodeur
     g.cmbEncoder = combo(ID_ENCODER);
-    addItems(g.cmbEncoder, {L"CPU (x264/x265)", L"Auto (matériel si dispo)", L"NVIDIA NVENC", L"AMD AMF", L"Intel QuickSync"});
 
-    static const struct { const wchar_t* t; int id; int icon; } chips[4] = {
-        {L"Brouillon", ID_PRE0, IC_ZAP}, {L"YouTube", ID_PRE1, IC_YOUTUBE}, {L"4K 60", ID_PRE2, IC_MONITOR}, {L"Vertical", ID_PRE3, IC_PHONE}};
-    for (int i = 0; i < 4; i++) g.chips[i] = button(chips[i].t, chips[i].id, chips[i].icon, BtnStyle::Chip, CARD);
+    static const struct { const char* key; int id; int icon; } chips[4] = {
+        {"ui.chip.draft", ID_PRE0, IC_ZAP}, {"ui.chip.youtube", ID_PRE1, IC_YOUTUBE},
+        {"ui.chip.4k60", ID_PRE2, IC_MONITOR}, {"ui.chip.vertical", ID_PRE3, IC_PHONE}};
+    for (int i = 0; i < 4; i++) g.chips[i] = button(chips[i].key, chips[i].id, chips[i].icon, BtnStyle::Chip, CARD);
 
     g.preview = mk(hw, L"STATIC", L"", SS_OWNERDRAW, ID_PREVIEW);
     g.trkPrev = mk(hw, L"STSlider", L"", WS_TABSTOP, ID_PREVTRK);
     SendMessageW(g.trkPrev, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
-    g.lblPrev = mk(hw, L"STATIC", L"Aperçu : t = début", SS_LEFT | SS_NOPREFIX, 0);
-    g.bPrev = button(L"Aperçu", ID_PREVBTN, IC_EYE, BtnStyle::Secondary, CARD);
+    g.lblPrev = mk(hw, L"STATIC", L"", SS_LEFT | SS_NOPREFIX, 0);
+    g.bPrev = button("ui.btn.preview", ID_PREVBTN, IC_EYE, BtnStyle::Secondary, CARD);
 
     g.prog = mk(hw, L"STProgress", L"", 0, ID_PROG);
     SendMessageW(g.prog, PBM_SETRANGE32, 0, 1000);
@@ -458,53 +493,55 @@ void createControls(HWND hw) {
     SendMessageW(g.log, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
     ui::darkTheme(g.log, L"DarkMode_Explorer");
 
-    // Info-bulles
+    // Info-bulles (texte demandé à l'affichage, voir TTN_GETDISPINFO)
     g.tip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, 0, 0, 0, 0, hw,
                             nullptr, GetModuleHandleW(nullptr), nullptr);
     SendMessageW(g.tip, TTM_SETMAXTIPWIDTH, 0, S(320));
     SendMessageW(g.tip, TTM_SETDELAYTIME, TTDT_INITIAL, 450);
-    struct Tip { HWND c; const wchar_t* t; };
+    struct Tip { HWND c; const char* key; };
     const Tip tips[] = {
-        {g.bAdd, L"Ajouter des shaders (.glsl, .txt)  -  Ctrl+O"},
-        {g.bRemove, L"Retirer les shaders sélectionnés  -  Suppr"},
-        {g.bClear, L"Vider la liste"},
-        {g.bFolder, L"Ouvrir le dossier de la vidéo du shader sélectionné"},
-        {g.bSnap, L"Rendre une seule image PNG au temps « Début » et l'ouvrir"},
-        {g.bStart, L"Rendre tous les shaders de la liste  -  F5"},
-        {g.bPause, L"Suspendre / reprendre le rendu  -  F6"},
-        {g.bCancel, L"Annuler le rendu en cours  -  Échap"},
-        {g.cmbRes, L"Taille de la vidéo en pixels. Choisis un préréglage ou saisis une taille libre"},
-        {g.edW, L"Largeur en pixels (16 à 16384)"},
-        {g.edH, L"Hauteur en pixels (16 à 16384)"},
-        {g.cmbFps, L"Images par seconde (1 à 240) : tu peux saisir une valeur libre"},
-        {g.cmbSS, L"Lissage : rendu à N fois la taille puis réduction. Bords plus propres, rendu plus lent"},
-        {g.edDur, L"Durée en secondes ou mm:ss (ex. 90 ou 1:30)"},
-        {g.edStart, L"Instant de départ dans le shader (iTime), en secondes ou mm:ss"},
-        {g.cmbCodec, L"H.264 : compatible partout. H.265 : fichiers plus petits"},
-        {g.cmbPreset, L"Vitesse d'encodage : plus lent = fichier plus petit à qualité égale"},
-        {g.trkCrf, L"Qualité constante : 0 = sans perte, 12 = quasi parfait, 18 = très bon, 23 = correct"},
-        {g.cmbContainer, L"Format du fichier : MP4 (universel), MOV ou MKV"},
-        {g.cmbEncoder, L"CPU : meilleure qualité. NVENC / AMF / QuickSync : beaucoup plus rapide (repli sur CPU si indisponible)"},
-        {g.edBitrate, L"Débit fixe en kb/s à la place de la qualité constante (0 = utiliser le CRF)"},
-        {g.cmbColor, L"Espace colorimétrique et plage des couleurs de la vidéo"},
-        {g.cmbBlur, L"Flou de mouvement : moyenne de plusieurs sous-images par image"},
-        {g.edLoop, L"Période du shader en secondes : la durée devient un multiple entier pour une boucle parfaite (0 = libre)"},
-        {g.edAudio, L"Fichier son à mixer, calé sur le temps « Début »"},
-        {g.bAudio, L"Choisir un fichier son"},
-        {g.edFadeIn, L"Fondu d'entrée en secondes (image et son)"},
-        {g.edFadeOut, L"Fondu de sortie en secondes (image et son)"},
-        {g.edOut, L"Dossier de sortie (vide = à côté du fichier shader)"},
-        {g.bBrowse, L"Choisir le dossier de sortie"},
-        {g.bLoadP, L"Charger un profil de réglages (.ini)"},
-        {g.bSaveP, L"Enregistrer les réglages dans un profil (.ini)"},
-        {g.chips[0], L"720p, 30 fps, qualité moyenne, encodage rapide : pour tester"},
-        {g.chips[1], L"1080p, 60 fps, H.264, très bonne qualité : prêt pour YouTube"},
-        {g.chips[2], L"4K, 60 fps, H.265 : haute définition"},
-        {g.chips[3], L"1080×1920, 30 fps : vidéo verticale 9:16"},
-        {g.trkPrev, L"Instant de l'aperçu, de « Début » à « Début + Durée »"},
-        {g.bPrev, L"Afficher une image du shader à cet instant  -  Ctrl+P"},
+        {g.bAbout, "ui.tip.about"}, {g.bLang, "ui.tip.language"},
+        {g.bAdd, "ui.tip.add"}, {g.bRemove, "ui.tip.remove"}, {g.bClear, "ui.tip.clear"}, {g.bFolder, "ui.tip.folder"},
+        {g.bSnap, "ui.tip.png"}, {g.bStart, "ui.tip.start"}, {g.bPause, "ui.tip.pause"}, {g.bCancel, "ui.tip.cancel"},
+        {g.cmbRes, "ui.tip.resolution"}, {g.edW, "ui.tip.width"}, {g.edH, "ui.tip.height"}, {g.cmbFps, "ui.tip.fps"},
+        {g.cmbSS, "ui.tip.smoothing"}, {g.edDur, "ui.tip.duration"}, {g.edStart, "ui.tip.start_time"},
+        {g.cmbCodec, "ui.tip.codec"}, {g.cmbPreset, "ui.tip.preset"}, {g.trkCrf, "ui.tip.quality"},
+        {g.cmbContainer, "ui.tip.container"}, {g.cmbEncoder, "ui.tip.encoder"}, {g.edBitrate, "ui.tip.bitrate"},
+        {g.cmbColor, "ui.tip.color"}, {g.cmbBlur, "ui.tip.blur"}, {g.edLoop, "ui.tip.loop"}, {g.edAudio, "ui.tip.audio"},
+        {g.bAudio, "ui.tip.audio_browse"}, {g.edFadeIn, "ui.tip.fade_in"}, {g.edFadeOut, "ui.tip.fade_out"},
+        {g.edOut, "ui.tip.output"}, {g.bBrowse, "ui.tip.output_browse"}, {g.bLoadP, "ui.tip.profile_load"},
+        {g.bSaveP, "ui.tip.profile_save"}, {g.chips[0], "ui.tip.chip_draft"}, {g.chips[1], "ui.tip.chip_youtube"},
+        {g.chips[2], "ui.tip.chip_4k60"}, {g.chips[3], "ui.tip.chip_vertical"}, {g.trkPrev, "ui.tip.preview_time"},
+        {g.bPrev, "ui.tip.preview"},
     };
-    for (const auto& t : tips) addTip(t.c, t.t);
+    for (const auto& t : tips) addTip(t.c, t.key);
+}
+
+// Signale dans le journal toute clé de traduction demandée mais introuvable (fichier de langue incomplet)
+void reportMissingKeys() {
+    for (const auto& k : i18n::missingKeys()) appendLog(TXF("log.missing_key", W(k).c_str()));
+}
+
+// Applique la langue courante à tous les textes de la fenêtre (à la création et à chaque changement de langue)
+void applyLanguage() {
+    for (const auto& b : g_btnKeys) SetWindowTextW(b.first, TX(b.second).c_str());
+    SetWindowTextW(g.bPause, TX(g.pause ? "ui.btn.resume" : "ui.btn.pause").c_str());
+    SetWindowTextW(g.bLang, langLabel().c_str());
+    for (size_t i = 0; i < g.labels.size() && i < 19; i++) SetWindowTextW(g.labels[i], TX(kLabelKeys[i]).c_str());
+    for (HWND e : {g.edOut, g.edBitrate, g.edLoop, g.edAudio}) {
+        const char* key = e == g.edOut ? "ui.cue.output" : e == g.edBitrate ? "ui.cue.bitrate" : e == g.edLoop ? "ui.cue.loop" : "ui.cue.audio";
+        SendMessageW(e, EM_SETCUEBANNER, TRUE, (LPARAM)TX(key).c_str());
+    }
+    fillCombos();
+    for (size_t i = 0; i < g.paths.size() && i < g.state.size(); i++)
+        if (g.state[i] != ST_RUNNING) setItemText((int)i, 1, statusText(g.state[i]));
+    updateCrfLabel();
+    updatePrevLabel();
+    if (!g.running) setStatus(TX("ui.status.idle"));
+    layout();
+    InvalidateRect(g.preview, nullptr, FALSE);
+    InvalidateRect(g.wnd, nullptr, FALSE);
+    reportMissingKeys();
 }
 
 }  // namespace
@@ -533,6 +570,16 @@ void restoreWindowPlacement(HWND wnd, int showCmd) {
     ShowWindow(wnd, showCmd);
 }
 
+std::string readSavedLanguage() {
+    std::string text;
+    if (!readFile(g.exeDir + L"window.ini", text)) return "";
+    size_t p = text.find("lang=");
+    if (p == std::string::npos) return "";
+    size_t e = text.find_first_of("\r\n", p);
+    std::string code = trim(text.substr(p + 5, e == std::string::npos ? std::string::npos : e - p - 5));
+    return code.size() <= 8 ? code : "";
+}
+
 void saveWindowPlacement(HWND wnd) {
     WINDOWPLACEMENT wp{};
     wp.length = sizeof(wp);
@@ -540,8 +587,8 @@ void saveWindowPlacement(HWND wnd) {
     RECT r = wp.rcNormalPosition;
     FILE* f = _wfopen((g.exeDir + L"window.ini").c_str(), L"wb");
     if (!f) return;
-    fprintf(f, "x=%d y=%d w=%d h=%d max=%d\n", (int)r.left, (int)r.top, (int)(r.right - r.left), (int)(r.bottom - r.top),
-            wp.showCmd == SW_SHOWMAXIMIZED ? 1 : 0);
+    fprintf(f, "x=%d y=%d w=%d h=%d max=%d\nlang=%s\n", (int)r.left, (int)r.top, (int)(r.right - r.left),
+            (int)(r.bottom - r.top), wp.showCmd == SW_SHOWMAXIMIZED ? 1 : 0, i18n::language().c_str());
     fclose(f);
 }
 
@@ -561,9 +608,10 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             ui::darkTitleBar(hw);
             createControls(hw);
             createFonts();
+            applyLanguage();
             settingsToUI(g.base);
             updatePrevLabel();
-            setStatus(L"Glisse des fichiers shader dans la fenêtre, ou clique sur « Ajouter ».");
+            setStatus(TX("ui.status.idle"));
             updateButtons();
             taskbar::init(hw);
             registerDropTarget(hw);
@@ -612,6 +660,18 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_NOTIFY: {
             NMHDR* nh = (NMHDR*)lp;
+            if (nh->hwndFrom == g.tip && nh->code == TTN_GETDISPINFOW) {  // texte de l'info-bulle, dans la langue courante
+                NMTTDISPINFOW* di = (NMTTDISPINFOW*)lp;
+                HWND ctl = (HWND)di->hdr.idFrom;
+                for (const auto& t : g_tips)
+                    if (t.first == ctl) {
+                        static std::wstring tipText;
+                        tipText = TX(t.second);
+                        di->lpszText = const_cast<LPWSTR>(tipText.c_str());
+                        break;
+                    }
+                return 0;
+            }
             if (nh->hwndFrom == g.list) {
                 if (nh->code == NM_DBLCLK) {  // double-clic : lire la video terminee
                     int i = ((NMITEMACTIVATE*)lp)->iItem;
@@ -669,16 +729,14 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             if (g.worker.joinable()) g.worker.join();
             g.running = false;
             if (wp) {
-                setStatus(L"ffmpeg.exe installé : tu peux lancer les rendus.");
-                appendLog(L"ffmpeg.exe installé.");
+                setStatus(TX("status.ffmpeg_installed"));
+                appendLog(TX("log.ffmpeg_installed"));
                 taskbar::clear();
             } else {
-                setStatus(L"Téléchargement de ffmpeg échoué.");
-                appendLog(L"ERREUR : " + *e);
+                setStatus(TX("status.ffmpeg_failed"));
+                appendLog(TXF("log.error", e->c_str()));
                 taskbar::error();
-                MessageBoxW(hw, (L"Le téléchargement de ffmpeg a échoué :\n\n" + *e +
-                                 L"\n\nTu peux aussi placer ffmpeg.exe à la main à côté de ShaderToMP4.exe.").c_str(),
-                            L"ffmpeg", MB_ICONWARNING);
+                MessageBoxW(hw, TXF("dialog.ffmpeg_failed", e->c_str()).c_str(), L"ffmpeg", MB_ICONWARNING);
                 taskbar::clear();
             }
             delete e;
@@ -763,17 +821,26 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                     g.pause = false;
                     EnableWindow(g.bCancel, FALSE);
                     EnableWindow(g.bPause, FALSE);
-                    setStatus(L"Annulation en cours...");
+                    setStatus(TX("status.cancelling"));
                     break;
                 case ID_PAUSE:
                     if (!g.running || g.previewRun) break;
                     g.pause = !g.pause;
-                    SetWindowTextW(g.bPause, g.pause ? L"Reprendre" : L"Pause");
+                    SetWindowTextW(g.bPause, TX(g.pause ? "ui.btn.resume" : "ui.btn.pause").c_str());
                     ui::setButtonIcon(g.bPause, g.pause ? IC_PLAY : IC_PAUSE);
                     SendMessageW(g.prog, ui::STPB_SETSTATE, g.pause ? 1 : 0, 0);
                     if (g.pause) taskbar::paused(); else taskbar::normal();
-                    setStatus(g.pause ? L"En pause." : L"Rendu en cours...");
+                    setStatus(TX(g.pause ? "status.paused" : "status.rendering"));
                     break;
+                case ID_ABOUT: showAbout(hw); break;
+                case ID_LANG: {  // langue suivante (en -> fr -> ...), appliquée tout de suite
+                    std::vector<std::string> langs = i18n::available();
+                    std::string cur = i18n::language(), next = langs.front();
+                    for (size_t i = 0; i < langs.size(); i++)
+                        if (langs[i] == cur) next = langs[(i + 1) % langs.size()];
+                    if (i18n::setLanguage(next)) applyLanguage();
+                    break;
+                }
                 case ID_FOLDER: openFolder(); break;
                 case ID_AUDIOB: browseAudio(); break;
                 case ID_PREVBTN: runPreview(); break;
@@ -793,8 +860,8 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             SendMessageW(g.prog, PBM_SETPOS, (WPARAM)(p->n * 1000 / std::max(1LL, p->total)), 0);
             if (!g.pause) taskbar::normal();
             taskbar::progress(p->n, p->total);
-            if (idx >= 0 && idx < (int)g.paths.size()) setItemText(idx, 1, wfmt(L"En cours %d %%", pct));
-            setStatus(wfmt(L"Image %lld / %lld  ·  %d %%  ·  %.1f img/s  ·  reste %ls", p->n, p->total, pct, p->speed,
+            if (idx >= 0 && idx < (int)g.paths.size()) setItemText(idx, 1, TXF("status.running_pct", pct));
+            setStatus(TXF("status.progress", p->n, p->total, pct, i18n::fixed(p->speed, 1).c_str(),
                            fmtTime(p->remaining).c_str()));
             delete p;
             return 0;
@@ -821,7 +888,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             SendMessageW(g.prog, ui::STPB_SETSTATE, 0, 0);
             if (g.previewRun) {
                 g.previewRun = false;
-                setStatus(L"Aperçu prêt.");
+                setStatus(TX("status.preview_ready"));
                 updateButtons();
                 return 0;
             }
@@ -830,9 +897,9 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                 if (st == ST_FAILED) fails++;
                 if (st == ST_CANCELLED) cancelled++;
             }
-            if (cancelled) setStatus(L"Annulé.");
-            else if (fails) setStatus(wfmt(L"Terminé avec %d erreur(s).", fails));
-            else setStatus(g.snapshotRun ? L"Image créée." : L"Tout est terminé.");
+            if (cancelled) setStatus(TX("status.cancelled_done"));
+            else if (fails) setStatus(TXF("status.finished_errors", fails));
+            else setStatus(TX(g.snapshotRun ? "status.image_created" : "status.all_done"));
             if (fails) SendMessageW(g.prog, ui::STPB_SETSTATE, 2, 0);
             fails ? taskbar::error() : taskbar::clear();
             taskbar::flash(hw);

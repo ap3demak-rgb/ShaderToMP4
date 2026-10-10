@@ -1,5 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 #include "app.h"
 #include "core/ffmpeg_download.h"
+#include "core/i18n.h"
 #include "core/gl.h"
 #include "core/render.h"
 #include "core/util.h"
@@ -13,7 +17,7 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
     GLContext gl;
     std::wstring err;
     if (!createGLContext(gl, err)) {
-        postLog(L"ERREUR : " + err);
+        postLog(TXF("log.error", err.c_str()));
         destroyGLContext(gl);
         for (auto& j : jobs) PostMessageW(g.wnd, WM_APP_FILE, (WPARAM)j.first, ST_FAILED);
         PostMessageW(g.wnd, WM_APP_DONE, 0, 0);
@@ -21,7 +25,7 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
     }
     if (!g.previewRun) {
         const char* r = (const char*)glGetString(GL_RENDERER);
-        postLog(L"GPU : " + W(r ? r : "?"));
+        postLog(TXF("log.gpu", W(r ? r : "?").c_str()));
     }
 
     Hooks H;
@@ -35,7 +39,7 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
         };
         H.previewTime = g.previewTime;
         std::wstring e;
-        if (convertFile(jobs[0].second, g.exeDir, g.base, H, e) == Result::Failed) postLog(L"ERREUR apercu : " + e);
+        if (convertFile(jobs[0].second, g.exeDir, g.base, H, e) == Result::Failed) postLog(TXF("log.preview_error", e.c_str()));
         destroyGLContext(gl);
         PostMessageW(g.wnd, WM_APP_DONE, 0, 0);
         return;
@@ -53,8 +57,8 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
         };
         std::wstring e;
         Result r = convertFile(jobs[i].second, g.exeDir, g.base, H, e);
-        if (r == Result::Failed) postLog(L"  ERREUR : " + e);
-        else if (r == Result::Cancelled) postLog(L"  Annule.");
+        if (r == Result::Failed) postLog(L"  " + TXF("log.error", e.c_str()));
+        else if (r == Result::Cancelled) postLog(L"  " + TX("log.cancelled"));
         PostMessageW(g.wnd, WM_APP_FILE, (WPARAM)idx,
                      r == Result::Ok ? ST_DONE : r == Result::Cancelled ? ST_CANCELLED : ST_FAILED);
     }
@@ -65,17 +69,15 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
 void promptDownload() {
     if (g.running) return;
     int r = MessageBoxW(g.wnd,
-                        L"ffmpeg.exe est introuvable (il encode les videos).\n\n"
-                        L"Le telecharger automatiquement (environ 80 Mo) depuis gyan.dev ?\n"
-                        L"Le fichier est verifie par son empreinte SHA-256 puis installe a cote de ShaderToMP4.exe.",
-                        L"ffmpeg manquant", MB_YESNO | MB_ICONQUESTION);
+                        TX("dialog.ffmpeg_missing").c_str(), TX("dialog.ffmpeg_missing_title").c_str(),
+                        MB_YESNO | MB_ICONQUESTION);
     if (r != IDYES) return;
     g.cancel = false;
     g.previewRun = false;
     g.running = true;
     updateButtons();
     SendMessageW(g.prog, PBM_SETPOS, 0, 0);
-    appendLog(L"Telechargement de ffmpeg...");
+    appendLog(TX("log.downloading_ffmpeg"));
     g.worker = std::thread([] {
         std::wstring err;
         bool ok = downloadFfmpeg(g.exeDir, [](int pct, const std::wstring& msg) {
@@ -109,7 +111,7 @@ void startJobs(bool snapshot) {
     Settings cur = g.base;
     std::wstring serr;
     if (!uiToSettings(cur, serr)) {
-        MessageBoxW(g.wnd, serr.c_str(), L"Réglages invalides", MB_ICONWARNING);
+        MessageBoxW(g.wnd, serr.c_str(), TX("dialog.invalid_settings").c_str(), MB_ICONWARNING);
         return;
     }
     g.base = cur;
@@ -123,7 +125,7 @@ void startJobs(bool snapshot) {
     if (snapshot) {
         g.snapshotPath = outputPath(jobs[0].second, cur.outdir, L".png");
     }
-    setStatus(snapshot ? L"Rendu de l'image..." : L"Rendu en cours...");
+    setStatus(TX(snapshot ? "status.rendering_image" : "status.rendering"));
     g.worker = std::thread(runJobs, std::move(jobs));
 }
 
@@ -132,7 +134,7 @@ void updatePrevLabel() {
     if (!parseSeconds(getText(g.edStart), start)) start = 0;
     if (!parseSeconds(getText(g.edDur), dur)) dur = 0;
     double t = start + SendMessageW(g.trkPrev, TBM_GETPOS, 0, 0) / 100.0 * dur;
-    SetWindowTextW(g.lblPrev, wfmt(L"Apercu : t = %.2f s", t).c_str());
+    SetWindowTextW(g.lblPrev, TXF("ui.preview_time", i18n::fixed(t, 2).c_str()).c_str());
 }
 
 static int selectedOrFirst() {
@@ -145,7 +147,7 @@ void runPreview() {
     Settings cur = g.base;
     std::wstring serr;
     if (!uiToSettings(cur, serr)) {
-        MessageBoxW(g.wnd, serr.c_str(), L"Réglages invalides", MB_ICONWARNING);
+        MessageBoxW(g.wnd, serr.c_str(), TX("dialog.invalid_settings").c_str(), MB_ICONWARNING);
         return;
     }
     g.base = cur;
@@ -156,7 +158,7 @@ void runPreview() {
     g.cancel = false;
     g.running = true;
     updateButtons();
-    setStatus(L"Rendu de l'apercu...");
+    setStatus(TX("status.rendering_preview"));
     std::vector<std::pair<int, std::wstring>> jobs{{sel, g.paths[sel]}};
     g.worker = std::thread(runJobs, std::move(jobs));
 }

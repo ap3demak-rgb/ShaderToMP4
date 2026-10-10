@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 #include "ui_render.h"
 #include <d3d11.h>
 #include <dwrite.h>
@@ -70,18 +73,18 @@ Surface* surface(int w, int h) {
     return &(S.surfaces[key] = s);
 }
 
-IDWriteTextFormat* format(float size, bool bold, Align align, bool vcenter) {
-    int key = ((int)(size * 10) << 4) | (bold ? 8 : 0) | ((int)align << 1) | (vcenter ? 1 : 0);
+IDWriteTextFormat* format(float size, bool bold, Align align, bool vcenter, bool wrap = false) {
+    int key = ((int)(size * 10) << 5) | (wrap ? 16 : 0) | (bold ? 8 : 0) | ((int)align << 1) | (vcenter ? 1 : 0);
     auto it = S.formats.find(key);
     if (it != S.formats.end()) return it->second.Get();
     ComPtr<IDWriteTextFormat> f;
     if (FAILED(S.dw->CreateTextFormat(L"Segoe UI", nullptr, bold ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
-                                      DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, size, L"fr-FR", &f)))
+                                      DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, size, L"", &f)))
         return nullptr;
     f->SetTextAlignment(align == Center ? DWRITE_TEXT_ALIGNMENT_CENTER
                         : align == Right ? DWRITE_TEXT_ALIGNMENT_TRAILING : DWRITE_TEXT_ALIGNMENT_LEADING);
     f->SetParagraphAlignment(vcenter ? DWRITE_PARAGRAPH_ALIGNMENT_CENTER : DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
-    f->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+    f->SetWordWrapping(wrap ? DWRITE_WORD_WRAPPING_WRAP : DWRITE_WORD_WRAPPING_NO_WRAP);
     ComPtr<IDWriteInlineObject> ell;
     if (SUCCEEDED(S.dw->CreateEllipsisTrimmingSign(f.Get(), &ell))) {
         DWRITE_TRIMMING t{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
@@ -214,9 +217,10 @@ void Frame::fillCircle(float cx, float cy, float radius, D2D1_COLOR_F c) {
     dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx, cy), radius, radius), S.brush.Get());
 }
 
-void Frame::text(const std::wstring& s, D2D1_RECT_F r, float size, bool bold, D2D1_COLOR_F c, Align align, bool vcenter) {
+void Frame::text(const std::wstring& s, D2D1_RECT_F r, float size, bool bold, D2D1_COLOR_F c, Align align, bool vcenter,
+                 bool wrap) {
     if (!dc || s.empty()) return;
-    IDWriteTextFormat* f = format(size, bold, align, vcenter);
+    IDWriteTextFormat* f = format(size, bold, align, vcenter && !wrap, wrap);
     if (!f) return;
     S.brush->SetColor(c);
     dc->DrawText(s.c_str(), (UINT32)s.size(), f, r, S.brush.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP, DWRITE_MEASURING_MODE_NATURAL);

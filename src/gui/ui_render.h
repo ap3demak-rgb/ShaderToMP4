@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
 // Rendu anti-crenele de l'interface : Direct2D (formes, degrades, icones SVG) et DirectWrite (texte).
 // Chaque element dessine dans un tampon (Frame) qui est ensuite copie vers la fenetre.
 #pragma once
@@ -33,7 +36,7 @@ struct Frame {
     void fillRoundGradient(D2D1_RECT_F r, float radius, D2D1_COLOR_F a, D2D1_COLOR_F b);  // diagonale a -> b
     void fillCircle(float cx, float cy, float radius, D2D1_COLOR_F c);
     void text(const std::wstring& s, D2D1_RECT_F r, float size, bool bold, D2D1_COLOR_F c, Align align = Left,
-              bool vcenter = true);
+              bool vcenter = true, bool wrap = false);  // wrap : retour à la ligne automatique (haut du rectangle)
     // Icone SVG : tint = true recolore (fill et stroke de la racine) avec la couleur c ; sinon couleurs d'origine.
     void icon(int resId, D2D1_RECT_F r, bool tint, D2D1_COLOR_F c);
 
