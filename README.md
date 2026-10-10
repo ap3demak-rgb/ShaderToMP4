@@ -1,57 +1,112 @@
-# ShaderToMP4
+<p align="center">
+  <img src="docs/banner.svg" alt="ShaderToMP4 : transforme un shader Shadertoy en vidéo, image par image" width="100%">
+</p>
 
-Convertit un shader [Shadertoy](https://www.shadertoy.com) (onglet *Image*) en vidéo, image par image, avec un temps exact (`iTime = image / fps`) : pas de saccades, pas de capture d'écran. Windows uniquement, un seul `.exe` (OpenGL 3.3 + `ffmpeg.exe`).
+<p align="center">
+  <a href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest"><img alt="Télécharger" src="https://img.shields.io/badge/T%C3%A9l%C3%A9charger-Windows%2064%20bits-465AFF?style=for-the-badge&logo=windows&logoColor=white"></a>
+</p>
 
-![Interface de ShaderToMP4](docs/interface.png)
+<p align="center">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.1.0-FF5A96?style=flat-square">
+  <img alt="Plateforme" src="https://img.shields.io/badge/plateforme-Windows%2010%20%2F%2011-0078D4?style=flat-square&logo=windows&logoColor=white">
+  <img alt="Langage" src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white">
+  <img alt="OpenGL" src="https://img.shields.io/badge/OpenGL-3.3-5586A4?style=flat-square&logo=opengl&logoColor=white">
+  <a href="LICENSE"><img alt="Licence" src="https://img.shields.io/badge/licence-GPL--3.0-3DDC97?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/demo.gif" alt="Rendu d'un shader plasma" width="520">
+</p>
+
+**ShaderToMP4** convertit un shader [Shadertoy](https://www.shadertoy.com) (onglet *Image*) en vidéo **image par image**, avec un temps exact (`iTime = image / fps`). Pas de capture d'écran, donc pas de saccades, pas de perte, quelle que soit la puissance de ta carte graphique : un shader qui tourne à 5 images par seconde en direct donne une vidéo parfaitement fluide.
+
+Un seul exécutable Windows, sans installation, avec une interface sombre moderne.
+
+---
+
+## Pourquoi ShaderToMP4 ?
+
+| | |
+|---|---|
+| **Temps exact** | Chaque image est rendue au temps `n / fps`, puis envoyée directement à ffmpeg par un tube : aucun fichier intermédiaire. |
+| **Qualité maximale** | Jusqu'à 16384 pixels de large, supersampling ×4, flou de mouvement (×4, ×8, ×16), conversion colorimétrique BT.709 correcte, encodage x264 / x265 sans perte si tu veux. |
+| **Rapide** | Rendu et encodage en parallèle, lecture GPU asynchrone, encodage matériel NVENC, AMF ou QuickSync en option. |
+| **Fiable** | Les longs rendus se font par parties : si quelque chose plante, tu reprends exactement où tu t'étais arrêté. |
+| **Pratique** | Aperçu intégré, préréglages (YouTube, 4K, vertical 9:16), audio avec fondus, boucle parfaite, file d'attente de plusieurs shaders, pause et annulation. |
+| **Léger** | Aucune dépendance à installer : Win32, OpenGL et Direct2D. `ffmpeg.exe` est téléchargé automatiquement au premier lancement. |
+
+## Aperçu de l'interface
+
+<p align="center">
+  <img src="docs/screenshots/termine.png" alt="Interface de ShaderToMP4 après un rendu" width="860">
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/vide.png" alt="Zone de dépôt illustrée"></td>
+    <td width="50%"><img src="docs/screenshots/rendu.png" alt="Rendu en cours, avec progression"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Glisse tes shaders</b> dans la zone de dépôt, ou clique sur « Ajouter ».</sub></td>
+    <td align="center"><sub><b>Rendu en cours</b> : vitesse, temps restant, pause et annulation. La progression s'affiche aussi dans la barre des tâches.</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screenshots/reglages.png" alt="Panneau des réglages vidéo" width="860"><br>
+  <sub>Tous les réglages vidéo au même endroit, avec des <b>préréglages en un clic</b> (Brouillon, YouTube, 4K 60, Vertical) et une info-bulle sur chaque champ.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/liste-apercu.png" alt="Liste des shaders et aperçu" width="860"><br>
+  <sub>La file d'attente avec le statut de chaque shader, et un <b>aperçu</b> à l'instant de ton choix, sans lancer ffmpeg.</sub>
+</p>
+
+## Exemples
+
+Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : plasma, anneaux, tunnel et aurore.
+
+<p align="center">
+  <img src="docs/screenshots/galerie.png" alt="Galerie : plasma, anneaux, tunnel, aurore" width="860">
+</p>
 
 ## Démarrage rapide
 
-1. Lance `bin\ShaderToMP4.exe` (ou `ShaderToMP4.exe` si tu l'as copié ailleurs). Si `ffmpeg.exe` est absent, le programme propose de le télécharger (environ 80 Mo, depuis gyan.dev, vérifié par SHA-256) et de l'installer à côté de lui. Tu peux aussi le poser à la main dans le même dossier.
-2. Glisse un ou plusieurs fichiers shader (`.txt` ou `.glsl`) dans la fenêtre, ou clique sur **Ajouter...**
-3. Règle la vidéo dans le panneau **Réglages vidéo**, puis clique sur **Démarrer**.
-4. La vidéo est créée à côté du shader (ou dans le dossier choisi dans **Sortie**). Double-clic sur un fichier terminé pour la lire, **Dossier** pour l'ouvrir dans l'explorateur.
+1. **Télécharge** la dernière version depuis la page [Releases](https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest) et décompresse l'archive (ou [compile le projet](#compiler)).
+2. Lance `ShaderToMP4.exe`. Si `ffmpeg.exe` est absent, le programme propose de le télécharger (environ 80 Mo depuis [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), vérifié par SHA-256) et l'installe à côté de lui.
+3. **Glisse** un ou plusieurs fichiers shader (`.glsl` ou `.txt`) dans la fenêtre, ou clique sur **Ajouter**.
+4. Règle la vidéo (ou choisis un préréglage) puis clique sur **Démarrer**.
+5. La vidéo est créée à côté du shader, ou dans le dossier choisi dans **Sortie**. Double-clic sur un fichier terminé pour la lire.
 
-Glisser des fichiers directement sur `ShaderToMP4.exe` les ajoute et lance le rendu tout de suite.
+> Glisser des fichiers directement sur `ShaderToMP4.exe` les ajoute et lance le rendu tout de suite.
 
-## L'interface
+**Prérequis** : Windows 10 (version 1703 ou plus récente) ou Windows 11, et une carte graphique compatible OpenGL 3.3.
 
-Interface sombre à mise à l'échelle automatique (DPI), dessinée avec Direct2D : icônes vectorielles SVG, cartes à coins arrondis, boutons à états (survol, appui, désactivé), progression également dans la barre des tâches.
+## Fonctions
 
-![Interface vide : zone de dépôt](docs/interface-vide.png)
+<details>
+<summary><b>Les boutons et les raccourcis</b></summary>
 
-- **Préréglages rapides** (en haut à droite des réglages) : *Brouillon* (720p30, rapide), *YouTube* (1080p60, H.264), *4K 60* (H.265), *Vertical* (1080×1920). Ils ne changent que la taille, les images par seconde et la qualité ; le reste est conservé.
-- **Animations** : fondu de 120 ms au survol des boutons ; la zone des shaders s'illumine quand tu y glisses des fichiers.
-- **Info-bulles** : passe la souris sur n'importe quel réglage pour une explication.
-- **Journal en couleurs** : erreurs en rouge, avertissements en orange, succès en vert.
-- La taille et la position de la fenêtre sont mémorisées (`window.ini`).
+| Bouton | Raccourci | Rôle |
+|---|---|---|
+| **Ajouter** | `Ctrl+O` | Ajouter des shaders à la file |
+| **Démarrer** | `F5` | Rend tous les fichiers de la liste qui ne sont pas déjà terminés |
+| **Pause** / **Reprendre** | `F6` | Suspend le rendu (le temps de pause n'est pas compté dans la vitesse) |
+| **Annuler** | `Échap` | Arrête le rendu ; les parties déjà terminées sont conservées |
+| **Image PNG** | | Rend une seule image, au temps « Début », et l'ouvre |
+| **Aperçu** et curseur | `Ctrl+P` | Affiche une image du shader à un instant choisi, sans ffmpeg |
+| **Retirer** | `Suppr` (dans la liste) | Retire les shaders sélectionnés |
+| **Dossier** | | Ouvre l'explorateur sur la vidéo du shader sélectionné |
+| **Profil / Enregistrer** | | Charge ou enregistre tous les réglages dans un fichier `.ini` |
 
-### Raccourcis clavier
+`Tab` passe d'un réglage au suivant.
 
-| Raccourci | Action |
-|---|---|
-| `Ctrl+O` | Ajouter des shaders |
-| `F5` | Démarrer le rendu |
-| `F6` | Pause / reprendre |
-| `Échap` | Annuler le rendu en cours |
-| `Ctrl+P` | Aperçu |
-| `Suppr` (dans la liste) | Retirer les shaders sélectionnés |
-| `Tab` | Passer d'un réglage au suivant |
+</details>
 
-## Les boutons
+<details>
+<summary><b>Tous les réglages</b> (fenêtre, <code>config.ini</code> ou commentaires du shader)</summary>
 
-| Bouton | Rôle |
-|---|---|
-| **Démarrer** | Rend tous les fichiers de la liste qui ne sont pas déjà terminés |
-| **Pause** / **Reprendre** | Suspend le rendu (le temps de pause n'est pas compté dans la vitesse) |
-| **Annuler** | Arrête le rendu. Les parties déjà terminées sont conservées (voir *Reprise*) |
-| **Image PNG** | Rend une seule image, au temps « Début », du fichier sélectionné, et l'ouvre |
-| **Aperçu** et curseur | Affiche dans la fenêtre une image du shader à un instant choisi (de « Début » à « Début + Durée »), sans lancer ffmpeg |
-| **Dossier** | Ouvre l'explorateur sur la vidéo du fichier sélectionné |
-| **Profil... / Enregistrer...** | Charge ou enregistre l'ensemble des réglages dans un fichier `.ini` |
-
-## Les réglages
-
-Tous les réglages se font dans la fenêtre, sont enregistrés dans `config.ini` à côté du `.exe` (à chaque rendu et à la fermeture), et peuvent être imposés **par shader** avec un commentaire :
+Les réglages sont enregistrés dans `config.ini` à côté du `.exe`, et peuvent être imposés **par shader** avec un commentaire (prioritaire sur la fenêtre ; le journal le signale) :
 
 ```glsl
 // fps=30
@@ -60,8 +115,6 @@ Tous les réglages se font dans la fenêtre, sont enregistrés dans `config.ini`
 // height=2160
 void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 ```
-
-Les commentaires du shader sont prioritaires sur la fenêtre (le journal le signale).
 
 | Réglage (fenêtre) | Clé | Valeurs |
 |---|---|---|
@@ -85,31 +138,42 @@ Les commentaires du shader sont prioritaires sur la fenêtre (le journal le sign
 | (config.ini seulement) | `pbo` | profondeur de la file de lecture GPU (2 à 8, 3 par défaut) |
 | (config.ini seulement) | `gpu` | `auto`, `high`, `low` : GPU préféré de Windows (PC à deux cartes) |
 
-## Reprise après interruption
+</details>
+
+<details>
+<summary><b>Reprise après interruption</b></summary>
 
 Les vidéos plus longues que `chunk` secondes sont rendues par parties, dans un dossier `<nom>.parts` à côté de la vidéo. Si le rendu est annulé, plante ou échoue, les parties terminées restent : relance le même rendu **avec les mêmes réglages** et il reprend où il s'était arrêté, puis assemble les parties (copie des flux, sans réencodage). Si le shader ou un réglage a changé, les anciennes parties sont jetées.
 
-## Limites
+</details>
 
-- Seul l'onglet *Image* est supporté : `iChannel0-3` (textures, buffers, multipasse), `iMouse` (fixe à 0) et le son Shadertoy ne le sont pas. Un shader qui les utilise s'affiche avec un avertissement et un rendu noir pour ces entrées.
-- Un GPU compatible OpenGL 3.3 et Windows 10 (version 1703) ou plus récent (rendu SVG de Direct2D) sont nécessaires.
-- Le choix du GPU (`gpu=high|low`) et les encodeurs AMD et Intel n'ont pas été testés sur du matériel réel.
+<details>
+<summary><b>Ligne de commande</b></summary>
 
-## Auto-test
+| Commande | Effet |
+|---|---|
+| `ShaderToMP4.exe a.glsl b.glsl` | Ajoute les fichiers et lance le rendu |
+| `ShaderToMP4.exe --selftest [--update] [--quiet]` | Auto-test (voir plus bas) |
+| `ShaderToMP4.exe --get-ffmpeg [--quiet]` | Télécharge et installe `ffmpeg.exe` sans ouvrir la fenêtre |
 
-`scripts\test.bat` rend les shaders du dossier `tests` en 64×64 (à t = 1 s) et les compare à leurs images de référence `.ref` (écart moyen toléré : 2/255). Le rapport est dans `tests\report.txt` et le code de sortie vaut 0 si tout passe. Les références dépendent du GPU et du pilote : après un changement volontaire du rendu ou de matériel, régénère-les avec `scripts\test.bat --update`.
+</details>
 
-## Organisation du projet
+## Questions fréquentes
 
-```
-bin/        ShaderToMP4.exe (résultat de la compilation), ffmpeg.exe, config.ini, window.ini : le dossier à utiliser
-src/        code source : main.cpp, core/ (moteur de rendu, sans interface), gui/ (fenêtre et rendu Direct2D)
-res/        icône (app.ico), informations de version, manifeste (DPI, thème) et icônes SVG (icons/) : app.rc
-scripts/    build.bat (compiler), test.bat (auto-test)
-tests/      shaders de référence et leurs images .ref
-docs/       capture d'écran, LISEZMOI.txt (résumé)
-build/      fichiers objets (générés)
-```
+**Quels shaders Shadertoy sont supportés ?**
+Ceux qui n'utilisent que l'onglet *Image* et les entrées `iResolution`, `iTime`, `iTimeDelta`, `iFrame`, `iFrameRate`, `iDate`. Copie le code dans un fichier `.glsl` : la fonction `mainImage` suffit.
+
+**Et les textures, les buffers, le son ou la souris ?**
+Pas encore : `iChannel0` à `iChannel3` (textures, buffers, multipasse), `iMouse` (fixe à 0) et le son Shadertoy ne sont pas supportés. Un shader qui les utilise s'affiche avec un avertissement et un rendu noir pour ces entrées.
+
+**Pourquoi pas une simple capture d'écran ?**
+Une capture dépend de la vitesse de ton PC : si le shader est lourd, la vidéo saccade. Ici chaque image est rendue au temps exact, aussi lentement que nécessaire.
+
+**Mon rendu est long, que faire ?**
+Essaie l'encodeur matériel (`Encodeur : Auto`), un preset plus rapide, ou le préréglage *Brouillon* pour tester. Le journal indique si le goulot est le GPU ou l'encodeur.
+
+**Où est `ffmpeg.exe` ?**
+Il est téléchargé au premier lancement à côté de `ShaderToMP4.exe`. Tu peux aussi le placer toi-même dans le même dossier, ou le garder dans ton `PATH`.
 
 ## Compiler
 
@@ -119,21 +183,39 @@ Avec les Build Tools de Visual Studio (le chemin de `vcvars64.bat` est écrit da
 .\scripts\build.bat
 ```
 
-Cela compile `res\app.rc` (icône, informations de version) puis tous les fichiers de `src` vers `bin\ShaderToMP4.exe`. Avec MinGW-w64 (non testé ; le rendu SVG de Direct2D demande des en-têtes MinGW récents) :
+Cela compile les ressources (manifeste, icône, icônes SVG, informations de version) puis tous les fichiers de `src` vers `bin\ShaderToMP4.exe`.
+
+<details>
+<summary>MinGW-w64 (non testé)</summary>
+
+Le rendu SVG de Direct2D demande des en-têtes MinGW récents.
 
 ```
 g++ -std=c++17 -O2 -finput-charset=UTF-8 -municode -mwindows -static -I src -o bin/ShaderToMP4.exe src/main.cpp src/core/*.cpp src/gui/*.cpp -lopengl32 -lgdi32 -luser32 -lcomctl32 -lcomdlg32 -lshell32 -ladvapi32 -lwininet -ld2d1 -ld3d11 -ldxgi -ldwrite -lshlwapi -luxtheme -ldwmapi -lole32
 ```
 
-Le numéro de version est dans `src\version.h` (affiché dans le titre de la fenêtre, le journal et les propriétés de l'exe).
+</details>
 
-## Ligne de commande
+### Organisation du projet
 
-| Commande | Effet |
-|---|---|
-| `ShaderToMP4.exe a.glsl b.glsl` | Ajoute les fichiers et lance le rendu |
-| `ShaderToMP4.exe --selftest [--update] [--quiet]` | Auto-test (voir plus haut) |
-| `ShaderToMP4.exe --get-ffmpeg [--quiet]` | Télécharge et installe `ffmpeg.exe` sans ouvrir la fenêtre |
+```
+src/        code source : main.cpp, core/ (moteur de rendu, sans interface), gui/ (fenêtre et rendu Direct2D)
+res/        manifeste (DPI, thème), icône, informations de version, icônes SVG (icons/)
+scripts/    build.bat (compiler), test.bat (auto-test)
+tests/      shaders de référence et leurs images .ref
+examples/   shaders d'exemple
+docs/       bannière et captures d'écran
+bin/        dossier de travail : ShaderToMP4.exe (généré), ffmpeg.exe, config.ini
+```
+
+### Auto-test
+
+`scripts\test.bat` rend les shaders du dossier `tests` en 64×64 (à t = 1 s) et les compare à leurs images de référence `.ref` (écart moyen toléré : 2/255). Le rapport est dans `tests\report.txt` et le code de sortie vaut 0 si tout passe. Les références dépendent du GPU et du pilote : après un changement volontaire du rendu ou de matériel, régénère-les avec `scripts\test.bat --update`.
+
+### Limites connues
+
+- Le choix du GPU (`gpu=high|low`) et les encodeurs AMD et Intel n'ont pas été testés sur du matériel réel.
+- L'interface est réglée pour s'adapter au DPI de l'écran, mais n'a été vérifiée qu'à 100 %.
 
 ## Licence
 
