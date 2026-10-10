@@ -58,18 +58,17 @@ jobs:
           export HOME="$(mktemp -d)"
           bin/ShaderToMP4 --get-ffmpeg --quiet
           mkdir -p e2e
-          { printf '// width=320
-// height=180
-// fps=30
-// duration=2
-// chunk=1
-'; cat examples/plasma.glsl; } > e2e/chunked.glsl
-          { printf '// width=320
-// height=180
-// fps=30
-// duration=1
-// chunk=0
-'; cat examples/plasma.glsl; } > e2e/single.glsl
+          for spec in "chunked 2 1" "single 1 0"; do
+            set -- $spec
+            {
+              echo "// width=320"
+              echo "// height=180"
+              echo "// fps=30"
+              echo "// duration=$2"
+              echo "// chunk=$3"
+              cat examples/plasma.glsl
+            } > "e2e/$1.glsl"
+          done
           xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --render e2e/chunked.glsl e2e/single.glsl
           for f in chunked single; do bin/ffmpeg -hide_banner -i "e2e/$f.mp4" 2>&1 | grep -E "Duration|Video:"; done
           test ! -d e2e/chunked.parts
