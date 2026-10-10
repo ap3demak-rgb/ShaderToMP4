@@ -358,6 +358,8 @@ bool httpGet(const std::wstring& url, const std::function<bool(const uint8_t*, s
 // --- OpenGL (GLFW) -------------------------------------------------------------------------------------------------
 namespace {
 GLFWwindow* g_shared = nullptr;
+std::string g_glfwError;  // dernier message de GLFW, joint aux erreurs de création de contexte
+void onGlfwError(int, const char* description) { g_glfwError = description ? description : ""; }
 struct PosixGL {
     GLFWwindow* win = nullptr;
     bool owned = false;
@@ -372,7 +374,8 @@ bool createGLContext(void*& ctx, std::wstring& err) {
     if (g_shared) {
         c->win = g_shared;
     } else {
-        if (!glfwInit()) { err = TX("error.gl_window"); return false; }
+        glfwSetErrorCallback(onGlfwError);
+        if (!glfwInit()) { err = TX("error.gl_window") + L" (" + W(g_glfwError) + L")"; return false; }
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -380,7 +383,7 @@ bool createGLContext(void*& ctx, std::wstring& err) {
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
         c->win = glfwCreateWindow(64, 64, "ShaderToMP4", nullptr, nullptr);
         c->owned = true;
-        if (!c->win) { err = TX("error.gl_core"); return false; }
+        if (!c->win) { err = TX("error.gl_core") + L" (" + W(g_glfwError) + L")"; return false; }
     }
     glfwMakeContextCurrent(c->win);
     return true;
