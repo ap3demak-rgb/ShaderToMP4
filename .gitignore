@@ -1,0 +1,7 @@
+# Sorties de compilation et fichiers propres a chaque poste
+build/
+bin/*
+!bin/.gitkeep
+tests/report.txt
+*.parts/
+*.mp4

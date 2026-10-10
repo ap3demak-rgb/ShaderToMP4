@@ -1,0 +1,17 @@
+// Encodeurs ffmpeg (CPU ou materiel) et espaces colorimetriques.
+#pragma once
+#include "common.h"
+#include "hooks.h"
+#include "settings.h"
+
+struct ColorSpec {
+    const wchar_t* range;   // tv | pc
+    const wchar_t* matrix;  // matrice RGB -> YUV
+    const wchar_t* tags;    // etiquettes ffmpeg (espace, primaires, transfert)
+};
+ColorSpec colorSpec(const std::string& c);
+
+// Choisit l'encodeur reellement utilisable : "cpu", "nvenc", "amf" ou "qsv" (sonde ffmpeg, repli sur le CPU).
+std::string resolveEncoder(const Settings& s, const std::wstring& ffmpeg, const Hooks& H);
+// Arguments ffmpeg (-c:v ..., qualite, preset) pour l'encodeur resolu.
+std::wstring encoderArgs(const Settings& s, const std::string& enc);

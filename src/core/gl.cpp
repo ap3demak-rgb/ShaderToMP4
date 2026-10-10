@@ -1,0 +1,163 @@
+#include "gl.h"
+#include "util.h"
+
+namespace ogl {
+#define F(r, n, a) PFN_##n n = nullptr;
+GL_FUNCS(F)
+#undef F
+
+bool load() {
+    bool ok = true;
+#define F(r, n, a)                                          \
+    n = (PFN_##n)(void*)wglGetProcAddress("gl" #n);         \
+    if (!n) ok = false;
+    GL_FUNCS(F)
+#undef F
+    return ok;
+}
+}  // namespace ogl
+
+void destroyGLContext(GLContext& c) {
+    if (c.rc) {
+        wglMakeCurrent(nullptr, nullptr);
+        wglDeleteContext(c.rc);
+    }
+    if (c.wnd) {
+        if (c.dc) ReleaseDC(c.wnd, c.dc);
+        DestroyWindow(c.wnd);
+    }
+    c = GLContext{};
+}
+
+bool createGLContext(GLContext& c, std::wstring& err) {
+    HINSTANCE hi = GetModuleHandleW(nullptr);
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = DefWindowProcW;
+    wc.hInstance = hi;
+    wc.lpszClassName = L"ShaderToMP4Hidden";
+    RegisterClassW(&wc);  // echoue sans gravite si deja enregistree
+    c.wnd = CreateWindowExW(0, wc.lpszClassName, L"ShaderToMP4", WS_OVERLAPPEDWINDOW, 0, 0, 64, 64,
+                            nullptr, nullptr, hi, nullptr);
+    if (!c.wnd) { err = L"Impossible de creer la fenetre OpenGL."; return false; }
+    c.dc = GetDC(c.wnd);
+
+    PIXELFORMATDESCRIPTOR pfd{};
+    pfd.nSize = sizeof(pfd);
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.cColorBits = 32;
+    int pf = ChoosePixelFormat(c.dc, &pfd);
+    if (!pf || !SetPixelFormat(c.dc, pf, &pfd)) { err = L"Format de pixel OpenGL indisponible."; return false; }
+
+    HGLRC tmp = wglCreateContext(c.dc);
+    c.rc = tmp;
+    if (!tmp || !wglMakeCurrent(c.dc, tmp)) { err = L"Impossible de creer le contexte OpenGL."; return false; }
+
+    typedef HGLRC(WINAPI * PFN_CCA)(HDC, HGLRC, const int*);
+    PFN_CCA cca = (PFN_CCA)(void*)wglGetProcAddress("wglCreateContextAttribsARB");
+    if (!cca) { err = L"OpenGL 3.3 requis (pilote graphique trop ancien ?)."; return false; }
+    const int attr[] = {0x2091, 3, 0x2092, 3, 0x9126, 0x1, 0};  // 3.3 core
+    HGLRC rc = cca(c.dc, nullptr, attr);
+    wglMakeCurrent(nullptr, nullptr);
+    wglDeleteContext(tmp);
+    c.rc = nullptr;
+    if (!rc || !wglMakeCurrent(c.dc, rc)) { err = L"OpenGL 3.3 core indisponible. Mets a jour le pilote graphique."; return false; }
+    c.rc = rc;
+    if (!ogl::load()) { err = L"Fonctions OpenGL manquantes (pilote trop ancien ?)."; return false; }
+    return true;
+}
+
+static GLuint compileShader(GLenum type, const std::string& src, std::wstring& err) {
+    GLuint sh = ogl::CreateShader(type);
+    const char* p = src.c_str();
+    ogl::ShaderSource(sh, 1, &p, nullptr);
+    ogl::CompileShader(sh);
+    GLint ok = 0;
+    ogl::GetShaderiv(sh, ogl::K_COMPILE_STATUS, &ok);
+    if (!ok) {
+        char log[4096] = {0};
+        ogl::GetShaderInfoLog(sh, sizeof(log) - 1, nullptr, log);
+        err = L"Erreur de compilation du shader :\n" + W(log);
+        ogl::DeleteShader(sh);
+        return 0;
+    }
+    return sh;
+}
+
+GLuint buildProgram(const std::string& userCode, std::wstring& err) {
+    const std::string vs =
+        "#version 330 core\n"
+        "void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);"
+        " gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n";
+
+    const std::string fs =
+        "#version 330 core\n"
+        "uniform vec3  iResolution;\n"
+        "uniform float iTime;\n"
+        "uniform float iTimeDelta;\n"
+        "uniform int   iFrame;\n"
+        "uniform float iFrameRate;\n"
+        "uniform vec4  iMouse;\n"
+        "uniform vec4  iDate;\n"
+        "uniform float iSampleRate;\n"
+        "uniform float st_weight;\n"
+        "uniform sampler2D iChannel0;\n"
+        "uniform sampler2D iChannel1;\n"
+        "uniform sampler2D iChannel2;\n"
+        "uniform sampler2D iChannel3;\n"
+        "out vec4 st_outColor;\n"
+        "#line 1\n" +
+        userCode +
+        "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy);"
+        " st_outColor = vec4(c.rgb * st_weight, 1.0); }\n";
+
+    GLuint v = compileShader(ogl::K_VERTEX_SHADER, vs, err);
+    if (!v) return 0;
+    GLuint f = compileShader(ogl::K_FRAGMENT_SHADER, fs, err);
+    if (!f) return 0;
+    GLuint prog = ogl::CreateProgram();
+    ogl::AttachShader(prog, v);
+    ogl::AttachShader(prog, f);
+    ogl::LinkProgram(prog);
+    ogl::DeleteShader(v);
+    ogl::DeleteShader(f);
+    GLint ok = 0;
+    ogl::GetProgramiv(prog, ogl::K_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[4096] = {0};
+        ogl::GetProgramInfoLog(prog, sizeof(log) - 1, nullptr, log);
+        err = L"Erreur d'edition de liens :\n" + W(log);
+        return 0;
+    }
+    return prog;
+}
+
+GLuint buildPresentProgram(std::wstring& err) {
+    const std::string vs =
+        "#version 330 core\n"
+        "void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);"
+        " gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n";
+    const std::string fs =
+        "#version 330 core\n"
+        "uniform sampler2D st_tex;\n"
+        "out vec4 st_o;\n"
+        "void main(){ st_o = vec4(texelFetch(st_tex, ivec2(gl_FragCoord.xy), 0).rgb, 1.0); }\n";
+    GLuint v = compileShader(ogl::K_VERTEX_SHADER, vs, err);
+    if (!v) return 0;
+    GLuint f = compileShader(ogl::K_FRAGMENT_SHADER, fs, err);
+    if (!f) return 0;
+    GLuint prog = ogl::CreateProgram();
+    ogl::AttachShader(prog, v);
+    ogl::AttachShader(prog, f);
+    ogl::LinkProgram(prog);
+    ogl::DeleteShader(v);
+    ogl::DeleteShader(f);
+    GLint ok = 0;
+    ogl::GetProgramiv(prog, ogl::K_LINK_STATUS, &ok);
+    if (!ok) {
+        err = L"Erreur d'edition de liens (programme de recopie).";
+        return 0;
+    }
+    return prog;
+}
