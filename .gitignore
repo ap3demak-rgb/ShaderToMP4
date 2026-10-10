@@ -7,3 +7,4 @@ tests/report.txt
 *.mp4
 build-cmake/
 _deps/
+dist/

@@ -9,6 +9,8 @@ namespace ui {
 
 // Texture OpenGL (blanc sur fond transparent, à teinter) de l'icône « name » (sans extension) à px pixels. 0 si introuvable.
 unsigned iconTexture(const char* name, int px);
+// Rastérise une icône en pixels RGBA (sans OpenGL). Les couleurs du SVG sont conservées.
+bool rasterizeIcon(const char* name, int px, std::vector<uint8_t>& rgba, int& w, int& h);
 // Crée ou met à jour une texture à partir de pixels BGRA ; renvoie son identifiant.
 unsigned uploadBGRA(unsigned texture, int w, int h, const uint8_t* bgra);
 void freeTextures();

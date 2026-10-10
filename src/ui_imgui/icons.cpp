@@ -30,25 +30,33 @@ unsigned makeTexture(int w, int h, const uint8_t* rgba, unsigned existing) {
 }
 }  // namespace
 
+bool rasterizeIcon(const char* name, int px, std::vector<uint8_t>& rgba, int& w, int& h) {
+    std::string svg;
+    if (!platform::embeddedData((std::string("icons/") + name + ".svg").c_str(), svg)) return false;
+    svg.push_back('\0');  // nsvgParse modifie et exige une chaîne terminée
+    NSVGimage* img = nsvgParse(&svg[0], "px", 96.0f);
+    if (!img) return false;
+    bool ok = false;
+    const float scale = (float)px / std::max(img->width, img->height);
+    w = std::max(1, (int)std::ceil(img->width * scale));
+    h = std::max(1, (int)std::ceil(img->height * scale));
+    if (NSVGrasterizer* rast = nsvgCreateRasterizer()) {
+        rgba.assign((size_t)w * h * 4, 0);
+        nsvgRasterize(rast, img, 0, 0, scale, rgba.data(), w, h, w * 4);
+        nsvgDeleteRasterizer(rast);
+        ok = true;
+    }
+    nsvgDelete(img);
+    return ok;
+}
+
 unsigned iconTexture(const char* name, int px) {
     auto key = std::make_pair(std::string(name), px);
     auto it = cache().find(key);
     if (it != cache().end()) return it->second;
-    std::string svg;
-    if (!platform::embeddedData((std::string("icons/") + name + ".svg").c_str(), svg)) return 0;
-    svg.push_back('\0');  // nsvgParse modifie et exige une chaîne terminée
-    NSVGimage* img = nsvgParse(&svg[0], "px", 96.0f);
-    if (!img) return 0;
-    unsigned tex = 0;
-    const float scale = (float)px / std::max(img->width, img->height);
-    const int w = std::max(1, (int)std::ceil(img->width * scale)), h = std::max(1, (int)std::ceil(img->height * scale));
-    if (NSVGrasterizer* rast = nsvgCreateRasterizer()) {
-        std::vector<uint8_t> pixels((size_t)w * h * 4, 0);
-        nsvgRasterize(rast, img, 0, 0, scale, pixels.data(), w, h, w * 4);
-        tex = makeTexture(w, h, pixels.data(), 0);
-        nsvgDeleteRasterizer(rast);
-    }
-    nsvgDelete(img);
+    std::vector<uint8_t> pixels;
+    int w = 0, h = 0;
+    const unsigned tex = rasterizeIcon(name, px, pixels, w, h) ? makeTexture(w, h, pixels.data(), 0) : 0;
     cache()[key] = tex;
     return tex;
 }

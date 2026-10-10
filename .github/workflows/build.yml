@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Patrick JAILLET
+#
+# Compile et teste sur Windows, Linux (x86-64 et ARM64) et macOS ; fabrique les archives portables.
+# Un tag « v* » publie en plus une version GitHub avec les archives et leurs sommes SHA-256.
 name: build
 
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -22,41 +26,89 @@ jobs:
       - name: Repository checks
         shell: pwsh
         run: ./scripts/check-repo.ps1
+      - name: Package
+        shell: pwsh
+        run: ./scripts/package-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-windows
+          path: dist/*.zip
 
   linux:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x86_64
+          - runner: ubuntu-22.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - name: Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y xorg-dev libgl1-mesa-dev libgl1-mesa-dri xvfb libxkbcommon-dev libwayland-dev wayland-protocols
+          sudo apt-get install -y ninja-build xorg-dev libgl1-mesa-dev libgl1-mesa-dri xvfb libxkbcommon-dev libwayland-dev wayland-protocols
       - name: Build
-        run: |
-          cmake -S . -B build-cmake -G Ninja
-          cmake --build build-cmake
+        run: ./scripts/build.sh -G Ninja
       - name: Self-test (Mesa software rendering)
-        run: xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --selftest --quiet
+        run: xvfb-run -a -s "-screen 0 1280x800x24" ./scripts/test.sh
       - name: Window screenshots
         run: |
           mkdir -p shots
-          xvfb-run -a -s "-screen 0 1280x960x24" bin/ShaderToMP4 --screenshot shots/linux-main.png examples/*.glsl
-          xvfb-run -a -s "-screen 0 1280x960x24" bin/ShaderToMP4 --screenshot-about shots/linux-about.png
+          xvfb-run -a -s "-screen 0 1280x960x24" bin/ShaderToMP4 --screenshot shots/linux-main-en.png examples/*.glsl
+          xvfb-run -a -s "-screen 0 1280x960x24" bin/ShaderToMP4 --screenshot-about shots/linux-about-en.png
+          LC_ALL=fr_FR.UTF-8 xvfb-run -a -s "-screen 0 1280x960x24" bin/ShaderToMP4 --screenshot shots/linux-main-fr.png examples/*.glsl
+          LC_ALL=fr_FR.UTF-8 xvfb-run -a -s "-screen 0 1280x960x24" bin/ShaderToMP4 --screenshot-about shots/linux-about-fr.png
+      - name: Package
+        run: ./scripts/package-linux.sh ${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
         with:
-          name: screenshots-linux
+          name: package-linux-${{ matrix.arch }}
+          path: dist/*.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-linux-${{ matrix.arch }}
           path: shots/*.png
 
   macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build
-        run: |
-          cmake -S . -B build-cmake -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
-          cmake --build build-cmake
+      - name: Build (universal arm64 + x86_64)
+        run: ./scripts/build.sh -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
       - name: Smoke test
         # Hosted macOS runners have no GPU (no OpenGL 3.3 pixel format): rendering is checked on Linux and Windows only.
         run: |
           lipo -info bin/ShaderToMP4
           bin/ShaderToMP4 --version
+      - name: Package
+        run: ./scripts/package-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-macos
+          path: dist/*.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum *.zip *.tar.gz > SHA256SUMS.txt
+          cd ..
+          cat .github/release-notes.md .github/release-notes.fr.md > notes.md
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/*.tar.gz dist/SHA256SUMS.txt \
+            --title "ShaderToMP4 ${GITHUB_REF_NAME#v}" --notes-file notes.md

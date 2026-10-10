@@ -701,6 +701,13 @@ void setScreenshotRequest(const std::string& path, bool about) {
     g_shotAbout = about;
 }
 
+// Écrit le logo en PNG (icône des paquets) : ShaderToMP4 --export-logo <taille> <fichier.png>
+bool exportLogo(int size, const std::string& path) {
+    std::vector<uint8_t> rgba;
+    int w = 0, h = 0;
+    return ui::rasterizeIcon("logo", size, rgba, w, h) && ui::writePng(W(path), w, h, rgba);
+}
+
 int runGui(const std::wstring& exeDir, const std::vector<std::wstring>& files) {
     using namespace ui;
     const std::string saved = readSavedLanguage(exeDir);
