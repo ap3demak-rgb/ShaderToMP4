@@ -85,6 +85,12 @@ bool listDir(const std::wstring& path, std::vector<DirEntry>& out) {
     return true;
 }
 
+std::wstring homeDir() {
+    wchar_t b[MAX_PATH * 2];
+    DWORD n = GetEnvironmentVariableW(L"USERPROFILE", b, MAX_PATH * 2);
+    return n > 0 && n < MAX_PATH * 2 ? std::wstring(b, n) : appDir();
+}
+
 wchar_t pathSeparator() { return L'\\'; }
 
 // --- Système -------------------------------------------------------------------------------------------------------

@@ -334,9 +334,9 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
             cmd = head;
             if (muxAudio) cmd += audioArgs;
             cmd += L" -vf \"vflip," + ssFilter + L"scale=in_range=full:out_range=" + cs.range +
-                   L":out_color_matrix=" + cs.matrix + L":flags=accurate_rnd+full_chroma_int,format=yuv420p\"";
+                   L":out_color_matrix=" + cs.matrix + L":flags=accurate_rnd+full_chroma_int," + encoderFormat(enc) + L"\"";
             if (muxAudio) cmd += L" -map 0:v -map 1:a -c:a aac -b:a 192k -af \"" + audioFilter + L"\" -shortest";
-            cmd += encoderArgs(s, enc) + L" -pix_fmt yuv420p " + cs.tags +
+            cmd += encoderArgs(s, enc) + encoderPixFmt(enc) + L" " + cs.tags +
                    (s.container == "mkv" ? L"" : L" -movflags +faststart") + L" \"" + dest + L"\"";
         }
 

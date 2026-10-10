@@ -50,7 +50,7 @@ else()
 
     add_executable(ShaderToMP4 src/main_posix.cpp ${CORE_SOURCES}
         src/platform/shared.cpp src/platform/posix/platform_posix.cpp src/platform/posix/sha256.cpp ${EMBED_CPP} ${UI_SOURCES})
-    target_include_directories(ShaderToMP4 PRIVATE src)
+    target_include_directories(ShaderToMP4 PRIVATE src ${UI_INCLUDE_DIRS})
     find_package(Threads REQUIRED)
     target_link_libraries(ShaderToMP4 PRIVATE glfw ${UI_LIBRARIES} Threads::Threads ${CMAKE_DL_LIBS})
     if(APPLE)

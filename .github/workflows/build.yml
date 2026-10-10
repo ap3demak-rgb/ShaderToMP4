@@ -19,7 +19,6 @@ jobs:
           cmake --build build-cmake --config Release
       - name: Self-test
         run: bin\ShaderToMP4.exe --selftest --quiet
-        continue-on-error: true  # no GPU on hosted runners: informational only
       - name: Repository checks
         shell: pwsh
         run: ./scripts/check-repo.ps1
@@ -38,6 +37,15 @@ jobs:
           cmake --build build-cmake
       - name: Self-test (Mesa software rendering)
         run: xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --selftest --quiet
+      - name: Window screenshots
+        run: |
+          mkdir -p shots
+          xvfb-run -a -s "-screen 0 1280x960x24" bin/ShaderToMP4 --screenshot shots/linux-main.png examples/*.glsl
+          xvfb-run -a -s "-screen 0 1280x960x24" bin/ShaderToMP4 --screenshot-about shots/linux-about.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-linux
+          path: shots/*.png
 
   macos:
     runs-on: macos-latest
@@ -49,4 +57,15 @@ jobs:
           cmake --build build-cmake
       - name: Self-test
         run: bin/ShaderToMP4 --selftest --quiet
+      - name: Window screenshots
         continue-on-error: true
+        run: |
+          mkdir -p shots
+          bin/ShaderToMP4 --screenshot shots/macos-main.png examples/*.glsl
+          bin/ShaderToMP4 --screenshot-about shots/macos-about.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots-macos
+          path: shots/*.png
+          if-no-files-found: ignore

@@ -25,6 +25,7 @@ struct DirEntry {
     bool isDir = false;
 };
 bool listDir(const std::wstring& path, std::vector<DirEntry>& out);  // noms seulement, sans « . » ni « .. »
+std::wstring homeDir();  // dossier personnel de l'utilisateur (point de départ des sélecteurs de fichiers)
 wchar_t pathSeparator();  // '\\' ou '/'
 
 // --- Système -------------------------------------------------------------------------------------------------------

@@ -37,6 +37,7 @@ int runGui(const std::wstring&, const std::vector<std::wstring>&) {
 }
 #else
 int runGui(const std::wstring& exeDir, const std::vector<std::wstring>& files);
+void setScreenshotRequest(const std::string& path, bool about);
 #endif
 
 int main(int argc, char** argv) {
@@ -55,6 +56,10 @@ int main(int argc, char** argv) {
         else if (a == "--get-ffmpeg") getFfmpeg = true;
         else if (a == "--version") version = true;
         else if (a == "--help" || a == "-h") help = true;
+#ifndef SHADERTOMP4_NO_UI
+        else if (a == "--screenshot" && i + 1 < argc) setScreenshotRequest(argv[++i], false);
+        else if (a == "--screenshot-about" && i + 1 < argc) setScreenshotRequest(argv[++i], true);
+#endif
         else files.push_back(W(a));
     }
     if (version || help) {

@@ -131,6 +131,11 @@ bool listDir(const std::wstring& path, std::vector<DirEntry>& out) {
     return true;
 }
 
+std::wstring homeDir() {
+    const char* h = getenv("HOME");
+    return h && *h ? W(h) : appDir();
+}
+
 wchar_t pathSeparator() { return L'/'; }
 
 // --- Système -------------------------------------------------------------------------------------------------------

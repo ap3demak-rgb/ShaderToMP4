@@ -258,5 +258,12 @@
   "cli.opt.help": "--help         Show this help",
   "error.direct2d": "Direct2D is unavailable: Windows 10 (version 1703) or newer is required.",
   "log.graphics_cards": "Graphics cards: %ls",
-  "log.missing_key": "Missing translation key: %ls"
+  "log.missing_key": "Missing translation key: %ls",
+  "ui.btn.ok": "OK",
+  "ui.btn.yes": "Yes",
+  "ui.btn.no": "No",
+  "ui.fb.up": "Up",
+  "ui.fb.home": "Home",
+  "ui.fb.hidden": "Show hidden files",
+  "ui.fb.select": "Select"
 }

@@ -14,7 +14,11 @@ struct ColorSpec {
 };
 ColorSpec colorSpec(const std::string& c);
 
-// Choisit l'encodeur reellement utilisable : "cpu", "nvenc", "amf" ou "qsv" (sonde ffmpeg, repli sur le CPU).
+// Encodeurs materiels connus : "nvenc", "amf", "qsv" (Windows, Linux), "vaapi" (Linux), "videotoolbox" (macOS).
+// Choisit l'encodeur reellement utilisable : "cpu" ou l'un d'eux (sonde ffmpeg, repli sur le CPU).
 std::string resolveEncoder(const Settings& s, const std::wstring& ffmpeg, const Hooks& H);
 // Arguments ffmpeg (-c:v ..., qualite, preset) pour l'encodeur resolu.
 std::wstring encoderArgs(const Settings& s, const std::string& enc);
+// Fin de la chaine de filtres (format envoye a l'encodeur) et option -pix_fmt de sortie.
+std::wstring encoderFormat(const std::string& enc);
+std::wstring encoderPixFmt(const std::string& enc);

@@ -29,17 +29,26 @@ static int presetIndex(const std::string& p) {
 static const char* hwCodecName(const std::string& enc, bool h265) {
     if (enc == "nvenc") return h265 ? "hevc_nvenc" : "h264_nvenc";
     if (enc == "amf") return h265 ? "hevc_amf" : "h264_amf";
+    if (enc == "vaapi") return h265 ? "hevc_vaapi" : "h264_vaapi";
+    if (enc == "videotoolbox") return h265 ? "hevc_videotoolbox" : "h264_videotoolbox";
     return h265 ? "hevc_qsv" : "h264_qsv";
 }
 
+// VAAPI travaille sur des images GPU (nv12) : il faut un peripherique et un envoi (hwupload) avant l'encodeur.
+static const wchar_t* kVaapiDevice = L" -vaapi_device /dev/dri/renderD128";
+
+std::wstring encoderFormat(const std::string& enc) { return enc == "vaapi" ? L"format=nv12,hwupload" : L"format=yuv420p"; }
+std::wstring encoderPixFmt(const std::string& enc) { return enc == "vaapi" ? L"" : L" -pix_fmt yuv420p"; }
 
 // Un encodeur materiel n'est utilisable que si le PC l'accepte : on le verifie par un mini-encodage de test.
-static bool probeEncoder(const std::wstring& ffmpeg, const char* vcodec) {
+static bool probeEncoder(const std::wstring& ffmpeg, const std::string& enc, bool h265) {
     static std::map<std::string, bool> cache;
+    const char* vcodec = hwCodecName(enc, h265);
     auto it = cache.find(vcodec);
     if (it != cache.end()) return it->second;
-    const std::wstring cmd = L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -f lavfi -i nullsrc=s=256x256:d=0.2"
-                             L" -pix_fmt yuv420p -c:v " + W(vcodec) + L" -f null -";
+    const std::wstring cmd = L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin" + (enc == "vaapi" ? kVaapiDevice : L"") +
+                             L" -f lavfi -i nullsrc=s=256x256:d=0.2 -vf " + encoderFormat(enc) + encoderPixFmt(enc) + L" -c:v " +
+                             W(vcodec) + L" -f null -";
     bool ok = runProcess(cmd, nullptr) == 0;
     cache[vcodec] = ok;
     return ok;
@@ -49,10 +58,19 @@ std::string resolveEncoder(const Settings& s, const std::wstring& ffmpeg, const 
     if (s.encoder == "cpu") return "cpu";
     const bool h265 = s.codec == "h265";
     std::vector<std::string> cands;
-    if (s.encoder == "auto") cands = {"nvenc", "amf", "qsv"};
-    else cands = {s.encoder};
+    if (s.encoder == "auto") {
+#if defined(_WIN32)
+        cands = {"nvenc", "amf", "qsv"};
+#elif defined(__APPLE__)
+        cands = {"videotoolbox"};
+#else
+        cands = {"nvenc", "vaapi", "qsv"};
+#endif
+    } else {
+        cands = {s.encoder};
+    }
     for (const auto& c : cands) {
-        if (probeEncoder(ffmpeg, hwCodecName(c, h265))) {
+        if (probeEncoder(ffmpeg, c, h265)) {
             H.log(L"  " + TXF("log.hw_encoder", W(hwCodecName(c, h265)).c_str()));
             return c;
         }
@@ -77,6 +95,14 @@ std::wstring encoderArgs(const Settings& s, const std::string& enc) {
         a = std::wstring(L" -c:v ") + W(hwCodecName(enc, h265)) + L" -quality quality" +
             (s.bitrate > 0 ? wfmt(L" -rc vbr_peak -b:v %dk", s.bitrate)
                            : wfmt(L" -rc cqp -qp_i %d -qp_p %d -qp_b %d", s.crf, s.crf, s.crf));
+        if (h265) a += L" -tag:v hvc1";
+    } else if (enc == "vaapi") {
+        a = std::wstring(kVaapiDevice) + L" -c:v " + W(hwCodecName(enc, h265)) +
+            (s.bitrate > 0 ? wfmt(L" -b:v %dk", s.bitrate) : wfmt(L" -rc_mode CQP -global_quality %d", s.crf));
+        if (h265) a += L" -tag:v hvc1";
+    } else if (enc == "videotoolbox") {
+        const int q = std::min(100, std::max(1, 100 - s.crf * 2));  // CRF 12 -> 76, CRF 23 -> 54
+        a = std::wstring(L" -c:v ") + W(hwCodecName(enc, h265)) + (s.bitrate > 0 ? wfmt(L" -b:v %dk", s.bitrate) : wfmt(L" -q:v %d", q));
         if (h265) a += L" -tag:v hvc1";
     } else {  // qsv
         static const char* kQsv[] = {"veryfast", "veryfast", "veryfast", "faster", "fast",

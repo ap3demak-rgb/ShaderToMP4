@@ -36,7 +36,7 @@ if ($MessageFile) {
 }
 
 $tracked = @(git ls-files)
-$binaryExt = ".png", ".gif", ".ico", ".ref", ".jpg", ".jpeg"
+$binaryExt = ".png", ".gif", ".ico", ".ref", ".jpg", ".jpeg", ".ttf"
 
 # --- 1. Anonymat ---------------------------------------------------------------------------------
 Section "Anonymat"
