@@ -3,6 +3,8 @@
 
 // ShaderToMP4 sous Linux et macOS : ligne de commande, langue, puis interface GLFW + Dear ImGui (src/ui_imgui).
 #include "core/ffmpeg_download.h"
+#include "core/gl.h"
+#include "core/render.h"
 #include "core/i18n.h"
 #include "core/selftest.h"
 #include "core/util.h"
@@ -22,10 +24,41 @@ std::string versionText() {
 
 std::string helpText() {
     std::string t = versionText() + "\n" + i18n::tr8("cli.usage") + "\n\n";
-    for (const char* k : {"cli.opt.files", "cli.opt.selftest", "cli.opt.update", "cli.opt.quiet", "cli.opt.get_ffmpeg", "cli.opt.version",
+    for (const char* k : {"cli.opt.files", "cli.opt.selftest", "cli.opt.update", "cli.opt.render", "cli.opt.quiet", "cli.opt.get_ffmpeg", "cli.opt.version",
                           "cli.opt.help"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
+}
+
+// Rendu sans fenêtre : ShaderToMP4 --render fichier.glsl... (réglages de config.ini et des commentaires // du shader)
+int renderCommandLine(const std::wstring& exeDir, const std::vector<std::wstring>& files) {
+    Settings base;
+    std::string text;
+    if (readFile(exeDir + L"config.ini", text)) parseLines(base, text, false);
+    GLContext gl;
+    std::wstring err;
+    if (!createGLContext(gl, err)) {
+        fprintf(stderr, "%s
+", U8(TXF("log.error", err.c_str())).c_str());
+        return 1;
+    }
+    Hooks H;
+    H.log = [](const std::wstring& s) {
+        puts(U8(s).c_str());
+        fflush(stdout);
+    };
+    int fails = 0;
+    for (const auto& f : files) {
+        std::wstring e;
+        puts(U8(f).c_str());
+        if (convertFile(f, exeDir, base, H, e) != Result::Ok) {
+            fprintf(stderr, "%s
+", U8(TXF("log.error", e.c_str())).c_str());
+            fails++;
+        }
+    }
+    destroyGLContext(gl);
+    return fails ? 1 : 0;
 }
 
 }  // namespace
@@ -48,10 +81,11 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::vector<std::wstring> files;
-    bool selftest = false, update = false, quiet = false, getFfmpeg = false, version = false, help = false;
+    bool render = false, selftest = false, update = false, quiet = false, getFfmpeg = false, version = false, help = false;
     for (int i = 1; i < argc; i++) {
         const std::string a = argv[i];
         if (a == "--selftest") selftest = true;
+        else if (a == "--render") render = true;
         else if (a == "--update") update = true;
         else if (a == "--quiet") quiet = true;
         else if (a == "--get-ffmpeg") getFfmpeg = true;
@@ -72,6 +106,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (selftest) return runSelfTest(exeDir, update, quiet);
+    if (render) return renderCommandLine(exeDir, files);
     if (getFfmpeg) {
         std::wstring e;
         bool ok = downloadFfmpeg(exeDir, [&](int pct, const std::wstring& msg) {

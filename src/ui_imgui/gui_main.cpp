@@ -668,8 +668,8 @@ void drawFrame(App& a, GLFWwindow* win) {
     ImGui::BeginChild("##left", ImVec2(leftW, bodyH), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
     ImGui::PushStyleColor(ImGuiCol_ChildBg, colv(pal::CARD));
     const float cardsH = bodyH - gap * 2;
-    drawShaders(a, std::floor(cardsH * 0.36f));
-    drawPreview(a, std::floor(cardsH * 0.34f));
+    drawShaders(a, std::floor(cardsH * 0.41f));
+    drawPreview(a, std::floor(cardsH * 0.30f));
     drawLog(a);
     ImGui::PopStyleColor();
     ImGui::EndChild();

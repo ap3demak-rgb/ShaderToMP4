@@ -250,6 +250,7 @@
   "about.btn.close": "Close",
   "cli.usage": "Usage: ShaderToMP4 [options] [shader files]",
   "cli.opt.files": "shader files   Add the files and start rendering right away",
+  "cli.opt.render": "--render       Render the files without a window (Linux and macOS)",
   "cli.opt.selftest": "--selftest     Render the reference shaders and compare them (see tests/)",
   "cli.opt.update": "--update       With --selftest: rewrite the reference images",
   "cli.opt.quiet": "--quiet        No message box (--selftest, --get-ffmpeg)",
