@@ -109,7 +109,7 @@ void startJobs(bool snapshot) {
     Settings cur = g.base;
     std::wstring serr;
     if (!uiToSettings(cur, serr)) {
-        MessageBoxW(g.wnd, serr.c_str(), L"Reglages invalides", MB_ICONWARNING);
+        MessageBoxW(g.wnd, serr.c_str(), L"Réglages invalides", MB_ICONWARNING);
         return;
     }
     g.base = cur;
@@ -145,7 +145,7 @@ void runPreview() {
     Settings cur = g.base;
     std::wstring serr;
     if (!uiToSettings(cur, serr)) {
-        MessageBoxW(g.wnd, serr.c_str(), L"Reglages invalides", MB_ICONWARNING);
+        MessageBoxW(g.wnd, serr.c_str(), L"Réglages invalides", MB_ICONWARNING);
         return;
     }
     g.base = cur;

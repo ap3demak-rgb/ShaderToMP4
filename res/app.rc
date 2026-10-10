@@ -1,8 +1,35 @@
-// Ressources de ShaderToMP4 : icone et informations de version (onglet "Details" de l'exe)
+// Ressources de ShaderToMP4 : manifeste, icone, informations de version et icones SVG embarquees.
 #include <winver.h>
 #include "version.h"
+#include "resource.h"
 
+1 24 "app.manifest"
 1 ICON "app.ico"
+
+// Icones vectorielles (rendues par Direct2D)
+IC_ADD      RCDATA "icons/add.svg"
+IC_TRASH    RCDATA "icons/trash.svg"
+IC_CLEAR    RCDATA "icons/clear.svg"
+IC_FOLDER   RCDATA "icons/folder.svg"
+IC_PLAY     RCDATA "icons/play.svg"
+IC_PAUSE    RCDATA "icons/pause.svg"
+IC_STOP     RCDATA "icons/stop.svg"
+IC_IMAGE    RCDATA "icons/image.svg"
+IC_EYE      RCDATA "icons/eye.svg"
+IC_DOWNLOAD RCDATA "icons/download.svg"
+IC_SAVE     RCDATA "icons/save.svg"
+IC_AUDIO    RCDATA "icons/audio.svg"
+IC_SLIDERS  RCDATA "icons/sliders.svg"
+IC_FILM     RCDATA "icons/film.svg"
+IC_TERMINAL RCDATA "icons/terminal.svg"
+IC_DROP     RCDATA "icons/drop.svg"
+IC_LOGO     RCDATA "icons/logo.svg"
+IC_CHECK    RCDATA "icons/check.svg"
+IC_ALERT    RCDATA "icons/alert.svg"
+IC_ZAP      RCDATA "icons/zap.svg"
+IC_YOUTUBE  RCDATA "icons/youtube.svg"
+IC_PHONE    RCDATA "icons/phone.svg"
+IC_MONITOR  RCDATA "icons/monitor.svg"
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION APP_VER_MAJOR,APP_VER_MINOR,APP_VER_PATCH,0

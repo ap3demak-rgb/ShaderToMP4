@@ -7,7 +7,7 @@ enum {
     ID_LIST = 101, ID_ADD, ID_REMOVE, ID_CLEAR, ID_START, ID_CANCEL, ID_PROG, ID_STATUS, ID_LOG,
     ID_RES = 120, ID_W, ID_H, ID_FPS, ID_DUR, ID_START_T, ID_CODEC, ID_PRESET, ID_CRF, ID_SNAP, ID_CONTAINER, ID_SS, ID_OUT, ID_BROWSE, ID_LOADP, ID_SAVEP,
     ID_BITRATE, ID_COLOR, ID_BLUR, ID_LOOP, ID_AUDIO, ID_AUDIOB, ID_FADEIN, ID_FADEOUT, ID_PAUSE, ID_FOLDER, ID_PREVIEW,
-    ID_PREVTRK, ID_PREVBTN, ID_ENCODER
+    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3
 };
 enum {
     WM_APP_LOG = WM_APP + 1,  // lParam = std::wstring* (a liberer)
@@ -41,7 +41,20 @@ struct App {
     HBITMAP prevBmp = nullptr;  // derniere image d apercu
     int prevW = 0, prevH = 0;
     std::vector<HWND> labels;  // libelles du panneau de reglages (dans l ordre de layout())
-    HFONT font = nullptr;
+    HFONT font = nullptr, fontBold = nullptr;
+    UINT dpi = 96;
+    HBRUSH brCard = nullptr, brField = nullptr;
+    HWND chips[4] = {nullptr, nullptr, nullptr, nullptr};  // preselections rapides
+    HWND tip = nullptr;
+    struct Card {
+        RECT r;
+        std::wstring title;
+        int icon;
+    };
+    std::vector<Card> cards;  // recalcule par layout() ; peint par WM_PAINT
+    RECT headerRect{}, dropRect{}, bandRect{};
+    bool dropHot = false;   // fichiers en cours de survol (glisser-deposer)
+    float dropAmt = 0;      // intensite de l illumination 0..1, animee
     std::vector<std::wstring> paths;
     std::vector<int> state;  // FileStatus, parallele a paths
     std::thread worker;
@@ -84,6 +97,7 @@ void browseOutDir();
 void browseAudio();
 void loadProfile();
 void saveProfile();
+void applyQuickPreset(int idx);  // 0 brouillon, 1 YouTube 1080p60, 2 4K 60, 3 vertical 9:16
 
 // --- jobs.cpp : rendus, apercu, telechargement ---
 void promptDownload();               // propose de telecharger ffmpeg.exe
@@ -94,3 +108,6 @@ void openFolder();
 
 // --- window.cpp ---
 LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp);
+void restoreWindowPlacement(HWND wnd, int showCmd);  // window.ini : position et taille memorisees
+void saveWindowPlacement(HWND wnd);
+void setDropHot(bool hot);  // illumine / eteint la zone de depot (fondu)

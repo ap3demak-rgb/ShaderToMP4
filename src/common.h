@@ -9,6 +9,8 @@
 #include <shlobj.h>
 #include <wininet.h>
 #include <wincrypt.h>
+#define _RICHEDIT_VER 0x0500
+#include <richedit.h>
 #ifndef BIF_RETURNONLYDIRS
 #define BIF_RETURNONLYDIRS 0x0001
 #endif

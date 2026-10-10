@@ -13,6 +13,30 @@ Convertit un shader [Shadertoy](https://www.shadertoy.com) (onglet *Image*) en v
 
 Glisser des fichiers directement sur `ShaderToMP4.exe` les ajoute et lance le rendu tout de suite.
 
+## L'interface
+
+Interface sombre à mise à l'échelle automatique (DPI), dessinée avec Direct2D : icônes vectorielles SVG, cartes à coins arrondis, boutons à états (survol, appui, désactivé), progression également dans la barre des tâches.
+
+![Interface vide : zone de dépôt](docs/interface-vide.png)
+
+- **Préréglages rapides** (en haut à droite des réglages) : *Brouillon* (720p30, rapide), *YouTube* (1080p60, H.264), *4K 60* (H.265), *Vertical* (1080×1920). Ils ne changent que la taille, les images par seconde et la qualité ; le reste est conservé.
+- **Animations** : fondu de 120 ms au survol des boutons ; la zone des shaders s'illumine quand tu y glisses des fichiers.
+- **Info-bulles** : passe la souris sur n'importe quel réglage pour une explication.
+- **Journal en couleurs** : erreurs en rouge, avertissements en orange, succès en vert.
+- La taille et la position de la fenêtre sont mémorisées (`window.ini`).
+
+### Raccourcis clavier
+
+| Raccourci | Action |
+|---|---|
+| `Ctrl+O` | Ajouter des shaders |
+| `F5` | Démarrer le rendu |
+| `F6` | Pause / reprendre |
+| `Échap` | Annuler le rendu en cours |
+| `Ctrl+P` | Aperçu |
+| `Suppr` (dans la liste) | Retirer les shaders sélectionnés |
+| `Tab` | Passer d'un réglage au suivant |
+
 ## Les boutons
 
 | Bouton | Rôle |
@@ -68,7 +92,7 @@ Les vidéos plus longues que `chunk` secondes sont rendues par parties, dans un 
 ## Limites
 
 - Seul l'onglet *Image* est supporté : `iChannel0-3` (textures, buffers, multipasse), `iMouse` (fixe à 0) et le son Shadertoy ne le sont pas. Un shader qui les utilise s'affiche avec un avertissement et un rendu noir pour ces entrées.
-- Un GPU compatible OpenGL 3.3 est nécessaire.
+- Un GPU compatible OpenGL 3.3 et Windows 10 (version 1703) ou plus récent (rendu SVG de Direct2D) sont nécessaires.
 - Le choix du GPU (`gpu=high|low`) et les encodeurs AMD et Intel n'ont pas été testés sur du matériel réel.
 
 ## Auto-test
@@ -78,9 +102,9 @@ Les vidéos plus longues que `chunk` secondes sont rendues par parties, dans un 
 ## Organisation du projet
 
 ```
-bin/        ShaderToMP4.exe (résultat de la compilation), ffmpeg.exe, config.ini : le dossier à utiliser
-src/        code source : main.cpp, core/ (moteur de rendu, sans interface), gui/ (fenêtre)
-res/        icône (app.ico) et informations de version (app.rc)
+bin/        ShaderToMP4.exe (résultat de la compilation), ffmpeg.exe, config.ini, window.ini : le dossier à utiliser
+src/        code source : main.cpp, core/ (moteur de rendu, sans interface), gui/ (fenêtre et rendu Direct2D)
+res/        icône (app.ico), informations de version, manifeste (DPI, thème) et icônes SVG (icons/) : app.rc
 scripts/    build.bat (compiler), test.bat (auto-test)
 tests/      shaders de référence et leurs images .ref
 docs/       capture d'écran, LISEZMOI.txt (résumé)
@@ -95,10 +119,10 @@ Avec les Build Tools de Visual Studio (le chemin de `vcvars64.bat` est écrit da
 .\scripts\build.bat
 ```
 
-Cela compile `res\app.rc` (icône, informations de version) puis tous les fichiers de `src` vers `bin\ShaderToMP4.exe`. Avec MinGW-w64 (non testé) :
+Cela compile `res\app.rc` (icône, informations de version) puis tous les fichiers de `src` vers `bin\ShaderToMP4.exe`. Avec MinGW-w64 (non testé ; le rendu SVG de Direct2D demande des en-têtes MinGW récents) :
 
 ```
-g++ -std=c++17 -O2 -municode -mwindows -static -I src -o bin/ShaderToMP4.exe src/main.cpp src/core/*.cpp src/gui/*.cpp -lopengl32 -lgdi32 -luser32 -lcomctl32 -lcomdlg32 -lshell32 -ladvapi32 -lwininet
+g++ -std=c++17 -O2 -finput-charset=UTF-8 -municode -mwindows -static -I src -o bin/ShaderToMP4.exe src/main.cpp src/core/*.cpp src/gui/*.cpp -lopengl32 -lgdi32 -luser32 -lcomctl32 -lcomdlg32 -lshell32 -ladvapi32 -lwininet -ld2d1 -ld3d11 -ldxgi -ldwrite -lshlwapi -luxtheme -ldwmapi -lole32
 ```
 
 Le numéro de version est dans `src\version.h` (affiché dans le titre de la fenêtre, le journal et les propriétés de l'exe).

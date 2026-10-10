@@ -5,12 +5,14 @@
 #include "core/gpu_pref.h"
 #include "core/selftest.h"
 #include "core/util.h"
+#include "gui/ui_controls.h"
+#include "gui/ui_render.h"
+#include "gui/ui_theme.h"
 
 #ifdef _MSC_VER
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "wininet.lib")
 #pragma comment(linker, "/SUBSYSTEM:WINDOWS")
-#pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #endif
 
 // Demande le GPU puissant sur les PC portables hybrides (NVIDIA / AMD)
@@ -20,7 +22,7 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 }
 
 int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
-    INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_LISTVIEW_CLASSES | ICC_PROGRESS_CLASS | ICC_BAR_CLASSES};
+    INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_LISTVIEW_CLASSES | ICC_PROGRESS_CLASS | ICC_BAR_CLASSES | ICC_TAB_CLASSES | ICC_STANDARD_CLASSES};
     InitCommonControlsEx(&icc);
 
     wchar_t exePath[MAX_PATH * 2];
@@ -28,6 +30,12 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     g.exeDir = exePath;
     g.exeDir.erase(g.exeDir.find_last_of(L"\\/") + 1);
 
+    OleInitialize(nullptr);  // glisser-deposer OLE et barre des taches (ITaskbarList3)
+    if (!ui::init() || !ui::registerControls(hi)) {
+        MessageBoxW(nullptr, L"Direct2D est indisponible : Windows 10 (version 1703) ou plus récent est nécessaire.", L"ShaderToMP4",
+                    MB_ICONERROR);
+        return 1;
+    }
     // config.ini (cree automatiquement au premier lancement)
     std::wstring ini = g.exeDir + L"config.ini";
     if (!fileExists(ini)) writeIni(ini, g.base);
@@ -74,16 +82,35 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     wc.lpfnWndProc = wndProc;
     wc.hInstance = hi;
     wc.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
-    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.hbrBackground = CreateSolidBrush(theme::cref(theme::BG));  // pas d'eclair blanc au demarrage
     wc.hIcon = LoadIconW(hi, MAKEINTRESOURCEW(1));
     wc.lpszClassName = L"ShaderToMP4Main";
     RegisterClassExW(&wc);
 
-    HWND wnd = CreateWindowExW(WS_EX_ACCEPTFILES, wc.lpszClassName, L"ShaderToMP4 " APP_VER_WSTR, WS_OVERLAPPEDWINDOW,
-                               CW_USEDEFAULT, CW_USEDEFAULT, 940, 880, nullptr, nullptr, hi, nullptr);
+    // Taille initiale : 1000 x 900 dp, sans depasser la zone de travail
+    const UINT sysDpi = GetDpiForSystem();
+    RECT wa;
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
+    RECT want{0, 0, MulDiv(1000, (int)sysDpi, 96), MulDiv(900, (int)sysDpi, 96)};
+    AdjustWindowRectExForDpi(&want, WS_OVERLAPPEDWINDOW, FALSE, 0, sysDpi);
+    int ww = std::min((int)(want.right - want.left), (int)(wa.right - wa.left));
+    int wh = std::min((int)(want.bottom - want.top), (int)(wa.bottom - wa.top));
+    HWND wnd = CreateWindowExW(0, wc.lpszClassName, L"ShaderToMP4 " APP_VER_WSTR, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
+                               CW_USEDEFAULT, CW_USEDEFAULT, ww, wh, nullptr, nullptr, hi, nullptr);
     if (!wnd) return 1;
-    ShowWindow(wnd, show);
+    restoreWindowPlacement(wnd, show);
     UpdateWindow(wnd);
+
+    // Raccourcis clavier
+    ACCEL acc[] = {
+        {FVIRTKEY | FCONTROL, 'O', ID_ADD},
+        {FVIRTKEY | FCONTROL, 'P', ID_PREVBTN},
+        {FVIRTKEY, VK_F5, ID_START},
+        {FVIRTKEY, VK_F6, ID_PAUSE},
+        {FVIRTKEY, VK_ESCAPE, ID_CANCEL},
+    };
+    HACCEL haccel = CreateAcceleratorTableW(acc, (int)(sizeof(acc) / sizeof(acc[0])));
+
 
 
     // Cartes graphiques detectees (si plusieurs : voir gpu= dans config.ini)
@@ -113,8 +140,12 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
 
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0) > 0) {
+        if (TranslateAcceleratorW(wnd, haccel, &m)) continue;
+        if (IsDialogMessageW(wnd, &m)) continue;  // Tab / Maj+Tab entre les controles
         TranslateMessage(&m);
         DispatchMessageW(&m);
     }
+    ui::shutdown();
+    OleUninitialize();
     return (int)m.wParam;
 }

@@ -6,7 +6,8 @@ SHADERTOMP4  (voir README.md pour la documentation complete, avec capture d'ecra
 4. Le .mp4 est cree a cote du fichier shader (ou dans le dossier "Sortie").
 
 Glisser des fichiers directement sur le .exe les ajoute et lance le rendu tout de suite.
-Boutons : Pause, Annuler, Image PNG, Apercu (+ curseur), Dossier, Profil...
+Boutons : Pause, Annuler, Image PNG, Apercu (+ curseur), Dossier, Profil... ; preselections rapides (Brouillon, YouTube, 4K, Vertical)
+Raccourcis : Ctrl+O ajouter, F5 demarrer, F6 pause, Echap annuler, Ctrl+P apercu, Suppr (liste) retirer
 Un rendu long interrompu se reprend en relancant le meme rendu (parties conservees dans <nom>.parts).
 
 Reglages : fenetre -> config.ini ; ou en commentaire dans le shader (prioritaire) :

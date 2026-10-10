@@ -9,6 +9,7 @@ call "%VCVARS%" >nul
 cd /d "%~dp0.."
 if not exist build mkdir build
 if not exist bin mkdir bin
-rc /nologo /I src /fo build\app.res res\app.rc || exit /b 1
-cl /nologo /O2 /EHsc /std:c++17 /MP /I src /Fe:bin\ShaderToMP4.exe /Fo:build\ src\main.cpp src\core\*.cpp src\gui\*.cpp build\app.res opengl32.lib gdi32.lib user32.lib comctl32.lib comdlg32.lib shell32.lib /link /MANIFEST:EMBED || exit /b 1
+rem Le manifeste (controles modernes, DPI) est dans res\app.manifest, integre par app.rc
+rc /nologo /I src /I res /fo build\app.res res\app.rc || exit /b 1
+cl /nologo /O2 /EHsc /std:c++17 /utf-8 /MP /I src /Fe:bin\ShaderToMP4.exe /Fo:build\ src\main.cpp src\core\*.cpp src\gui\*.cpp build\app.res opengl32.lib gdi32.lib user32.lib comctl32.lib comdlg32.lib shell32.lib /link /MANIFEST:NO || exit /b 1
 del bin\ShaderToMP4.lib bin\ShaderToMP4.exp 2>nul
