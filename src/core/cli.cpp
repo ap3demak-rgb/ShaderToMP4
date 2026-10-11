@@ -12,6 +12,8 @@
 #include "render.h"
 #include "util.h"
 #include "platform/platform.h"
+#include <cwctype>
+#include <set>
 
 namespace {
 
@@ -47,7 +49,7 @@ std::string num(double v) {
 
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
-    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png",
+    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_watch",
                           "cli.render.exit_codes", "cli.opt.diagnostic", "cli.opt.benchmark"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
@@ -62,6 +64,8 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
     std::vector<std::wstring> files;
     std::string progress = "none";  // none | text | json
     bool snapshot = false;
+    std::wstring watchDir;  // --watch=dossier : rend chaque shader qui y apparait (explicite, jamais par defaut)
+    int watchCount = 0;     // --watch-count=N : s'arrete apres N rendus (0 = sans fin)
     std::vector<std::pair<std::string, std::string>> overrides;
     auto fail = [&](const std::wstring& msg) {
         write(U8(TXF("log.error", msg.c_str())) + "\n", true);
@@ -82,6 +86,11 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         } else if (key == "progress") {
             progress = lower(val);
             if (progress != "json" && progress != "text" && progress != "none") return fail(TXF("cli.bad_progress", W(val).c_str()));
+        } else if (key == "watch") {
+            watchDir = W(val);
+            if (!platform::dirExists(watchDir)) return fail(TXF("cli.watch_missing", watchDir.c_str()));
+        } else if (key == "watch-count") {
+            watchCount = std::max(0, atoi(val.c_str()));
         } else if (key == "profile") {
             std::string p;
             if (!readFile(W(val), p)) return fail(TXF("error.profile_read", W(val).c_str()));
@@ -93,7 +102,7 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         }
     }
     for (const auto& kv : overrides) applySetting(base, kv.first, kv.second);
-    if (files.empty()) return fail(TX("cli.no_files"));
+    if (files.empty() && watchDir.empty()) return fail(TX("cli.no_files"));
     for (const auto& f : files)
         if (!fileExists(f)) return fail(TXF("cli.file_missing", f.c_str()));
     if (!ffmpegPresent(exeDir)) {
@@ -109,7 +118,7 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
     }
     const bool json = progress == "json";
     int ok = 0, failed = 0, index = 0, lastDecile = -1;
-    for (const auto& f : files) {
+    auto renderOne = [&](const std::wstring& f, size_t count) {
         index++;
         std::wstring currentOutput;
         Hooks H;
@@ -132,7 +141,7 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         H.output = [&](const std::wstring& path) { currentOutput = path; };
         lastDecile = -1;
         if (json) write("{\"event\":\"start\",\"file\":" + jsonString(U8(f)) + ",\"index\":" + std::to_string(index) + ",\"count\":" +
-                            std::to_string(files.size()) + "}\n", false);
+                            std::to_string(count) + "}\n", false);
         else write(U8(f) + "\n", false);
         std::wstring e;
         if (convertFile(f, exeDir, base, H, e) == Result::Ok) {
@@ -142,6 +151,38 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
             failed++;
             if (json) write("{\"event\":\"error\",\"file\":" + jsonString(U8(f)) + ",\"message\":" + jsonString(U8(e)) + "}\n", false);
             else write(U8(TXF("log.error", e.c_str())) + "\n", true);
+        }
+    };
+    for (const auto& f : files) renderOne(f, files.size());
+    if (!watchDir.empty()) {  // surveillance : un shader est rendu des que sa taille ne change plus entre deux releves
+        if (json) write("{\"event\":\"watching\",\"dir\":" + jsonString(U8(watchDir)) + "}\n", false);
+        else write(U8(TXF("cli.watching", watchDir.c_str())) + "\n", false);
+        std::map<std::wstring, long long> lastSize;  // taille au dernier releve
+        std::set<std::wstring> handled;
+        int rendered = 0;
+        while (watchCount == 0 || rendered < watchCount) {
+            std::vector<platform::DirEntry> entries;
+            platform::listDir(watchDir, entries);
+            for (const auto& en : entries) {
+                if (en.isDir || handled.count(en.name)) continue;
+                const size_t dot = en.name.find_last_of(L'.');
+                if (dot == std::wstring::npos || dot == 0 || en.name.find(L'.') != dot) continue;  // <nom>.glsl ; pas les passes <nom>.bufferA.glsl
+                std::wstring ext = en.name.substr(dot);
+                for (auto& c : ext) c = (wchar_t)towlower(c);
+                if (ext != L".glsl" && ext != L".txt") continue;
+                const std::wstring path = watchDir + platform::pathSeparator() + en.name;
+                std::string content;
+                if (!readFile(path, content)) continue;
+                auto it = lastSize.find(en.name);
+                if (it == lastSize.end() || it->second != (long long)content.size()) {
+                    lastSize[en.name] = (long long)content.size();  // vu pour la premiere fois ou encore en ecriture
+                    continue;
+                }
+                handled.insert(en.name);
+                renderOne(path, 1);
+                if (++rendered >= watchCount && watchCount > 0) break;
+            }
+            if (watchCount == 0 || rendered < watchCount) platform::sleepMs(1000);
         }
     }
     destroyGLContext(gl);

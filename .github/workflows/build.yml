@@ -115,6 +115,10 @@ jobs:
           test -f e2e/cli/circle.gif
           code=0; bin/ShaderToMP4 --render --bogus=1 tests/circle.glsl || code=$?
           test "$code" -eq 2
+          # watched folder: a shader dropped there is rendered, then the program stops (--watch-count)
+          mkdir -p e2e/watch && cp tests/circle.glsl e2e/watch/
+          xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --render --watch=e2e/watch --watch-count=1 --container=gif --width=64 --height=64 --fps=10 --duration=0.5
+          test -f e2e/watch/circle.gif
           xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --diagnostic | tee e2e/diagnostic.txt
           grep -q "ffmpeg: ffmpeg version" e2e/diagnostic.txt
           xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --benchmark --seconds=1 --quick --json | tee e2e/benchmark.json
