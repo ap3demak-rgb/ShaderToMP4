@@ -35,6 +35,11 @@ void BufferPasses::discover(const std::wstring& shaderPath, const std::function<
         parseLines(bufs_[i].st, bufs_[i].code, true);  // canaux propres a la passe
         H.log(L"  " + TXF("log.pass_found", kLabels[i]));
     }
+    if (find("cubemapA", cube_.code, cube_.path)) {
+        cubeUsed_ = true;
+        parseLines(cube_.st, cube_.code, true);
+        H.log(L"  " + TXF("log.pass_found", L"Cubemap A"));  // nom-technique
+    }
     if (!common_.empty()) H.log(L"  " + TX("log.pass_common"));
 }
 
@@ -49,11 +54,45 @@ std::string BufferPasses::allCode() const {
     std::string all = common_;
     for (int i = 0; i < 4; i++)
         if (used_[i]) all += "\n" + bufs_[i].code;
+    if (cubeUsed_) all += "\n" + cube_.code;
     return all;
 }
 
 bool BufferPasses::build(int rw, int rh, const std::wstring& shaderDir, const std::wstring& ffmpeg, const Hooks& H, std::wstring& err,
                          double start, double fps) {
+    if (cubeUsed_) {  // Cubemap A : six faces RGBA32F, deux textures (lecture de l'image precedente possible)
+        std::wstring e;
+        std::string types[4];
+        channelTypes(cube_.st, types);
+        cube_.prog = buildProgram(withCommon(cube_.code), e, false, types, true);
+        if (!cube_.prog) {
+            err = L"[Cubemap A] " + locateGlslErrors(e, cube_.path, 1 + (int)std::count(cube_.code.begin(), cube_.code.end(), '\n'), commonPath_);  // nom-technique
+            return false;
+        }
+        if (!loadChannels(cube_.st, shaderDir, ffmpeg, cube_.chans, H, err, rw, rh, start, fps)) return false;
+        glGenTextures(2, cube_.tex);
+        ogl::GenFramebuffers(2, cube_.fbo);
+        for (int k = 0; k < 2; k++) {
+            glBindTexture(0x8513 /*GL_TEXTURE_CUBE_MAP*/, cube_.tex[k]);
+            for (int f = 0; f < 6; f++)
+                glTexImage2D(0x8515 + f, 0, ogl::K_RGBA32F, kCubeSize, kCubeSize, 0, GL_RGBA, GL_FLOAT, nullptr);
+            glTexParameteri(0x8513, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(0x8513, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(0x8513, GL_TEXTURE_WRAP_S, 0x812F);
+            glTexParameteri(0x8513, GL_TEXTURE_WRAP_T, 0x812F);
+            glTexParameteri(0x8513, 0x8072 /*WRAP_R*/, 0x812F);
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, cube_.fbo[k]);
+            for (int f = 0; f < 6; f++) {
+                ogl::FramebufferTexture2D(ogl::K_FRAMEBUFFER, ogl::K_COLOR_ATTACHMENT0, 0x8515 + f, cube_.tex[k], 0);
+                if (ogl::CheckFramebufferStatus(ogl::K_FRAMEBUFFER) != ogl::K_FRAMEBUFFER_COMPLETE) {
+                    err = TX("error.buffers_unavailable");
+                    return false;
+                }
+                glClearColor(0, 0, 0, 0);
+                glClear(GL_COLOR_BUFFER_BIT);
+            }
+        }
+    }
     for (int i = 0; i < 4; i++) {
         if (!used_[i]) continue;
         Buf& b = bufs_[i];
@@ -87,13 +126,32 @@ bool BufferPasses::build(int rw, int rh, const std::wstring& shaderDir, const st
     return true;
 }
 
-void BufferPasses::latest(GLuint out[4]) const {
+void BufferPasses::latest(GLuint out[5]) const {
     for (int i = 0; i < 4; i++) out[i] = used_[i] ? bufs_[i].tex[bufs_[i].read] : 0;
+    out[4] = cubeUsed_ ? cube_.tex[cube_.read] : 0;
 }
 
 void BufferPasses::step(long long n, double t, int rw, int rh, const std::function<void(GLuint prog, long long n)>& setUniforms) {
-    glViewport(0, 0, rw, rh);
     glDisable(GL_BLEND);
+    if (cubeUsed_) {  // Cubemap A d'abord : les tampons et l'image peuvent la lire
+        const int w = 1 - cube_.read;
+        glViewport(0, 0, kCubeSize, kCubeSize);
+        ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, cube_.fbo[w]);
+        ogl::UseProgram(cube_.prog);
+        setUniforms(cube_.prog, n);
+        ogl::Uniform3f(ogl::GetUniformLocation(cube_.prog, "iResolution"), (float)kCubeSize, (float)kCubeSize, 1.0f);
+        GLuint src[5];
+        latest(src);
+        updateChannels(cube_.chans, t, n);
+        bindChannels(cube_.chans, cube_.prog, src);
+        for (int f = 0; f < 6; f++) {
+            ogl::FramebufferTexture2D(ogl::K_FRAMEBUFFER, ogl::K_COLOR_ATTACHMENT0, 0x8515 + f, cube_.tex[w], 0);
+            ogl::Uniform1i(ogl::GetUniformLocation(cube_.prog, "st_face"), f);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        }
+        cube_.read = w;
+    }
+    glViewport(0, 0, rw, rh);
     for (int i = 0; i < 4; i++) {
         if (!used_[i]) continue;
         Buf& b = bufs_[i];
@@ -101,7 +159,7 @@ void BufferPasses::step(long long n, double t, int rw, int rh, const std::functi
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, b.fbo[w]);
         ogl::UseProgram(b.prog);
         setUniforms(b.prog, n);
-        GLuint src[4];
+        GLuint src[5];
         latest(src);
         updateChannels(b.chans, t, n);
         bindChannels(b.chans, b.prog, src);
@@ -111,6 +169,17 @@ void BufferPasses::step(long long n, double t, int rw, int rh, const std::functi
 }
 
 void BufferPasses::reset() {
+    if (cubeUsed_) {
+        for (int k = 0; k < 2; k++) {
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, cube_.fbo[k]);
+            for (int f = 0; f < 6; f++) {
+                ogl::FramebufferTexture2D(ogl::K_FRAMEBUFFER, ogl::K_COLOR_ATTACHMENT0, 0x8515 + f, cube_.tex[k], 0);
+                glClearColor(0, 0, 0, 0);
+                glClear(GL_COLOR_BUFFER_BIT);
+            }
+        }
+        cube_.read = 0;
+    }
     for (int i = 0; i < 4; i++) {
         if (!used_[i]) continue;
         Buf& b = bufs_[i];
@@ -124,6 +193,12 @@ void BufferPasses::reset() {
 }
 
 void BufferPasses::release() {
+    freeChannels(cube_.chans);
+    if (cube_.fbo[0]) ogl::DeleteFramebuffers(2, cube_.fbo);
+    if (cube_.tex[0]) glDeleteTextures(2, cube_.tex);
+    if (cube_.prog) ogl::DeleteProgram(cube_.prog);
+    cube_.fbo[0] = cube_.fbo[1] = cube_.tex[0] = cube_.tex[1] = 0;
+    cube_.prog = 0;
     for (int i = 0; i < 4; i++) {
         Buf& b = bufs_[i];
         freeChannels(b.chans);

@@ -461,8 +461,14 @@ private:
 
 }  // namespace
 
+static bool isCubeA(const std::wstring& spec) {
+    std::wstring l = spec;
+    for (auto& c : l) c = (wchar_t)towlower(c);
+    return l == L"cubea" || l == L"cubemapa";
+}
+
 std::string channelSamplerType(const std::wstring& spec) {
-    if (startsWith(spec, L"cube:")) return "samplerCube";
+    if (startsWith(spec, L"cube:") || isCubeA(spec)) return "samplerCube";
     if (startsWith(spec, L"volume:")) return "sampler3D";
     return "sampler2D";
 }
@@ -477,6 +483,12 @@ bool loadChannels(const Settings& s, const std::wstring& shaderDir, const std::w
         const std::wstring& spec = s.channel[i];
         if (spec.empty()) continue;
         ogl::ActiveTexture(K_TEXTURE0);
+        if (isCubeA(spec)) {  // cubemap rendue par la passe « Cubemap A »
+            out.buffer[i] = 4;
+            out.target[i] = K_TEXTURE_CUBE_MAP;
+            out.w[i] = out.h[i] = kCubeSize;
+            continue;
+        }
         if (spec.size() == 7 && (spec.compare(0, 6, L"buffer") == 0 || spec.compare(0, 6, L"Buffer") == 0) && towlower(spec[6]) >= L'a' &&
             towlower(spec[6]) <= L'd') {  // tampon d'une passe multiple : pas de texture a charger
             out.buffer[i] = (int)(towlower(spec[6]) - L'a');
@@ -585,7 +597,14 @@ void bindChannels(const ChannelSet& cs, GLuint prog, const GLuint* bufferTex) {
     float res[12] = {0};
     for (int i = 0; i < 4; i++) {
         ogl::ActiveTexture(K_TEXTURE0 + 1 + i);
-        if (cs.buffer[i] >= 0) {
+        if (cs.buffer[i] == 4) {  // cubemap de la passe Cubemap A
+            glBindTexture(K_TEXTURE_CUBE_MAP, bufferTex ? bufferTex[4] : 0);
+            glTexParameteri(K_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(K_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(K_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, K_CLAMP_TO_EDGE);
+            glTexParameteri(K_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, K_CLAMP_TO_EDGE);
+            glTexParameteri(K_TEXTURE_CUBE_MAP, K_TEXTURE_WRAP_R, K_CLAMP_TO_EDGE);
+        } else if (cs.buffer[i] >= 0) {
             glBindTexture(GL_TEXTURE_2D, bufferTex ? bufferTex[cs.buffer[i]] : 0);
             const GLint f = cs.filter[i] == "nearest" ? GL_NEAREST : GL_LINEAR;
             const GLint m = cs.wrap[i] == "repeat" ? K_REPEAT : K_CLAMP_TO_EDGE;

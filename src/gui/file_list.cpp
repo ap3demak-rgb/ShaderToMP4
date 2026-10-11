@@ -7,7 +7,13 @@
 
 void addFiles(const std::vector<std::wstring>& files) {
     if (g.running) return;
-    for (const auto& f : files) {
+    for (const auto& f0 : files) {
+        std::wstring ie;  // un .json exporte de Shadertoy est importe, puis le shader obtenu est ajoute
+        const std::wstring f = resolveShaderInput(g.exeDir, f0, [](const std::wstring& m) { appendLog(m); }, ie);
+        if (f.empty()) {
+            appendLog(TXF("log.error", ie.c_str()));
+            continue;
+        }
         bool dup = false;
         for (const auto& p : g.paths)
             if (_wcsicmp(p.c_str(), f.c_str()) == 0) { dup = true; break; }
@@ -50,7 +56,7 @@ void browseFiles() {
     OPENFILENAMEW o{};
     o.lStructSize = sizeof(o);
     o.hwndOwner = g.wnd;
-    const std::wstring filter = makeFilter({{TX("dialog.shaders") + L" (*.txt;*.glsl)", L"*.txt;*.glsl"}, {TX("dialog.all_files"), L"*.*"}});
+    const std::wstring filter = makeFilter({{TX("dialog.shaders") + L" (*.txt;*.glsl;*.json)", L"*.txt;*.glsl;*.json"}, {TX("dialog.all_files"), L"*.*"}});
     o.lpstrFilter = filter.c_str();
     o.lpstrFile = buf.data();
     o.nMaxFile = (DWORD)buf.size();

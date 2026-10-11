@@ -16,7 +16,7 @@ class BufferPasses {
 public:
     // Cherche les fichiers des passes. read : lit et normalise un fichier de shader.
     void discover(const std::wstring& shaderPath, const std::function<bool(const std::wstring&, std::string&)>& read, const Hooks& H);
-    bool any() const { return used_[0] || used_[1] || used_[2] || used_[3]; }
+    bool any() const { return used_[0] || used_[1] || used_[2] || used_[3] || cubeUsed_; }
     // Code de l'image : le code commun place devant le code du shader (numeros de ligne du shader conserves).
     std::string withCommon(const std::string& code) const;
     const std::wstring& commonPath() const { return commonPath_; }
@@ -28,7 +28,7 @@ public:
     bool build(int rw, int rh, const std::wstring& shaderDir, const std::wstring& ffmpeg, const Hooks& H, std::wstring& err,
                double start = 0, double fps = 60);
     // Textures les plus recentes des quatre tampons (0 si absent), pour lier les canaux de l'image.
-    void latest(GLuint out[4]) const;
+    void latest(GLuint out[5]) const;  // [0..3] tampons A-D, [4] cubemap de la passe Cubemap A
     // Execute les tampons pour l'image n. setUniforms(prog, n) renseigne iTime, iFrame, iMouse, iDate... de chaque programme.
     // L'appelant restaure sa cible, son viewport et son programme ensuite.
     void step(long long n, double t, int rw, int rh, const std::function<void(GLuint prog, long long n)>& setUniforms);
@@ -46,6 +46,17 @@ private:
         GLuint tex[2] = {0, 0}, fbo[2] = {0, 0};
         int read = 0;      // indice de la texture terminee la plus recente
     };
+    struct Cube {  // passe « Cubemap A » : mainCubemap rendue sur les six faces, a chaque image
+        std::string code;
+        std::wstring path;
+        Settings st;
+        GLuint prog = 0;
+        ChannelSet chans;
+        GLuint tex[2] = {0, 0}, fbo[2] = {0, 0};
+        int read = 0;
+    };
+    Cube cube_;
+    bool cubeUsed_ = false;
     std::string common_;
     std::wstring commonPath_;
     Buf bufs_[4];

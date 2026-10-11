@@ -6,6 +6,7 @@
 #include "gl.h"
 #include "locate.h"
 #include "player.h"
+#include "shadertoy_import.h"
 #include "i18n.h"
 #include "process.h"
 #include "render.h"
@@ -393,6 +394,49 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                 }
             }
             report1("selftest.fmt_video", problem);
+        }
+        // import d'un export JSON de Shadertoy (hors ligne) : fichiers de passes, commentaires de canaux, rendu
+        {
+            std::wstring problem;
+            std::vector<std::wstring> logs;
+            std::wstring e;
+            const std::wstring imported = resolveShaderInput(outDir + sep, dir + L"shadertoy_export.json", [&](const std::wstring& m) { logs.push_back(m); }, e);
+            std::vector<uint8_t> got;
+            if (imported.empty()) problem = e;
+            else if (!fileExists(imported) || logs.size() < 2) problem = bad("import files");
+            else {
+                std::string mainTxt, bufA, common;
+                const std::wstring stem = imported.substr(0, imported.size() - 5);
+                readFile(imported, mainTxt);
+                readFile(stem + L".bufferA.glsl", bufA);
+                readFile(stem + L".common.glsl", common);
+                if (mainTxt.find("// iChannel0=bufferA") == std::string::npos || mainTxt.find("// iChannel1=noise") == std::string::npos ||
+                    bufA.empty() || common.find("#define COL") == std::string::npos)
+                    problem = bad("import content");
+                else if (!preview(imported, 16, 16, 0.0, got, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else if (std::abs((int)got[2] - 51) > 4 || std::abs((int)got[1] - 153) > 4 || std::abs((int)got[0] - 230) > 4)
+                    problem = bad("imported render");
+            }
+            report1("selftest.fmt_import", problem);
+        }
+        // passe Cubemap A : la cubemap rendue face par face est coherente avec les directions lues par l'image
+        {
+            writeShader(L"cubepass.cubemapA.glsl",
+                "void mainCubemap(out vec4 o, in vec2 p, in vec3 ro, in vec3 rd){ o = vec4(abs(rd), 1.0); }\n");
+            const std::wstring sh = writeShader(L"cubepass.glsl",
+                "// iChannel0=cubeA\n"
+                "void mainImage(out vec4 o, in vec2 p){ vec2 uv = p / iResolution.xy * 2.0 - 1.0; vec3 d = normalize(vec3(uv.x, uv.y, 0.7 + uv.x * uv.y));"
+                " vec3 s = texture(iChannel0, d).rgb; o = vec4(abs(s - abs(d)) * 20.0, 1.0); }\n");
+            std::vector<uint8_t> got;
+            std::wstring e, problem;
+            if (!preview(sh, 32, 32, 0.0, got, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                double sum = 0;
+                for (size_t i = 0; i < got.size(); i++)
+                    if (i % 4 != 3) sum += got[i];
+                if (sum / (got.size() * 0.75) > 6.0) problem = bad("cubemap pass mapping " + std::to_string(sum / (got.size() * 0.75)));
+            }
+            report1("selftest.fmt_cubepass", problem);
         }
         // cubemap par six fichiers : chaque direction lit la couleur de sa face
         {
