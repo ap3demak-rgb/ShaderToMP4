@@ -68,6 +68,8 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err) {
         "uniform sampler2D iChannel1;\n"
         "uniform sampler2D iChannel2;\n"
         "uniform sampler2D iChannel3;\n"
+        "uniform vec3  iChannelResolution[4];\n"
+        "uniform float iChannelTime[4];\n"
         "out vec4 st_outColor;\n"
         "#line 1\n" +
         userCode +

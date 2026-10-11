@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "render.h"
+#include "channels.h"
 #include "encoder.h"
 #include "formats.h"
 #include "i18n.h"
@@ -97,11 +98,12 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         err = TX("error.no_main_image");
         return Result::Failed;
     }
-    if (code.find("iChannel") != std::string::npos)
-        H.log(L"  " + TX("log.warn_ichannel"));
 
     Settings s = base;
     parseLines(s, code, true);
+    for (int i = 0; i < 4; i++)  // canal lu par le shader mais sans texture : il lit du noir
+        if (s.channel[i].empty() && code.find("iChannel" + std::to_string(i)) != std::string::npos)
+            H.log(L"  " + TXF("log.warn_ichannel", i, i));
     if (!sameSettings(s, base)) H.log(L"  " + TX("log.shader_overrides"));
     s.width = std::max(16, s.width & ~1);
     s.height = std::max(16, s.height & ~1);
@@ -184,6 +186,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     GLuint prog = buildProgram(code, err);
     if (!prog) return Result::Failed;
 
+    ChannelSet chans;
     GLuint vao = 0, tex = 0, fbo = 0, accTex = 0, accFbo = 0, present = 0;
     GLuint pbo[8] = {0};
     auto cleanupGL = [&] {
@@ -195,6 +198,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         if (tex) glDeleteTextures(1, &tex);
         if (accTex) glDeleteTextures(1, &accTex);
         ogl::UseProgram(0);
+        freeChannels(chans);
         if (present) ogl::DeleteProgram(present);
         ogl::DeleteProgram(prog);
     };
@@ -256,10 +260,33 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     ogl::Uniform3f(uRes, (float)RW, (float)RH, 1.0f);
     ogl::Uniform1f(uDelta, (float)(1.0 / s.fps));
     ogl::Uniform1f(uRate, (float)s.fps);
-    ogl::Uniform4f(uMouse, 0, 0, 0, 0);
+    if (s.mouseSet) {  // iMouse fixe : x, y en pixels du rendu ; z, w negatifs tant que le bouton n'est pas enfonce
+        const float mx = (float)(s.mouseX * RW), my = (float)(s.mouseY * RH);
+        ogl::Uniform4f(uMouse, mx, my, s.mouseDown ? mx : -mx, s.mouseDown ? my : -my);
+    } else {
+        ogl::Uniform4f(uMouse, 0, 0, 0, 0);
+    }
+    {  // canaux d'entree (textures)
+        const size_t cut = shaderPath.find_last_of(L"\\/");
+        const std::wstring shaderDir = cut == std::wstring::npos ? L"" : shaderPath.substr(0, cut + 1);
+        if (!loadChannels(s, shaderDir, findFfmpeg(exeDir), chans, H, err)) {
+            cleanupGL();
+            return Result::Failed;
+        }
+        bindChannels(chans, prog);
+    }
     ogl::Uniform1f(uSR, 44100.0f);
     ogl::Uniform1f(uWeight, 1.0f);
-    const platform::DateTime st = platform::localTime();
+    platform::DateTime st = platform::localTime();
+    if (!s.date.empty()) {  // date fixe : AAAA-MM-JJ[THH:MM[:SS]]
+        int y = 0, mo = 0, d = 0, hh = 0, mi = 0, ss = 0;
+        std::string dt = s.date;
+        for (auto& c : dt)
+            if (c == 'T' || c == 't' || c == '_') c = ' ';
+        if (sscanf(dt.c_str(), "%d-%d-%d %d:%d:%d", &y, &mo, &d, &hh, &mi, &ss) >= 3) {
+            st.year = y; st.month = mo; st.day = d; st.hour = hh; st.minute = mi; st.second = ss;
+        }
+    }
     const float dateSec = st.hour * 3600.f + st.minute * 60.f + st.second;
 
     auto drawAt = [&](double t, long long n) {

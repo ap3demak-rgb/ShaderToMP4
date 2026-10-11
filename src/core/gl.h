@@ -25,6 +25,10 @@ namespace ogl {
     F(void, Uniform1i, (GLint, GLint))                                               \
     F(void, Uniform3f, (GLint, GLfloat, GLfloat, GLfloat))                           \
     F(void, Uniform4f, (GLint, GLfloat, GLfloat, GLfloat, GLfloat))                  \
+    F(void, Uniform1fv, (GLint, GLsizei, const GLfloat*))                            \
+    F(void, Uniform3fv, (GLint, GLsizei, const GLfloat*))                            \
+    F(void, ActiveTexture, (GLenum))                                                 \
+    F(void, GenerateMipmap, (GLenum))                                                \
     F(void, GenVertexArrays, (GLsizei, GLuint*))                                     \
     F(void, BindVertexArray, (GLuint))                                               \
     F(void, GenFramebuffers, (GLsizei, GLuint*))                                     \

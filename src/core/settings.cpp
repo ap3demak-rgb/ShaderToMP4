@@ -7,13 +7,21 @@
 #include "formats.h"
 #include "platform/platform.h"
 
+static bool sameChannels(const Settings& a, const Settings& b) {
+    for (int i = 0; i < 4; i++)
+        if (a.channel[i] != b.channel[i] || a.chFilter[i] != b.chFilter[i] || a.chWrap[i] != b.chWrap[i] || a.chVflip[i] != b.chVflip[i])
+            return false;
+    return true;
+}
+
 bool sameSettings(const Settings& a, const Settings& b) {
     return a.width == b.width && a.height == b.height && a.fps == b.fps && a.duration == b.duration &&
            a.start == b.start && a.crf == b.crf && a.preset == b.preset && a.codec == b.codec &&
            a.container == b.container && a.ss == b.ss && a.outdir == b.outdir &&
            a.bitrate == b.bitrate && a.color == b.color && a.blur == b.blur && a.shutter == b.shutter &&
            a.loop == b.loop && a.audio == b.audio && a.fadein == b.fadein && a.fadeout == b.fadeout &&
-           a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
+           sameChannels(a, b) && a.mouseSet == b.mouseSet && a.mouseX == b.mouseX && a.mouseY == b.mouseY &&
+           a.mouseDown == b.mouseDown && a.date == b.date && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
            a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.metadata == b.metadata;
 }
 
@@ -21,6 +29,10 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
     std::string k = lower(trim(kIn)), v = trim(vIn);
     if (k == "outdir") { s.outdir = W(v); return; }  // chemin complet (peut contenir des espaces)
     if (k == "audio") { s.audio = W(v); return; }
+    if (k.size() == 9 && k.compare(0, 8, "ichannel") == 0 && k[8] >= '0' && k[8] <= '3') {  // chemin complet
+        s.channel[k[8] - '0'] = W(v);
+        return;
+    }
     if (k == "name") { s.name = W(v); return; }  // modele du nom de sortie (peut contenir des espaces)
     // ne garder que le premier mot de la valeur (ignore un commentaire derriere)
     size_t sp = v.find_first_of(" \t");
@@ -43,6 +55,25 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "fadeout") s.fadeout = std::stod(v);
         else if (k == "pbo") s.pbo = std::stoi(v);
         else if (k == "metadata") s.metadata = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
+        else if (k.size() > 9 && k.compare(0, 8, "ichannel") == 0 && k[8] >= '0' && k[8] <= '3' && k[9] == '.') {
+            const int i = k[8] - '0';
+            const std::string sub = k.substr(10), val = lower(v);
+            if (sub == "filter") s.chFilter[i] = (val == "nearest" || val == "linear") ? val : "mipmap";
+            else if (sub == "wrap") s.chWrap[i] = val == "clamp" ? val : "repeat";
+            else if (sub == "vflip") s.chVflip[i] = !(val == "0" || val == "false" || val == "off" || val == "no");
+        }
+        else if (k == "mouse") {  // x,y[,down] : fractions de la taille, origine en bas a gauche
+            double x = 0, y = 0;
+            if (sscanf(v.c_str(), "%lf,%lf", &x, &y) == 2) {
+                s.mouseSet = true;
+                s.mouseX = std::min(1.0, std::max(0.0, x));
+                s.mouseY = std::min(1.0, std::max(0.0, y));
+                s.mouseDown = lower(v).find("down") != std::string::npos;
+            } else if (lower(v) == "off") {
+                s.mouseSet = false;
+            }
+        }
+        else if (k == "date") s.date = lower(v) == "off" ? "" : v;
         else if (k == "chunk") s.chunk = std::stod(v);
         else if (k == "encoder") {
             std::string c = lower(v);
@@ -121,6 +152,16 @@ void writeIni(const std::wstring& path, const Settings& s) {
     put("depth", std::to_string(s.depth), "ini.depth");
     put("name", U8(s.name), "ini.name");
     put("exists", s.exists, "ini.exists");
+    for (int i = 0; i < 4; i++) {
+        if (s.channel[i].empty()) continue;
+        const std::string key = "iChannel" + std::to_string(i);
+        put(key, U8(s.channel[i]), i == 0 ? "ini.ichannel" : nullptr);
+        put(key + ".filter", s.chFilter[i]);
+        put(key + ".wrap", s.chWrap[i]);
+        put(key + ".vflip", s.chVflip[i] ? "1" : "0");
+    }
+    if (s.mouseSet) put("mouse", num(s.mouseX) + "," + num(s.mouseY) + (s.mouseDown ? ",down" : ""), "ini.mouse");
+    if (!s.date.empty()) put("date", s.date, "ini.date");
     put("chunk", num(s.chunk), "ini.chunk");
     put("metadata", s.metadata ? "1" : "0", "ini.metadata");
     fclose(f);

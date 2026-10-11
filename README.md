@@ -169,6 +169,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 | Audio | `audio` | sound file, aligned with the “Start” time, padded with silence if shorter |
 | Fade in / out | `fadein`, `fadeout` | seconds, picture and sound |
 | Output | `outdir` | output folder (empty = next to the shader) |
+| (shader comments) | `iChannel0`…`iChannel3`, `mouse`, `date` | textures, fixed mouse and date (see “Shadertoy compatibility”) |
 | (config.ini only) | `name`, `exists` | output file name template and what to do when it exists (see “Output formats”) |
 | (config.ini only) | `chunk` | render in parts of N seconds (30 by default, 0 = never) |
 | (config.ini only) | `metadata` | 1 = write title (shader name) and comment (size, frame rate, version) in the file, 0 = none (1 by default) |
@@ -194,6 +195,25 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 - **Estimated size**: shown under the settings (rough, it depends on the shader), with a warning when the destination drive is too small.
 - **File name** (config.ini or shader comment): `name` is a template, by default `{shader}`; `{w}`, `{h}`, `{fps}`, `{date}` and `{codec}` are replaced (`// name={shader}_{w}x{h}`). `exists` decides what happens when the result already exists: `overwrite` (default), `number` (`name-2`, `name-3`…) or `skip`.
 - **Presets**: the chips (Draft, YouTube, 4K 60, Vertical) and the “More” menu (X 720p30, light GIF, ProRes for editing, WebM VP9) change size, frame rate, codec, container and quality only. Your own presets are `.ini` files in a `presets` folder next to the program: they appear in the “More” menu (same format as a profile saved with “Save”).
+
+</details>
+
+<details>
+<summary><b>Shadertoy compatibility</b> (textures, mouse, date)</summary>
+
+Only the **Image** tab is rendered. What works:
+
+| Feature | Status |
+|---|---|
+| `mainImage`, `iResolution`, `iTime`, `iTimeDelta`, `iFrame`, `iFrameRate`, `iSampleRate` (44100) | supported, exact per frame |
+| `iChannel0` to `iChannel3` as 2D textures | supported: `// iChannel0=image.png` (path relative to the shader; PNG, JPG, HDR, EXR… anything ffmpeg decodes), `noise` or `grid` (generated, identical on every run) |
+| texture options | `// iChannel0.filter=nearest\|linear\|mipmap` (mipmap by default), `.wrap=clamp\|repeat` (repeat by default), `.vflip=0\|1` (1 by default, like Shadertoy) |
+| `iChannelResolution`, `iChannelTime` | supported (time is 0: no animated channels) |
+| `iMouse` | fixed value: `// mouse=0.5,0.5` (fractions of the size, origin at the bottom left), `// mouse=0.5,0.5,down` for a pressed button; otherwise 0 |
+| `iDate` | real date by default; `// date=2026-03-14T15:09:26` fixes it for a reproducible render |
+| Buffer A–D, Common, Cubemap A | not supported yet |
+| cubemaps, 3D textures, video, webcam, microphone, music and keyboard channels | not supported yet |
+| `// iChannel` lines are not needed when the shader never reads the channel | a channel that is read without a texture stays black and the log says so |
 
 </details>
 
