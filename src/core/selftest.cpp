@@ -178,7 +178,11 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         std::wstring stem = shader.substr(shader.find_last_of(L"\\/") + 1);
         stem.erase(stem.find_last_of(L'.'));
         const std::wstring pre = outDir + platform::pathSeparator() + stem + L"_64x64";
-        const bool good = ok1 && ok2 && ok3 && fileExists(pre + L".mp4") && fileExists(pre + L"-2.mp4") && !fileExists(pre + L"-3.mp4");
+        Settings polluted;  // un config.ini ecrit avec un commentaire derriere le modele ne doit pas le polluer
+        parseLines(polluted, "name={shader}_x      ; modele du nom\nname2=1\n", false);
+        Settings polluted2;
+        parseLines(polluted2, "name=      ; modele du nom\n", false);
+        const bool good = polluted.name == L"{shader}_x" && polluted2.name.empty() && ok1 && ok2 && ok3 && fileExists(pre + L".mp4") && fileExists(pre + L"-2.mp4") && !fileExists(pre + L"-3.mp4");
         if (good) {
             report += L"PASS    " + TX("selftest.fmt_naming") + L"\r\n";
         } else {

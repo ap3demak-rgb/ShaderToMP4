@@ -25,8 +25,21 @@ bool sameSettings(const Settings& a, const Settings& b) {
            a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.metadata == b.metadata;
 }
 
+// Valeur complete d'une cle qui garde ses espaces (chemin, modele de nom) : le commentaire `      ; texte` que writeIni peut
+// ajouter derriere est retire (un « ; » en tete ou precede de deux espaces).
+static std::string withoutIniComment(const std::string& raw) {
+    for (size_t i = 0; i < raw.size(); i++) {
+        if (raw[i] != ';') continue;
+        const bool lead = raw.find_first_not_of(" \t") == i;
+        const bool spaced = i >= 2 && (raw[i - 1] == ' ' || raw[i - 1] == '\t') && (raw[i - 2] == ' ' || raw[i - 2] == '\t');
+        if (lead || spaced) return trim(raw.substr(0, i));
+    }
+    return trim(raw);
+}
+
 static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn) {
     std::string k = lower(trim(kIn)), v = trim(vIn);
+    if (k == "outdir" || k == "audio" || k == "name" || (k.size() == 9 && k.compare(0, 8, "ichannel") == 0)) v = withoutIniComment(vIn);
     if (k == "outdir") { s.outdir = W(v); return; }  // chemin complet (peut contenir des espaces)
     if (k == "audio") { s.audio = W(v); return; }
     if (k.size() == 9 && k.compare(0, 8, "ichannel") == 0 && k[8] >= '0' && k[8] <= '3') {  // chemin complet
@@ -167,6 +180,7 @@ void writeIni(const std::wstring& path, const Settings& s) {
         fputs(l.c_str(), f);
     };
     fputs(("; " + i18n::tr8("ini.header1") + "\r\n; " + i18n::tr8("ini.header2") + "\r\n").c_str(), f);
+    fputs(("; name: " + i18n::tr8("ini.name") + "\r\n; iChannel0-3: " + i18n::tr8("ini.ichannel") + "\r\n").c_str(), f);
     put("width", std::to_string(s.width));
     put("height", std::to_string(s.height));
     put("fps", num(s.fps));
@@ -189,12 +203,12 @@ void writeIni(const std::wstring& path, const Settings& s) {
     put("encoder", s.encoder, "ini.encoder");
     put("pbo", std::to_string(s.pbo), "ini.pbo");
     put("depth", std::to_string(s.depth), "ini.depth");
-    put("name", U8(s.name), "ini.name");
+    put("name", U8(s.name));  // pas de commentaire : la valeur garde ses espaces
     put("exists", s.exists, "ini.exists");
     for (int i = 0; i < 4; i++) {
         if (s.channel[i].empty()) continue;
         const std::string key = "iChannel" + std::to_string(i);
-        put(key, U8(s.channel[i]), i == 0 ? "ini.ichannel" : nullptr);
+        put(key, U8(s.channel[i]));
         if (!s.chFilter[i].empty()) put(key + ".filter", s.chFilter[i]);
         if (!s.chWrap[i].empty()) put(key + ".wrap", s.chWrap[i]);
         put(key + ".vflip", s.chVflip[i] ? "1" : "0");
