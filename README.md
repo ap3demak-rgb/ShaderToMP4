@@ -113,7 +113,7 @@ The [`examples`](examples) folder contains four shaders ready to convert: plasma
 
 **Requirements**: a graphics card (or driver) supporting OpenGL 3.3, and
 - **Windows**: Windows 10 (version 1703 or newer) or Windows 11.
-- **Linux**: a desktop with X11 or Wayland (XWayland), glibc 2.35 or newer, the OpenGL driver of your graphics card (Mesa works), and `curl` and `tar` with `xz` for the automatic ffmpeg download. On hybrid-GPU laptops, start the program with `DRI_PRIME=1` to use the discrete GPU.
+- **Linux**: a desktop with X11 or Wayland (XWayland), glibc 2.35 or newer, the OpenGL driver of your graphics card (Mesa works), and `curl` and `tar` with `xz` for the automatic ffmpeg download. On hybrid-GPU laptops, set `gpu=high` in `config.ini` (or `--gpu=high` with `--render`) to use the discrete GPU, `gpu=low` for the integrated one (the program sets the PRIME variables of Mesa and of the NVIDIA driver before opening OpenGL; restart it after changing; `--diagnostic` shows which GPU is used).
 - **macOS**: 10.13 or newer. The archive is signed ad hoc, not notarized: on first launch, right-click `ShaderToMP4.app` and choose *Open* (or run `xattr -dr com.apple.quarantine ShaderToMP4.app`). Settings are written in the folder that contains the `.app`, so keep it in a folder you can write to (not `/Applications`).
 
 ## Features
@@ -176,6 +176,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 | (shader comments) | `iChannel0`…`iChannel3`, `mouse`, `date` | textures, fixed mouse and date (see “Shadertoy compatibility”) |
 | (shader comments, `--variant=`) | `variant` | extra renderings of the same shader, one line per variant: `// variant=720p:width=1280\|height=720\|crf=23`. The base render comes first, then each variant with its own settings; its name is added to the file name (`shader_720p.mp4`) unless the variant sets `name` |
 | (config.ini only) | `name`, `exists` | output file name template and what to do when it exists (see “Output formats”) |
+| (config.ini only) | `gpu` | graphics card on a two-GPU PC, Linux only: `default`, `high` (the discrete one) or `low` (the integrated one). Windows already asks for the powerful GPU; macOS chooses by itself |
 | (config.ini only) | `endaction` | after a successful batch: `none` (default), `folder` (show the last file in the file manager) or `sleep` (the computer sleeps after 15 s; closing the program cancels it). At the end of a batch the taskbar / Dock button always flashes |
 | (config.ini only) | `chunk` | render in parts of N seconds (30 by default, 0 = never) |
 | (config.ini only) | `metadata` | 1 = write title (shader name) and comment (size, frame rate, version) in the file, 0 = none (1 by default) |

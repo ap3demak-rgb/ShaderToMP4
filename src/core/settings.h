@@ -28,6 +28,7 @@ struct Settings {
     int pbo = 3;                    // profondeur de la file de lecture GPU (2..8)
     std::vector<std::string> variants;  // variantes du meme shader : "nom:cle=valeur|cle=valeur" (rendues apres le rendu de base)
     std::string endaction = "none"; // a la fin d'un lot reussi : none | folder | sleep (config.ini seulement)
+    std::string gpu = "default";    // default | high | low : carte graphique sur un PC a deux GPU (Linux ; config.ini ou --gpu=)
     bool metadata = true;           // titre / commentaire ecrits dans le conteneur
     std::wstring channel[4];        // iChannel0-3 : chemin d'image, "noise" ou "grid" ("" = aucun)
     std::string chFilter[4];        // nearest | linear | mipmap ("" : mipmap pour une image, linear pour un tampon)

@@ -211,6 +211,20 @@ void revealInFolder(const std::wstring& filePath) {
 
 void sleepMs(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
 
+void applyGpuPreference(const std::string& pref) {
+#ifdef __APPLE__
+    (void)pref;  // macOS choisit le GPU lui-meme
+#else
+    if (pref == "high") {  // GPU dedie : Mesa (PRIME) et le pilote NVIDIA proprietaire (offload)
+        setenv("DRI_PRIME", "1", 1);
+        setenv("__NV_PRIME_RENDER_OFFLOAD", "1", 1);
+        setenv("__GLX_VENDOR_LIBRARY_NAME", "nvidia", 1);
+    } else if (pref == "low") {  // GPU integre
+        setenv("DRI_PRIME", "0", 1);
+    }
+#endif
+}
+
 DateTime localTime() {
     time_t t = time(nullptr);
     struct tm lt;

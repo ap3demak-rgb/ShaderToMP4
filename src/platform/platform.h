@@ -35,6 +35,10 @@ std::wstring findInPath(const std::wstring& fileName);          // chemin comple
 void openWithDefault(const std::wstring& pathOrUrl);             // ouvre un fichier, un dossier ou une adresse
 void revealInFolder(const std::wstring& filePath);               // montre le fichier dans l'explorateur / le gestionnaire de fichiers
 void sleepMs(int ms);
+// Carte graphique a utiliser sur un PC a deux GPU : "default" (le systeme choisit), "high" (la plus puissante), "low" (la
+// plus economique). A appeler AVANT la creation du premier contexte OpenGL. Linux : variables PRIME de Mesa et de NVIDIA ;
+// macOS et Windows : sans effet (Windows demande deja le GPU puissant ; sa preference par programme est dans le registre).
+void applyGpuPreference(const std::string& pref);
 struct DateTime {
     int year, month, day;  // month : 1..12
     int hour, minute, second;

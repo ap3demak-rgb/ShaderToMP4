@@ -24,6 +24,7 @@ Format : une section par version, la plus récente en premier. La section d'une 
 - Accessibilité : les textes discrets et d'accentuation atteignent un contraste de 4,5:1 (WCAG AA) ; le contrôle du dépôt le vérifie, ainsi que l'identité de la palette entre les deux interfaces.
 - Variantes : `// variant=720p:width=1280|height=720` (ou `--variant=`) rend à nouveau le même shader avec d'autres réglages en une fois.
 - macOS : la progression du rendu s'affiche dans l'icône du Dock.
+- Linux : `gpu=high|low` (config.ini ou `--gpu=`) choisit le GPU dédié ou intégré sur un PC à deux GPU.
 - `--watch=dossier` : rend chaque shader déposé dans un dossier (explicite, jamais par défaut).
 - `--diagnostic` (système, carte graphique, OpenGL, ffmpeg et encodeurs, sans donnée personnelle) et `--benchmark` (images par seconde par résolution et par encodeur).
 

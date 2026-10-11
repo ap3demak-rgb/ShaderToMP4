@@ -111,6 +111,7 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         return kExitNoFfmpeg;
     }
 
+    platform::applyGpuPreference(base.gpu);
     GLContext gl;
     std::wstring err;
     if (!createGLContext(gl, err)) {

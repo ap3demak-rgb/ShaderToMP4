@@ -43,6 +43,7 @@
   "ini.endaction": "after a successful batch: none, folder (show the last file) or sleep",
   "log.variant": "Variant \"%ls\" (%d of %d)",
   "ini.variant": "extra rendering of the same shader: name:key=value|key=value (e.g. 720p:width=1280|height=720|crf=23); repeat the line for each variant",
+  "ini.gpu": "graphics card on a two-GPU PC (Linux): default, high (the powerful one) or low (the integrated one); needs a restart",
   "error.disk_full": "Not enough disk space on %ls: about %.0f MB needed, %.0f MB free.",
   "log.render_summary": "  %dx%d  %g fps  %g s  (%lld frames)  %ls  preset %ls  %ls",
   "log.motion_blur": "Motion blur: %d sub-frames per frame (shutter %g)",
