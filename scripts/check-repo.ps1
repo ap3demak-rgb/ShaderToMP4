@@ -97,6 +97,33 @@ foreach ($lf in Get-ChildItem lang -Filter *.json) {
     if ($a -ne $b) { Fail "nombre de marques de format different pour la cle $k dans $($lf.Name)" }
   }
 }
+# --- Accessibilite : palette identique dans les deux interfaces, contraste du texte >= 4,5:1 (WCAG AA) ---
+function Read-Palette($file) {
+  $h = @{}
+  foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($file), '\b([A-Z_]+)\s*=\s*0x([0-9A-Fa-f]{6})')) { $h[$m.Groups[1].Value] = [Convert]::ToInt32($m.Groups[2].Value, 16) }
+  $h
+}
+function Get-Luminance([int]$c) {
+  $v = @((($c -shr 16) -band 255), (($c -shr 8) -band 255), ($c -band 255)) | ForEach-Object {
+    $x = $_ / 255.0
+    if ($x -le 0.03928) { $x / 12.92 } else { [math]::Pow(($x + 0.055) / 1.055, 2.4) }
+  }
+  0.2126 * $v[0] + 0.7152 * $v[1] + 0.0722 * $v[2]
+}
+function Get-Contrast([int]$a, [int]$b) {
+  $la = Get-Luminance $a; $lb = Get-Luminance $b
+  if ($la -lt $lb) { $t = $la; $la = $lb; $lb = $t }
+  ($la + 0.05) / ($lb + 0.05)
+}
+$palWin = Read-Palette "src/gui/ui_theme.h"; $palImgui = Read-Palette "src/ui_imgui/widgets.h"
+foreach ($k in "BG", "CARD", "FIELD", "TEXT", "MUTED", "FAINT", "ACCENT", "OK", "ERR", "WARN") {
+  if ($palWin[$k] -ne $palImgui[$k]) { Fail "palette differente entre ui_theme.h et widgets.h : $k" }
+  if ($k -in "BG", "CARD", "FIELD") { continue }
+  foreach ($bgName in "CARD", "FIELD", "BG") {
+    $ratio = Get-Contrast $palWin[$k] $palWin[$bgName]
+    if ($ratio -lt 4.5) { Fail ("contraste insuffisant : {0} sur {1} = {2:N2}:1 (minimum 4,5:1)" -f $k, $bgName, $ratio) }
+  }
+}
 $srcFiles = Get-ChildItem src -Recurse -Include *.cpp, *.h
 $used = @{}
 foreach ($f in $srcFiles) {
