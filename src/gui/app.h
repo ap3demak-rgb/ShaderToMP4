@@ -42,7 +42,7 @@ struct App {
          edStart = nullptr, cmbCodec = nullptr, cmbPreset = nullptr, cmbContainer = nullptr, cmbSS = nullptr, edOut = nullptr, bBrowse = nullptr, bLoadP = nullptr, bSaveP = nullptr, trkCrf = nullptr, lblCrf = nullptr;
     HWND edBitrate = nullptr, cmbColor = nullptr, cmbBlur = nullptr, edLoop = nullptr, edAudio = nullptr,
          bAudio = nullptr, edFadeIn = nullptr, edFadeOut = nullptr, bPause = nullptr, bFolder = nullptr,
-         preview = nullptr, trkPrev = nullptr, lblPrev = nullptr, bPrev = nullptr, cmbEncoder = nullptr, cmbDepth = nullptr, lblEst = nullptr;
+         preview = nullptr, trkPrev = nullptr, lblPrev = nullptr, bPrev = nullptr, cmbEncoder = nullptr, cmbDepth = nullptr, lblEst = nullptr, lblForced = nullptr;
     HBITMAP prevBmp = nullptr;  // derniere image d apercu
     int prevW = 0, prevH = 0;
     std::vector<HWND> labels;  // libelles du panneau de reglages (dans l ordre de layout())
@@ -102,6 +102,7 @@ std::wstring getText(HWND h);
 bool parseSeconds(std::wstring t, double& out);  // "90", "1:30", "0:01:30" -> secondes
 void syncResCombo();
 void updateCrfLabel();
+void updateForced();        // reglages imposes par le shader selectionne (// cle=valeur)
 void updateEstimate();      // taille estimee du fichier, sous le preset
 void showPresetMenu();      // menu « Plus » : preselections integrees et fichiers presets/*.ini
 void settingsToUI(const Settings& s);

@@ -16,6 +16,7 @@ Format: one section per version, newest first. The section of a tagged version i
 - “More” presets menu (X 720p30, light GIF, ProRes for editing, WebM VP9) and your own presets in a `presets` folder.
 - Shadertoy compatibility: `iChannel0-3` textures (PNG, JPG, HDR, EXR, generated `noise` and `grid`, filter / wrap / flip options), fixed `iMouse` and `iDate`, Buffer A–D and Common passes with persistent float buffers (also when a render is resumed or previewed), `#version` / `#extension` ignored, `texture2D` and other GLSL ES names accepted, and a compatibility report in the log before each render.
 - Command line: `--render` with every setting as `--key=value`, `--profile=`, `--png`, JSON progress (`--progress=json`), documented exit codes, same on Windows, Linux and macOS.
+- The settings card shows “Set by the shader: fps=30, …” for the selected shader (the `// key=value` comments take priority over the window).
 - `--watch=folder`: renders every shader dropped in a folder (explicit, off by default).
 - `--diagnostic` (system, graphics card, OpenGL, ffmpeg and encoders, no personal data) and `--benchmark` (frames per second by resolution and encoder).
 

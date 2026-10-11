@@ -107,6 +107,30 @@ bool isSettingKey(const std::string& key) {
 
 void applySetting(Settings& s, const std::string& key, const std::string& value) { applyKV(s, key, value); }
 
+std::wstring shaderOverridesOf(const std::wstring& shaderPath) {
+    std::string text;
+    if (!readFile(shaderPath, text) || text.size() >= 2 && (uint8_t)text[0] == 0xFF && (uint8_t)text[1] == 0xFE) return L"";
+    std::string out;
+    size_t pos = 0;
+    while (pos <= text.size()) {
+        size_t e = text.find('\n', pos);
+        if (e == std::string::npos) e = text.size();
+        const std::string line = trim(text.substr(pos, e - pos));
+        pos = e + 1;
+        if (line.compare(0, 2, "//") != 0) continue;
+        const std::string body = trim(line.substr(2));
+        const size_t eq = body.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string key = lower(trim(body.substr(0, eq)));
+        if (!isSettingKey(key)) continue;
+        std::string val = trim(body.substr(eq + 1));
+        if (key != "outdir" && key != "audio" && key != "name" && key.compare(0, 8, "ichannel") != 0) val = val.substr(0, val.find_first_of(" \t"));
+        if (val.empty()) continue;
+        out += (out.empty() ? "" : ", ") + key + "=" + val;
+    }
+    return W(out);
+}
+
 void parseLines(Settings& s, const std::string& text, bool onlySlashComments) {
     size_t pos = 0;
     while (pos <= text.size()) {
