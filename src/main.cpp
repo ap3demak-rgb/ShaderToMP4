@@ -90,6 +90,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         std::wstring a = argv[i];
         if (a == L"--selftest") selftest = true;
         else if (a == L"--render") render = true;
+        else if (a.compare(0, 6, L"--dpi=") == 0) theme::dpiOverride = (UINT)std::max(96, std::min(384, _wtoi(a.c_str() + 6)));  // verification de l'echelle
         else if (a == L"--diagnostic") diagnostic = true;
         else if (a == L"--benchmark") benchmark = true;
         else if (a == L"--update") update = true;
@@ -140,7 +141,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     RegisterClassExW(&wc);
 
     // Taille initiale : 1000 x 900 dp, sans dépasser la zone de travail
-    const UINT sysDpi = GetDpiForSystem();
+    const UINT sysDpi = theme::dpiOverride ? theme::dpiOverride : GetDpiForSystem();
     RECT wa;
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
     RECT want{0, 0, MulDiv(1000, (int)sysDpi, 96), MulDiv(900, (int)sysDpi, 96)};
