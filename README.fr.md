@@ -173,6 +173,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 | Sortie | `outdir` | dossier de sortie (vide = à côté du shader) |
 | (commentaires du shader) | `iChannel0`…`iChannel3`, `mouse`, `date` | textures, souris et date fixes (voir « Compatibilité Shadertoy ») |
 | (config.ini seulement) | `name`, `exists` | modèle du nom de sortie et conduite si le fichier existe (voir « Formats de sortie ») |
+| (config.ini seulement) | `endaction` | après un lot réussi : `none` (défaut), `folder` (montrer le dernier fichier dans le gestionnaire de fichiers) ou `sleep` (mise en veille après 15 s ; fermer le programme l'annule). À la fin d'un lot le bouton de la barre des tâches / du Dock clignote toujours |
 | (config.ini seulement) | `chunk` | rendu par parties de N secondes (30 par défaut, 0 = jamais) |
 | (config.ini seulement) | `metadata` | 1 = écrire titre (nom du shader) et commentaire (taille, cadence, version) dans le fichier, 0 = aucun (1 par défaut) |
 | (config.ini seulement) | `pbo` | profondeur de la file de lecture GPU (2 à 8, 3 par défaut) |

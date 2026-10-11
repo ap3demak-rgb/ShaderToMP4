@@ -6,6 +6,7 @@
 #include "common.h"
 #include "core/settings.h"
 #include "core/formats.h"
+#include "core/endaction.h"
 #include "core/locate.h"
 #include "core/queue.h"
 #include "core/presets.h"

@@ -39,6 +39,8 @@
   "log.compat_date": "iDate is read: the real date is used, so two renders differ (// date=2026-03-14T15:09:26 fixes it).",
   "log.compat_channel_time": "iChannelTime is read: it is always 0 (no animated channel).",
   "log.queue_restored": "Queue restored from the last session: %d shader(s) still to render (press Start).",
+  "log.endaction_sleep": "End of the batch: the computer goes to sleep in 15 seconds (close the program to cancel).",
+  "ini.endaction": "after a successful batch: none, folder (show the last file) or sleep",
   "error.disk_full": "Not enough disk space on %ls: about %.0f MB needed, %.0f MB free.",
   "log.render_summary": "  %dx%d  %g fps  %g s  (%lld frames)  %ls  preset %ls  %ls",
   "log.motion_blur": "Motion blur: %d sub-frames per frame (shutter %g)",

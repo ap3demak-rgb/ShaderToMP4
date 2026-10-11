@@ -39,6 +39,8 @@
   "log.compat_date": "iDate est lu : la date réelle est utilisée, deux rendus diffèrent (// date=2026-03-14T15:09:26 la fixe).",
   "log.compat_channel_time": "iChannelTime est lu : il vaut toujours 0 (pas de canal animé).",
   "log.queue_restored": "File d'attente retrouvée de la dernière session : %d shader(s) à rendre (appuyez sur Démarrer).",
+  "log.endaction_sleep": "Fin du lot : l'ordinateur se met en veille dans 15 secondes (fermez le programme pour annuler).",
+  "ini.endaction": "après un lot réussi : none, folder (montrer le dernier fichier) ou sleep (veille)",
   "error.disk_full": "Espace disque insuffisant sur %ls : il faut environ %.0f Mo, %.0f Mo libres.",
   "log.render_summary": "  %dx%d  %g fps  %g s  (%lld images)  %ls  preset %ls  %ls",
   "log.motion_blur": "Flou de mouvement : %d sous-images par image (obturateur %g)",
