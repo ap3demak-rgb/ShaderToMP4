@@ -6,6 +6,12 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
+## 1.6.1 — 2026-10-11
+
+### Changed
+
+- German, Spanish, Italian and Portuguese: all interface and command-line texts translated (they fell back to English for recent features).
+
 ## 1.6.0 — 2026-10-11
 
 ### Added

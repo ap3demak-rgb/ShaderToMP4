@@ -6,6 +6,12 @@
 
 Format : une section par version, la plus récente en premier. La section d'une version étiquetée est reprise dans les notes de version.
 
+## 1.6.1 — 2026-10-11
+
+### Modifié
+
+- Allemand, espagnol, italien et portugais : tous les textes de l'interface et de la ligne de commande sont traduits (les fonctions récentes retombaient sur l'anglais).
+
 ## 1.6.0 — 2026-10-11
 
 ### Ajouts
