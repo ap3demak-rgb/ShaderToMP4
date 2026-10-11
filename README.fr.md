@@ -169,6 +169,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 | Audio | `audio` | fichier son, calé sur le temps « Début », complété par du silence s'il est plus court |
 | Fondu entrée / sortie | `fadein`, `fadeout` | secondes, image et son |
 | Sortie | `outdir` | dossier de sortie (vide = à côté du shader) |
+| (commentaires du shader) | `iChannel0`…`iChannel3`, `mouse`, `date` | textures, souris et date fixes (voir « Compatibilité Shadertoy ») |
 | (config.ini seulement) | `name`, `exists` | modèle du nom de sortie et conduite si le fichier existe (voir « Formats de sortie ») |
 | (config.ini seulement) | `chunk` | rendu par parties de N secondes (30 par défaut, 0 = jamais) |
 | (config.ini seulement) | `metadata` | 1 = écrire titre (nom du shader) et commentaire (taille, cadence, version) dans le fichier, 0 = aucun (1 par défaut) |
@@ -194,6 +195,25 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 - **Taille estimée** : affichée sous les réglages (approximative, elle dépend du shader), avec un avertissement si le disque de destination est trop petit.
 - **Nom du fichier** (config.ini ou commentaire du shader) : `name` est un modèle, `{shader}` par défaut ; `{w}`, `{h}`, `{fps}`, `{date}` et `{codec}` sont remplacés (`// name={shader}_{w}x{h}`). `exists` décide ce qui se passe si le résultat existe déjà : `overwrite` (par défaut), `number` (`nom-2`, `nom-3`…) ou `skip`.
 - **Préréglages** : les pastilles (Brouillon, YouTube, 4K 60, Vertical) et le menu « Plus » (X 720p30, GIF léger, ProRes pour le montage, WebM VP9) ne changent que la taille, la cadence, le codec, le conteneur et la qualité. Vos propres préréglages sont des fichiers `.ini` dans un dossier `presets` à côté du programme : ils apparaissent dans le menu « Plus » (même format qu'un profil enregistré avec « Enregistrer »).
+
+</details>
+
+<details>
+<summary><b>Compatibilité Shadertoy</b> (textures, souris, date)</summary>
+
+Seul l'onglet **Image** est rendu. Ce qui fonctionne :
+
+| Fonction | État |
+|---|---|
+| `mainImage`, `iResolution`, `iTime`, `iTimeDelta`, `iFrame`, `iFrameRate`, `iSampleRate` (44100) | pris en charge, exacts à chaque image |
+| `iChannel0` à `iChannel3` en textures 2D | pris en charge : `// iChannel0=image.png` (chemin relatif au shader ; PNG, JPG, HDR, EXR… tout ce que ffmpeg décode), `noise` ou `grid` (générés, identiques à chaque exécution) |
+| options des textures | `// iChannel0.filter=nearest\|linear\|mipmap` (mipmap par défaut), `.wrap=clamp\|repeat` (repeat par défaut), `.vflip=0\|1` (1 par défaut, comme Shadertoy) |
+| `iChannelResolution`, `iChannelTime` | pris en charge (le temps vaut 0 : pas de canal animé) |
+| `iMouse` | valeur fixe : `// mouse=0.5,0.5` (fractions de la taille, origine en bas à gauche), `// mouse=0.5,0.5,down` pour un bouton enfoncé ; sinon 0 |
+| `iDate` | date réelle par défaut ; `// date=2026-03-14T15:09:26` la fixe pour un rendu reproductible |
+| Buffer A–D, Common, Cubemap A | pas encore pris en charge |
+| cubemaps, textures 3D, vidéo, webcam, micro, musique et clavier | pas encore pris en charge |
+| lignes `// iChannel` inutiles si le shader ne lit pas le canal | un canal lu sans texture reste noir et le journal le signale |
 
 </details>
 

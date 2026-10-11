@@ -201,6 +201,62 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_chunks") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
         if (!problem.empty()) fails++;
     }
+    // Textures par fichier : image decodee par ffmpeg (PNG 8 bits, HDR flottant) lue en 1:1 par le shader
+    for (const char* ext : {"png", "hdr"}) {
+        total++;
+        const std::wstring texName = std::wstring(L"tex.") + W(ext);
+        const std::wstring texPath = outDir + platform::pathSeparator() + texName;
+        const std::wstring shaderPath = outDir + platform::pathSeparator() + L"usetex.glsl";
+        std::wstring problem;
+        runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -f lavfi -i testsrc=s=16x16:d=1 -frames:v 1 \"" + texPath + L"\"",
+                   nullptr);
+        const std::string src = std::string("// iChannel0=") + U8(texName) +
+                                "\n// iChannel0.filter=nearest\n// iChannel0.wrap=clamp\n"
+                                "void mainImage(out vec4 o, in vec2 p){ o = vec4(texture(iChannel0, p / iResolution.xy).rgb, 1.0); }\n";
+        if (FILE* f = platform::openFile(shaderPath, "wb")) {
+            fwrite(src.data(), 1, src.size(), f);
+            fclose(f);
+        }
+        Settings st = base("h264", "mp4", 8);
+        st.width = 16;
+        st.height = 16;
+        std::vector<uint8_t> got;
+        Hooks H;
+        H.log = [](const std::wstring&) {};
+        H.previewFrame = [&](int, int, std::vector<uint8_t>&& px) { got = std::move(px); };
+        std::wstring e;
+        if (!fileExists(texPath)) {
+            problem = TXF("selftest.fmt_missing", W(ext).c_str());
+        } else if (convertFile(shaderPath, exeDir, st, H, e) != Result::Ok || got.size() != 16 * 16 * 4) {
+            problem = e.empty() ? TX("selftest.render_failed") : e;
+        } else if (std::string(ext) == "png") {  // meme orientation et memes pixels que l'image d'origine
+            const std::wstring raw = outDir + platform::pathSeparator() + L"tex.raw";
+            runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -i \"" + texPath +
+                           L"\" -frames:v 1 -f rawvideo -pix_fmt bgra \"" + raw + L"\"",
+                       nullptr);
+            std::string want;
+            if (!readFile(raw, want) || want.size() != got.size()) {
+                problem = TXF("selftest.fmt_bad", W("texture size").c_str());
+            } else {
+                double sum = 0;
+                size_t cnt = 0;
+                for (size_t i = 0; i < got.size(); i++) {
+                    if (i % 4 == 3) continue;
+                    sum += std::abs((int)got[i] - (int)(uint8_t)want[i]);
+                    cnt++;
+                }
+                if (sum / cnt > 2.0) problem = TXF("selftest.fmt_bad", W("mean difference " + std::to_string(sum / cnt)).c_str());
+            }
+        } else {  // flottant : l'image ne doit pas etre noire
+            size_t lit = 0;
+            for (size_t i = 0; i < got.size(); i++)
+                if (i % 4 != 3 && got[i] > 8) lit++;
+            if (lit < 64) problem = TXF("selftest.fmt_bad", W("black texture").c_str());
+        }
+        const std::wstring label = TX("selftest.fmt_texture") + L" " + W(ext);
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + label + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
     removeTree(outDir);
 }
 
@@ -277,7 +333,12 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
                 report += line + L"\r\n";
             }
         }
-        if (!shaders.empty()) runFormatTests(exeDir, dir, dir + shaders[0].name, report, total, fails);
+        if (!shaders.empty()) {  // les formats sont verifies avec circle.glsl (a defaut le premier shader)
+            std::wstring pick = shaders[0].name;
+            for (const auto& en : shaders)
+                if (en.name == L"circle.glsl") pick = en.name;
+            runFormatTests(exeDir, dir, dir + pick, report, total, fails);
+        }
         destroyGLContext(gl);
     }
     report += L"\r\n" + TXF("selftest.summary", total, fails) + L"\r\n";
