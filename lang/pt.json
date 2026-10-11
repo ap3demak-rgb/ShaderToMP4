@@ -32,7 +32,7 @@
   "log.compat_version": "Uma linha #version foi ignorada: o programa compila em GLSL 3.30 core.",
   "log.compat_extension": "Uma linha #extension foi ignorada (não é necessária aqui).",
   "log.compat_vr": "O mainVR (shader VR) não é suportado: só o separador Image é renderizado.",
-  "log.compat_sound": "O mainSound (separador Sound) não é suportado: é ignorado.",
+  "log.compat_sound": "O mainSound no ficheiro principal é ignorado: ponha o separador Sound em <nome>.sound.glsl.",
   "log.compat_cubemap": "O samplerCube (cubemap) ainda não é suportado: o canal fica preto.",
   "log.compat_volume": "O sampler3D (textura de volume) ainda não é suportado: o canal fica preto.",
   "log.compat_mouse": "O iMouse é lido: fica a 0, a menos que defina // mouse=x,y (frações do tamanho).",
@@ -372,7 +372,7 @@
   "error.import_json": "Não é possível ler a exportação do Shadertoy (JSON inválido): %ls",
   "error.import_norenderpass": "Nenhum renderpass encontrado: não parece uma exportação do Shadertoy (use o botão Export / JSON da página do shader).",
   "log.import_license": "Shader «%ls» de %ls importado: mantém a licença do seu autor (predefinição do Shadertoy: CC BY-NC-SA 3.0); verifique a página do shader antes de publicar um vídeo.",
-  "log.import_note_pass": "A passagem «%ls» não é renderizada (apenas Image, Buffer A-D, Common e Cube A).",
+  "log.import_note_pass": "A passagem «%ls» não é renderizada (apenas Image, Buffer A-D, Common, Cube A e Sound).",
   "log.import_note_media": "iChannel%d de «%ls»: o suporte do Shadertoy %ls não está disponível offline, é usado um substituto gerado (escreva // iChannel%d=o_seu_ficheiro para usar o seu).",
   "log.import_note_audio": "iChannel%d de «%ls»: entrada de música ou microfone; lê o ficheiro de som da opção «audio» (defina audio=ficheiro.mp3).",
   "log.import_note_unsupported": "iChannel%d de «%ls»: o tipo de entrada «%ls» não é suportado (webcam, teclado...); o canal fica vazio.",
@@ -386,5 +386,8 @@
   "cli.opt.quiet": "--quiet        Sem caixa de mensagem (--selftest, --get-ffmpeg)",
   "cli.opt.get_ffmpeg": "--get-ffmpeg   Transferir e instalar o ffmpeg, sem janela",
   "cli.opt.version": "--version      Mostrar a versão, o copyright e a licença",
-  "cli.opt.help": "--help         Mostrar esta ajuda"
+  "cli.opt.help": "--help         Mostrar esta ajuda",
+  "log.sound_rendering": "A renderizar a passagem Sound (mainSound) num ficheiro WAV temporário...",
+  "log.sound_audio_wins": "A opção «audio» está definida: substitui a passagem Sound.",
+  "selftest.fmt_sound": "passagem Sound: 7 s de áudio em dois blocos, amplitude e continuidade"
 }

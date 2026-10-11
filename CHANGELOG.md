@@ -6,6 +6,12 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
+## Unreleased
+
+### Added
+
+- Sound pass (`name.sound.glsl`, `mainSound`): rendered by the GPU into a temporary WAV that becomes the video's audio track; also imported from Shadertoy JSON exports.
+
 ## 1.6.1 — 2026-10-11
 
 ### Changed

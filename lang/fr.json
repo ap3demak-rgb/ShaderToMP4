@@ -32,7 +32,7 @@
   "log.compat_version": "Une ligne #version a été ignorée : le programme compile en GLSL 3.30 core.",
   "log.compat_extension": "Une ligne #extension a été ignorée (inutile ici).",
   "log.compat_vr": "mainVR (shader VR) n'est pas pris en charge : seul l'onglet Image est rendu.",
-  "log.compat_sound": "mainSound (onglet Sound) n'est pas pris en charge : il est ignoré.",
+  "log.compat_sound": "mainSound dans le fichier principal est ignoré : mettez l'onglet Sound dans <nom>.sound.glsl.",
   "log.compat_cubemap": "samplerCube (cubemap) n'est pas encore pris en charge : le canal reste noir.",
   "log.compat_volume": "sampler3D (texture de volume) n'est pas encore pris en charge : le canal reste noir.",
   "log.compat_mouse": "iMouse est lu : il reste à 0 sauf si vous réglez // mouse=x,y (fractions de la taille).",
@@ -362,7 +362,7 @@
   "error.import_json": "Impossible de lire l'export Shadertoy (JSON invalide) : %ls",
   "error.import_norenderpass": "Aucune passe (renderpass) trouvée : ce n'est pas un export Shadertoy (utilisez le bouton Export / JSON de la page du shader).",
   "log.import_license": "Shader « %ls » de %ls importé : il garde la licence de son auteur (Shadertoy par défaut : CC BY-NC-SA 3.0) ; vérifiez la page du shader avant de publier une vidéo.",
-  "log.import_note_pass": "La passe « %ls » n'est pas rendue (seuls Image, Buffer A-D, Common et Cube A le sont).",
+  "log.import_note_pass": "La passe « %ls » n'est pas rendue (seuls Image, Buffer A-D, Common, Cube A et Sound le sont).",
   "log.import_note_media": "iChannel%d de « %ls » : le média Shadertoy %ls n'est pas disponible hors ligne, un équivalent généré le remplace (écrivez // iChannel%d=votre_fichier pour utiliser le vôtre).",
   "log.import_note_audio": "iChannel%d de « %ls » : entrée musique ou micro ; il lit le fichier son du réglage « audio » (réglez audio=fichier.mp3).",
   "log.import_note_unsupported": "iChannel%d de « %ls » : le type d'entrée « %ls » n'est pas pris en charge (webcam, clavier...) ; le canal reste vide.",
@@ -386,5 +386,8 @@
   "ui.fb.up": "Dossier parent",
   "ui.fb.home": "Dossier personnel",
   "ui.fb.hidden": "Afficher les fichiers cachés",
-  "ui.fb.select": "Choisir"
+  "ui.fb.select": "Choisir",
+  "log.sound_rendering": "Rendu de la passe Sound (mainSound) dans un fichier WAV temporaire...",
+  "log.sound_audio_wins": "Le réglage « audio » est renseigné : il remplace la passe Sound.",
+  "selftest.fmt_sound": "passe Sound : 7 s de son sur deux blocs, amplitude et continuité"
 }

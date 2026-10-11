@@ -47,7 +47,7 @@ static GLuint compileShader(GLenum type, const std::string& src, std::wstring& e
     return sh;
 }
 
-GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut, const std::string* chType, bool cubemapOut) {
+GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut, const std::string* chType, bool cubemapOut, bool soundOut) {
     std::string channels;
     for (int i = 0; i < 4; i++) channels += "uniform " + (chType && !chType[i].empty() ? chType[i] : std::string("sampler2D")) + " iChannel" + std::to_string(i) + ";\n";
     const std::string vs =
@@ -67,6 +67,7 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         "uniform float iSampleRate;\n"
         "uniform float st_weight;\n"
         "uniform int   st_face;\n"
+        "uniform int   st_sampleBase;\n"
         + channels +
         "uniform vec3  iChannelResolution[4];\n"
         "uniform float iChannelTime[4];\n"
@@ -76,7 +77,12 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         "out vec4 st_outColor;\n"
         "#line 1\n" +
         userCode +
-        (cubemapOut ? "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); vec2 q = gl_FragCoord.xy / iResolution.xy * 2.0 - 1.0; vec3 d;"
+        (soundOut ? "\nvoid main(){ int samp = st_sampleBase + int(gl_FragCoord.x) + int(gl_FragCoord.y) * 512;"
+                    " vec2 y = mainSound(samp, float(samp) / 44100.0);"
+                    " if (y.x != y.x) y.x = 0.0; if (y.y != y.y) y.y = 0.0;"
+                    " vec2 v = min(floor((0.5 + 0.5 * clamp(y, -1.0, 1.0)) * 65536.0), 65535.0);"
+                    " vec2 lo = mod(v, 256.0) / 255.0; vec2 hi = floor(v / 256.0) / 255.0; st_outColor = vec4(lo.x, hi.x, lo.y, hi.y); }\n"
+         : cubemapOut ? "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); vec2 q = gl_FragCoord.xy / iResolution.xy * 2.0 - 1.0; vec3 d;"
                       " if (st_face == 0) d = vec3(1.0, -q.y, -q.x); else if (st_face == 1) d = vec3(-1.0, -q.y, q.x);"
                       " else if (st_face == 2) d = vec3(q.x, 1.0, q.y); else if (st_face == 3) d = vec3(q.x, -1.0, -q.y);"
                       " else if (st_face == 4) d = vec3(q.x, -q.y, 1.0); else d = vec3(-q.x, -q.y, -1.0);"

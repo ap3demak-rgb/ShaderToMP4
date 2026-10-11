@@ -92,6 +92,7 @@ bool importShadertoyJson(const std::wstring& jsonPath, const std::wstring& outDi
         else if (type == "common") suffix = ".common";
         else if (type == "buffer" && bufferSuffix(name)) suffix = std::string(".") + bufferSuffix(name);
         else if (type == "cubemap") suffix = ".cubemapA";
+        else if (type == "sound") suffix = ".sound";
         else {
             res.notes.push_back(TXF("log.import_note_pass", W(name).c_str()));  // « Sound » et autres : ignores
             continue;

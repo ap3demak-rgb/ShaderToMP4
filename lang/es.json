@@ -32,7 +32,7 @@
   "log.compat_version": "Se ignoró una línea #version: el programa compila en GLSL 3.30 core.",
   "log.compat_extension": "Se ignoró una línea #extension (no hace falta aquí).",
   "log.compat_vr": "mainVR (shader VR) no es compatible: solo se renderiza la pestaña Image.",
-  "log.compat_sound": "mainSound (pestaña Sound) no es compatible: se ignora.",
+  "log.compat_sound": "mainSound en el archivo principal se ignora: ponga la pestaña Sound en <nombre>.sound.glsl.",
   "log.compat_cubemap": "samplerCube (cubemap) aún no es compatible: el canal se queda negro.",
   "log.compat_volume": "sampler3D (textura de volumen) aún no es compatible: el canal se queda negro.",
   "log.compat_mouse": "Se lee iMouse: se queda en 0 salvo que defina // mouse=x,y (fracciones del tamaño).",
@@ -372,7 +372,7 @@
   "error.import_json": "No se puede leer la exportación de Shadertoy (JSON no válido): %ls",
   "error.import_norenderpass": "No se encontró ningún renderpass: no parece una exportación de Shadertoy (use el botón Export / JSON de la página del shader).",
   "log.import_license": "Shader «%ls» de %ls importado: conserva la licencia de su autor (por defecto en Shadertoy: CC BY-NC-SA 3.0); compruebe la página del shader antes de publicar un vídeo.",
-  "log.import_note_pass": "La pasada «%ls» no se renderiza (solo Image, Buffer A-D, Common y Cube A).",
+  "log.import_note_pass": "La pasada «%ls» no se renderiza (solo Image, Buffer A-D, Common, Cube A y Sound).",
   "log.import_note_media": "iChannel%d de «%ls»: el medio de Shadertoy %ls no está disponible sin conexión, se usa un sustituto generado (escriba // iChannel%d=su_archivo para usar el suyo).",
   "log.import_note_audio": "iChannel%d de «%ls»: entrada de música o micrófono; lee el archivo de sonido del ajuste «audio» (defina audio=archivo.mp3).",
   "log.import_note_unsupported": "iChannel%d de «%ls»: el tipo de entrada «%ls» no es compatible (webcam, teclado...); el canal queda vacío.",
@@ -386,5 +386,8 @@
   "cli.opt.quiet": "--quiet        Sin cuadro de mensaje (--selftest, --get-ffmpeg)",
   "cli.opt.get_ffmpeg": "--get-ffmpeg   Descargar e instalar ffmpeg, sin ventana",
   "cli.opt.version": "--version      Mostrar la versión, el copyright y la licencia",
-  "cli.opt.help": "--help         Mostrar esta ayuda"
+  "cli.opt.help": "--help         Mostrar esta ayuda",
+  "log.sound_rendering": "Renderizando la pasada Sound (mainSound) en un archivo WAV temporal...",
+  "log.sound_audio_wins": "El ajuste «audio» está definido: sustituye a la pasada Sound.",
+  "selftest.fmt_sound": "pasada Sound: 7 s de audio en dos bloques, amplitud y continuidad"
 }
