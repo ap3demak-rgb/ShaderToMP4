@@ -4,6 +4,7 @@
 #include "render.h"
 #include "channels.h"
 #include "encoder.h"
+#include "passes.h"
 #include "formats.h"
 #include "i18n.h"
 #include "gl.h"
@@ -183,7 +184,13 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     }
 
     // --- Shader + FBO + PBO ---------------------------------------------------
-    GLuint prog = buildProgram(code, err);
+    BufferPasses bp;  // Buffer A-D et Common : fichiers a cote du shader
+    bp.discover(shaderPath, [&](const std::wstring& p, std::string& out) {
+        if (!readFile(p, out)) return false;
+        normalizeShaderText(out, H);
+        return true;
+    }, H);
+    GLuint prog = buildProgram(bp.withCommon(code), err);
     if (!prog) return Result::Failed;
 
     ChannelSet chans;
@@ -199,6 +206,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         if (accTex) glDeleteTextures(1, &accTex);
         ogl::UseProgram(0);
         freeChannels(chans);
+        bp.release();
         if (present) ogl::DeleteProgram(present);
         ogl::DeleteProgram(prog);
     };
@@ -245,6 +253,12 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         }
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
     }
+    const std::wstring shaderDir = shaderPath.find_last_of(L"\\/") == std::wstring::npos ? L"" : shaderPath.substr(0, shaderPath.find_last_of(L"\\/") + 1);
+    if (!bp.build(RW, RH, shaderDir, findFfmpeg(exeDir), H, err)) {
+        cleanupGL();
+        return Result::Failed;
+    }
+    ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);  // la creation des tampons a change la cible
     glViewport(0, 0, RW, RH);
 
     ogl::UseProgram(prog);
@@ -260,21 +274,17 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     ogl::Uniform3f(uRes, (float)RW, (float)RH, 1.0f);
     ogl::Uniform1f(uDelta, (float)(1.0 / s.fps));
     ogl::Uniform1f(uRate, (float)s.fps);
+    float mouseV[4] = {0, 0, 0, 0};
     if (s.mouseSet) {  // iMouse fixe : x, y en pixels du rendu ; z, w negatifs tant que le bouton n'est pas enfonce
         const float mx = (float)(s.mouseX * RW), my = (float)(s.mouseY * RH);
-        ogl::Uniform4f(uMouse, mx, my, s.mouseDown ? mx : -mx, s.mouseDown ? my : -my);
-    } else {
-        ogl::Uniform4f(uMouse, 0, 0, 0, 0);
+        mouseV[0] = mx; mouseV[1] = my; mouseV[2] = s.mouseDown ? mx : -mx; mouseV[3] = s.mouseDown ? my : -my;
     }
-    {  // canaux d'entree (textures)
-        const size_t cut = shaderPath.find_last_of(L"\\/");
-        const std::wstring shaderDir = cut == std::wstring::npos ? L"" : shaderPath.substr(0, cut + 1);
-        if (!loadChannels(s, shaderDir, findFfmpeg(exeDir), chans, H, err)) {
-            cleanupGL();
-            return Result::Failed;
-        }
-        bindChannels(chans, prog);
+    ogl::Uniform4f(uMouse, mouseV[0], mouseV[1], mouseV[2], mouseV[3]);
+    if (!loadChannels(s, shaderDir, findFfmpeg(exeDir), chans, H, err, RW, RH)) {  // canaux d'entree (textures, tampons)
+        cleanupGL();
+        return Result::Failed;
     }
+    bindChannels(chans, prog);
     ogl::Uniform1f(uSR, 44100.0f);
     ogl::Uniform1f(uWeight, 1.0f);
     platform::DateTime st = platform::localTime();
@@ -289,6 +299,37 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     }
     const float dateSec = st.hour * 3600.f + st.minute * 60.f + st.second;
 
+    // Passes de tampon : memes variables que l'image, renseignees pour chaque programme
+    auto setPassUniforms = [&](GLuint p, long long n) {
+        const double t = s.start + (double)n / s.fps;
+        ogl::Uniform3f(ogl::GetUniformLocation(p, "iResolution"), (float)RW, (float)RH, 1.0f);
+        ogl::Uniform1f(ogl::GetUniformLocation(p, "iTime"), (float)t);
+        ogl::Uniform1f(ogl::GetUniformLocation(p, "iTimeDelta"), (float)(1.0 / s.fps));
+        ogl::Uniform1i(ogl::GetUniformLocation(p, "iFrame"), (GLint)n);
+        ogl::Uniform1f(ogl::GetUniformLocation(p, "iFrameRate"), (float)s.fps);
+        ogl::Uniform4f(ogl::GetUniformLocation(p, "iMouse"), mouseV[0], mouseV[1], mouseV[2], mouseV[3]);
+        ogl::Uniform4f(ogl::GetUniformLocation(p, "iDate"), (float)st.year, (float)(st.month - 1), (float)st.day, dateSec + (float)t);
+        ogl::Uniform1f(ogl::GetUniformLocation(p, "iSampleRate"), 44100.0f);
+    };
+    // Les tampons avancent image par image : si le rendu demarre plus loin (reprise, apercu), on rejoue les images
+    // precedentes sans rien encoder
+    long long simFrame = 0;
+    bool replayLogged = false;
+    auto advanceBuffers = [&](long long n) {
+        if (!bp.any()) return;
+        for (; simFrame < n && !H.cancelled(); simFrame++) {
+            if (!replayLogged) {
+                H.log(L"  " + TXF("log.buffers_replay", (long long)n));
+                replayLogged = true;
+            }
+            bp.step(simFrame, RW, RH, setPassUniforms);
+        }
+        bp.step(n, RW, RH, setPassUniforms);
+        simFrame = n + 1;
+        ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);  // retour a l'image
+        ogl::UseProgram(prog);
+    };
+
     auto drawAt = [&](double t, long long n) {
         ogl::Uniform1f(uTime, (float)t);
         ogl::Uniform1i(uFrame, (GLint)n);
@@ -298,6 +339,11 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     // Rend l'image n (temps t, facteur de fondu "fade") dans fbo ;
     // avec flou : moyenne de B sous-images etalees sur l'obturateur
     auto renderFrame = [&](long long n, double t, float fade) {
+        if (chans.anyBuffer()) {  // le tampon le plus recent change a chaque image
+            GLuint latest[4];
+            bp.latest(latest);
+            bindChannels(chans, prog, latest);
+        }
         if (B <= 1) {
             ogl::Uniform1f(uWeight, fade);
             drawAt(t, n);
@@ -321,7 +367,14 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
 
     // --- Apercu : une image renvoyee a l'appelant, sans ffmpeg -------------------
     if (preview) {
-        renderFrame(0, H.previewTime, 1.0f);
+        long long pf = 0;
+        double pt = H.previewTime;
+        if (bp.any()) {  // les tampons dependent de l'historique : on les simule jusqu'a l'image voulue (600 images au plus)
+            pf = std::min(600LL, std::max(0LL, std::llround((H.previewTime - s.start) * s.fps)));
+            pt = s.start + (double)pf / s.fps;
+            advanceBuffers(pf);
+        }
+        renderFrame(pf, pt, 1.0f);
         std::vector<uint8_t> px(frameBytes), flipped(frameBytes);
         glReadPixels(0, 0, RW, RH, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
         const size_t row = (size_t)RW * 4;
@@ -486,6 +539,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
             if (H.cancelled()) { aborted = true; break; }
             const long long n = n0 + k;
             const double t = s.start + (double)n / s.fps;  // temps exact
+            advanceBuffers(n);
             renderFrame(n, t, videoMode ? fadeAt(n) : 1.0f);
 
             ogl::BindBuffer(ogl::K_PIXEL_PACK_BUFFER, pbo[k % D]);

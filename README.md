@@ -211,7 +211,9 @@ Only the **Image** tab is rendered. What works:
 | `iChannelResolution`, `iChannelTime` | supported (time is 0: no animated channels) |
 | `iMouse` | fixed value: `// mouse=0.5,0.5` (fractions of the size, origin at the bottom left), `// mouse=0.5,0.5,down` for a pressed button; otherwise 0 |
 | `iDate` | real date by default; `// date=2026-03-14T15:09:26` fixes it for a reproducible render |
-| Buffer A–D, Common, Cubemap A | not supported yet |
+| Buffer A–D, Common | supported as files next to the shader: `name.bufferA.glsl` … `name.bufferD.glsl` and `name.common.glsl` (add only `name.glsl` to the list). Each pass reads its inputs through its own `// iChannel0=bufferA` comments (`bufferA` to `bufferD`, `image`-type channels, `noise`, `grid`). Order: A, B, C, D, then Image; a buffer read after its pass in the same frame gives the current frame, read before (or by itself) it gives the previous one, as on Shadertoy. Buffers are 32-bit float, start black, are rendered once per frame (not blurred by motion blur), default to linear filtering and clamping |
+| History of the buffers | a render that starts later (resuming parts, preview at a given time) replays the earlier frames first, without encoding them; the log says so. The preview replays at most 600 frames |
+| Cubemap A | not supported yet |
 | cubemaps, 3D textures, video, webcam, microphone, music and keyboard channels | not supported yet |
 | `// iChannel` lines are not needed when the shader never reads the channel | a channel that is read without a texture stays black and the log says so |
 

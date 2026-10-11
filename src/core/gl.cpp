@@ -47,7 +47,7 @@ static GLuint compileShader(GLenum type, const std::string& src, std::wstring& e
     return sh;
 }
 
-GLuint buildProgram(const std::string& userCode, std::wstring& err) {
+GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut) {
     const std::string vs =
         "#version 330 core\n"
         "void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);"
@@ -73,8 +73,9 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err) {
         "out vec4 st_outColor;\n"
         "#line 1\n" +
         userCode +
-        "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy);"
-        " st_outColor = vec4(c.rgb * st_weight, 1.0); }\n";
+        (bufferOut ? "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy); st_outColor = c; }\n"
+                   : "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy);"
+                     " st_outColor = vec4(c.rgb * st_weight, 1.0); }\n");
 
     GLuint v = compileShader(ogl::K_VERTEX_SHADER, vs, err);
     if (!v) return 0;

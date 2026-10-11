@@ -28,8 +28,8 @@ struct Settings {
     int pbo = 3;                    // profondeur de la file de lecture GPU (2..8)
     bool metadata = true;           // titre / commentaire ecrits dans le conteneur
     std::wstring channel[4];        // iChannel0-3 : chemin d'image, "noise" ou "grid" ("" = aucun)
-    std::string chFilter[4] = {"mipmap", "mipmap", "mipmap", "mipmap"};  // nearest | linear | mipmap
-    std::string chWrap[4] = {"repeat", "repeat", "repeat", "repeat"};    // clamp | repeat
+    std::string chFilter[4];        // nearest | linear | mipmap ("" : mipmap pour une image, linear pour un tampon)
+    std::string chWrap[4];          // clamp | repeat ("" : repeat pour une image, clamp pour un tampon)
     bool chVflip[4] = {true, true, true, true};                          // comme Shadertoy : haut de l'image en v = 1
     bool mouseSet = false;          // iMouse fixe : position en fraction de la taille (0,0 = bas gauche)
     double mouseX = 0, mouseY = 0;

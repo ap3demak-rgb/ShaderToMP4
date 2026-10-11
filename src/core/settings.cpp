@@ -156,8 +156,8 @@ void writeIni(const std::wstring& path, const Settings& s) {
         if (s.channel[i].empty()) continue;
         const std::string key = "iChannel" + std::to_string(i);
         put(key, U8(s.channel[i]), i == 0 ? "ini.ichannel" : nullptr);
-        put(key + ".filter", s.chFilter[i]);
-        put(key + ".wrap", s.chWrap[i]);
+        if (!s.chFilter[i].empty()) put(key + ".filter", s.chFilter[i]);
+        if (!s.chWrap[i].empty()) put(key + ".wrap", s.chWrap[i]);
         put(key + ".vflip", s.chVflip[i] ? "1" : "0");
     }
     if (s.mouseSet) put("mouse", num(s.mouseX) + "," + num(s.mouseY) + (s.mouseDown ? ",down" : ""), "ini.mouse");
