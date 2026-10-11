@@ -19,6 +19,8 @@ public:
     bool any() const { return used_[0] || used_[1] || used_[2] || used_[3]; }
     // Code de l'image : le code commun place devant le code du shader (numeros de ligne du shader conserves).
     std::string withCommon(const std::string& code) const;
+    const std::wstring& commonPath() const { return commonPath_; }
+    int commonLines() const;
     // Tout le code des passes (commun + tampons), pour le rapport de compatibilite.
     std::string allCode() const;
 
@@ -34,6 +36,7 @@ public:
 private:
     struct Buf {
         std::string code;
+        std::wstring path;  // fichier de la passe
         Settings st;       // canaux lus dans les commentaires de la passe
         GLuint prog = 0;
         ChannelSet chans;
@@ -41,6 +44,7 @@ private:
         int read = 0;      // indice de la texture terminee la plus recente
     };
     std::string common_;
+    std::wstring commonPath_;
     Buf bufs_[4];
     bool used_[4] = {false, false, false, false};
 };

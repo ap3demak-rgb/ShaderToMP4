@@ -4,6 +4,7 @@
 // Interface Linux / macOS : GLFW (fenêtre, entrées, glisser-déposer) + Dear ImGui + icônes SVG (NanoSVG).
 #include "core/ffmpeg_download.h"
 #include "core/formats.h"
+#include "core/locate.h"
 #include "core/presets.h"
 #include "core/i18n.h"
 #include "core/util.h"
@@ -323,7 +324,19 @@ void drawLog(App& a) {
             else if (l.level == 2) c = pal::WARN;
             else if (l.level == 3) c = pal::OK;
             else if (l.level == 4) c = pal::TEXT;
-            ImGui::TextColored(colv(c), "%s", l.text.empty() ? " " : U8(l.text).c_str());
+            size_t pos = 0;  // une ligne par appel : double-clic sur « fichier:ligne: » ouvre le shader a la ligne
+            for (;;) {
+                const size_t e = l.text.find(L'\n', pos);
+                const std::wstring one = l.text.substr(pos, e == std::wstring::npos ? std::wstring::npos : e - pos);
+                ImGui::TextColored(colv(c), "%s", one.empty() ? " " : U8(one).c_str());
+                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
+                    std::wstring path;
+                    int line = 0;
+                    if (parseLocation(one, path, line)) openAtLine(path, line);
+                }
+                if (e == std::wstring::npos) break;
+                pos = e + 1;
+            }
         }
         ImGui::PopTextWrapPos();
         if (m.logDirty) {

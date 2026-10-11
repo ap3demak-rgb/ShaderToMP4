@@ -5,6 +5,7 @@
 #include "channels.h"
 #include "compat.h"
 #include "encoder.h"
+#include "locate.h"
 #include "passes.h"
 #include "formats.h"
 #include "i18n.h"
@@ -199,7 +200,10 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         for (const auto& n : notes) H.log(L"  " + n);
     }
     GLuint prog = buildProgram(bp.withCommon(code), err);
-    if (!prog) return Result::Failed;
+    if (!prog) {  // erreurs « fichier:ligne: message », cliquables dans le journal
+        err = locateGlslErrors(err, shaderPath, 1 + (int)std::count(code.begin(), code.end(), '\n'), bp.commonPath());
+        return Result::Failed;
+    }
 
     ChannelSet chans;
     GLuint vao = 0, tex = 0, fbo = 0, accTex = 0, accFbo = 0, present = 0;
