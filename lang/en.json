@@ -269,6 +269,8 @@
   "ui.tip.chip_more": "More presets, and your own .ini files from the presets folder",
   "ui.tip.depth": "Bits per channel: 10 removes banding in gradients (H.265, AV1, VP9, ProRes, PNG/TIFF)",
   "ui.tip.estimate": "Estimated size of one output file (rough: depends on the shader)",
+  "ui.forced": "Set by the shader: %ls",
+  "ui.tip.forced": "Settings written as // key=value in the selected shader take priority over the window",
   "ui.tip.codec": "H.264: plays everywhere. H.265: smaller files. VP9, AV1: open formats (CPU only, slower). ProRes, DNxHR: editing formats (MOV, large files). Ignored for GIF, WebP and image sequences",
   "ui.tip.preset": "Encoding speed: slower = smaller file at equal quality",
   "ui.tip.quality": "Constant quality: 0 = lossless, 12 = nearly perfect, 18 = very good, 23 = good",

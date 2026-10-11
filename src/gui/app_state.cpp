@@ -71,6 +71,19 @@ void appendLog(const std::wstring& text) {
     SendMessageW(g.log, WM_VSCROLL, SB_BOTTOM, 0);
 }
 
+// Reglages ecrits dans le shader selectionne (ou le premier) : ils priment sur la fenetre
+void updateForced() {
+    if (!g.lblForced) return;
+    std::wstring text;
+    if (!g.paths.empty()) {
+        int sel = ListView_GetNextItem(g.list, -1, LVNI_SELECTED);
+        if (sel < 0 || sel >= (int)g.paths.size()) sel = 0;
+        const std::wstring o = shaderOverridesOf(g.paths[sel]);
+        if (!o.empty()) text = TXF("ui.forced", o.c_str());
+    }
+    SetWindowTextW(g.lblForced, text.c_str());
+}
+
 void updateButtons() {
     const bool r = g.running.load();
     for (HWND c : {g.cmbRes, g.edW, g.edH, g.cmbFps, g.edDur, g.edStart, g.cmbCodec, g.cmbPreset, g.cmbContainer, g.cmbSS, g.edOut, g.bBrowse, g.bLoadP, g.bSaveP, g.trkCrf,
@@ -94,5 +107,6 @@ void updateButtons() {
     }
     // Liste vide : on masque la liste et la fenetre dessine la zone de depot
     ShowWindow(g.list, g.paths.empty() ? SW_HIDE : SW_SHOW);
+    updateForced();
     InvalidateRect(g.wnd, nullptr, FALSE);
 }

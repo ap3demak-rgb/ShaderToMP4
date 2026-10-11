@@ -140,7 +140,7 @@ The [`examples`](examples) folder contains four shaders ready to convert: plasma
 <details>
 <summary><b>All settings</b> (window, <code>config.ini</code> or shader comments)</summary>
 
-Settings are saved in `config.ini` next to the `.exe`, and can be forced **per shader** with a comment (it takes priority over the window; the log says so):
+Settings are saved in `config.ini` next to the `.exe`, and can be forced **per shader** with a comment (it takes priority over the window; the log says so, and the window shows “Set by the shader: …” in the settings card when such a shader is selected):
 
 ```glsl
 // fps=30

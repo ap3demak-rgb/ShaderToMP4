@@ -77,6 +77,8 @@ void layout() {
             MoveWindow(g.chips[i], cx, sc.top + S(10), S(cw[i]), S(28), TRUE);
             cx -= S(6);
         }
+        const int fl = sc.left + pad + S(200);  // entre le titre de la carte et les pastilles
+        MoveWindow(g.lblForced, fl, sc.top + S(15), std::max(0, (int)(cx - fl - S(6))), S(20), TRUE);
     }
     int fx = sc.left + pad, fy = sc.top + titleH;
     auto put = [&](HWND c, int cw, int kind = 0) {  // kind 0 : champ ; 1 : liste deroulante ; 2 : libelle ; 3 : curseur
@@ -488,6 +490,7 @@ void createControls(HWND hw) {
     label();  // 19 profondeur (bits)
     g.cmbDepth = combo(ID_DEPTH);
     g.lblEst = mk(hw, L"STATIC", L"", SS_LEFT | SS_NOPREFIX, 0);
+    g.lblForced = mk(hw, L"STATIC", L"", SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS, 0);
 
     static const struct { const char* key; int id; int icon; } chips[5] = {
         {"ui.chip.draft", ID_PRE0, IC_ZAP}, {"ui.chip.youtube", ID_PRE1, IC_YOUTUBE},
@@ -530,7 +533,7 @@ void createControls(HWND hw) {
         {g.edOut, "ui.tip.output"}, {g.bBrowse, "ui.tip.output_browse"}, {g.bLoadP, "ui.tip.profile_load"},
         {g.bSaveP, "ui.tip.profile_save"}, {g.chips[0], "ui.tip.chip_draft"}, {g.chips[1], "ui.tip.chip_youtube"},
         {g.chips[2], "ui.tip.chip_4k60"}, {g.chips[3], "ui.tip.chip_vertical"}, {g.chips[4], "ui.tip.chip_more"},
-        {g.cmbDepth, "ui.tip.depth"}, {g.lblEst, "ui.tip.estimate"}, {g.trkPrev, "ui.tip.preview_time"},
+        {g.cmbDepth, "ui.tip.depth"}, {g.lblEst, "ui.tip.estimate"}, {g.lblForced, "ui.tip.forced"}, {g.trkPrev, "ui.tip.preview_time"},
         {g.bPrev, "ui.tip.preview"},
     };
     for (const auto& t : tips) addTip(t.c, t.key);
@@ -666,7 +669,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             HDC dc = (HDC)wp;
             HWND c = (HWND)lp;
             SetBkColor(dc, cref(CARD));
-            SetTextColor(dc, (c == g.status || c == g.lblCrf || c == g.lblPrev) ? cref(TEXT) : cref(MUTED));
+            SetTextColor(dc, (c == g.status || c == g.lblCrf || c == g.lblPrev) ? cref(TEXT) : c == g.lblForced ? cref(ACCENT) : cref(MUTED));
             return (LRESULT)g.brCard;
         }
         case WM_DPICHANGED: {
@@ -698,6 +701,8 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                         std::wstring p = outputFile(g.paths[i], g.base, false);
                         if (fileExists(p)) ShellExecuteW(hw, L"open", p.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
                     }
+                } else if (nh->code == LVN_ITEMCHANGED) {
+                    updateForced();
                 } else if (nh->code == LVN_KEYDOWN) {
                     if (((NMLVKEYDOWN*)lp)->wVKey == VK_DELETE) removeSelected();
                 } else if (nh->code == NM_CUSTOMDRAW) {  // statut colore

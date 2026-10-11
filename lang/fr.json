@@ -269,6 +269,8 @@
   "ui.tip.chip_more": "Autres préréglages, et vos propres fichiers .ini du dossier presets",
   "ui.tip.depth": "Bits par canal : 10 supprime les bandes dans les dégradés (H.265, AV1, VP9, ProRes, PNG/TIFF)",
   "ui.tip.estimate": "Taille estimée d'un fichier de sortie (approximative : dépend du shader)",
+  "ui.forced": "Imposé par le shader : %ls",
+  "ui.tip.forced": "Les réglages écrits // clé=valeur dans le shader sélectionné priment sur la fenêtre",
   "ui.tip.codec": "H.264 : compatible partout. H.265 : fichiers plus petits. VP9, AV1 : formats ouverts (CPU seulement, plus lent). ProRes, DNxHR : formats de montage (MOV, gros fichiers). Ignoré pour GIF, WebP et séquences d'images",
   "ui.tip.preset": "Vitesse d'encodage : plus lent = fichier plus petit à qualité égale",
   "ui.tip.quality": "Qualité constante : 0 = sans perte, 12 = quasi parfait, 18 = très bon, 23 = correct",

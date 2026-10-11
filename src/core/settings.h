@@ -43,4 +43,7 @@ void parseLines(Settings& s, const std::string& text, bool onlySlashComments);  
 void writeIni(const std::wstring& path, const Settings& s);
 // Reglage nomme (ligne de commande : --width=1280) : isSettingKey dit si la cle (minuscules) existe, applySetting l'applique.
 bool isSettingKey(const std::string& key);
+// Reglages ecrits en commentaires `// cle=valeur` dans un shader (ils priment sur la fenetre), sous la forme « fps=30, width=3840 ».
+// "" si le shader n'en a pas ou ne peut pas etre lu.
+std::wstring shaderOverridesOf(const std::wstring& shaderPath);
 void applySetting(Settings& s, const std::string& key, const std::string& value);

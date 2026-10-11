@@ -399,6 +399,22 @@ void drawSettings(App& a, float height) {
                 ImGui::EndPopup();
             }
         }
+        {  // reglages ecrits dans le shader selectionne : ils priment sur ceux de la fenetre
+            static std::wstring lastPath;
+            static std::string forced;
+            const std::wstring cur = m.paths.empty() ? L"" : m.paths[std::min(std::max(0, m.selected), (int)m.paths.size() - 1)];
+            if (cur != lastPath) {
+                lastPath = cur;
+                const std::wstring o = cur.empty() ? L"" : shaderOverridesOf(cur);
+                forced = o.empty() ? "" : U8(TXF("ui.forced", o.c_str()));
+            }
+            if (!forced.empty()) {
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextColored(colv(pal::ACCENT), "%s", forced.c_str());
+                ImGui::PopTextWrapPos();
+                tip("ui.tip.forced");
+            }
+        }
         ImGui::BeginChild("##rows", ImVec2(0, -(ImGui::GetFrameHeight() + S(14))), ImGuiChildFlags_None);
         const float full = ImGui::GetContentRegionAvail().x - S(120) - ImGui::GetStyle().ScrollbarSize;
 
