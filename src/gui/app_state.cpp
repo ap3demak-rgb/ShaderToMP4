@@ -71,6 +71,14 @@ void appendLog(const std::wstring& text) {
     SendMessageW(g.log, WM_VSCROLL, SB_BOTTOM, 0);
 }
 
+// Les shaders pas encore rendus (ni termines) sont notes pour la prochaine ouverture
+void saveQueueNow() {
+    std::vector<std::wstring> pending;
+    for (size_t i = 0; i < g.paths.size() && i < g.state.size(); i++)
+        if (g.state[i] != ST_DONE) pending.push_back(g.paths[i]);
+    saveQueue(g.exeDir, pending);
+}
+
 // Reglages ecrits dans le shader selectionne (ou le premier) : ils priment sur la fenetre
 void updateForced() {
     if (!g.lblForced) return;
@@ -108,5 +116,6 @@ void updateButtons() {
     // Liste vide : on masque la liste et la fenetre dessine la zone de depot
     ShowWindow(g.list, g.paths.empty() ? SW_HIDE : SW_SHOW);
     updateForced();
+    saveQueueNow();
     InvalidateRect(g.wnd, nullptr, FALSE);
 }

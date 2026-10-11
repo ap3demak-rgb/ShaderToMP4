@@ -922,6 +922,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                 }
                 g.state[idx] = (int)lp;
                 setItemText(idx, 1, statusText((int)lp));
+                saveQueueNow();
                 if (lp == ST_RUNNING) SendMessageW(g.prog, PBM_SETPOS, 0, 0);
                 if (lp == ST_DONE) SendMessageW(g.prog, PBM_SETPOS, 1000, 0);
                 SendMessageW(g.prog, ui::STPB_SETSTATE, lp == ST_FAILED ? 2 : 0, 0);

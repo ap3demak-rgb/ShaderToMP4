@@ -66,6 +66,7 @@ public:
     void addFiles(const std::vector<std::wstring>& files);
     void removeSelected();
     void clearList();
+    void saveQueue() const;  // shaders pas encore rendus : queue.txt, retrouves a la reouverture
 
     // --- Actions ---
     void startJobs(bool snapshot);
