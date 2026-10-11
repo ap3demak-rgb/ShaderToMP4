@@ -115,6 +115,10 @@ jobs:
           test -f e2e/cli/circle.gif
           code=0; bin/ShaderToMP4 --render --bogus=1 tests/circle.glsl || code=$?
           test "$code" -eq 2
+          xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --diagnostic | tee e2e/diagnostic.txt
+          grep -q "ffmpeg: ffmpeg version" e2e/diagnostic.txt
+          xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --benchmark --seconds=1 --quick --json | tee e2e/benchmark.json
+          grep -q '"results"' e2e/benchmark.json
           # portability: nothing may be created in the home folder (the graphics driver cache is tolerated)
           leftovers="$(find "$HOME" -mindepth 1 -not -path "$HOME/.cache*" | head)"
           test -z "$leftovers" || { echo "Files written outside the application folder:"; echo "$leftovers"; exit 1; }
@@ -175,5 +179,10 @@ jobs:
           sha256sum *.zip *.tar.gz > SHA256SUMS.txt
           cd ..
           cat .github/release-notes.md .github/release-notes.fr.md > notes.md
+          # the changelog section of this version (## <version> ...) is added to the notes
+          version="${GITHUB_REF_NAME#v}"
+          for f in CHANGELOG.md CHANGELOG.fr.md; do
+            awk -v v="$version" '/^## /{p=index($0,"## " v)==1; next} p' "$f" >> notes.md || true
+          done
           gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/*.tar.gz dist/SHA256SUMS.txt \
             --title "ShaderToMP4 ${GITHUB_REF_NAME#v}" --notes-file notes.md

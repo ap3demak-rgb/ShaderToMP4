@@ -2,10 +2,13 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "cli.h"
+#include "app_info.h"
+#include "encoder.h"
 #include "ffmpeg_download.h"
 #include "formats.h"
 #include "gl.h"
 #include "i18n.h"
+#include "process.h"
 #include "render.h"
 #include "util.h"
 #include "platform/platform.h"
@@ -45,7 +48,7 @@ std::string num(double v) {
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
     for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png",
-                          "cli.render.exit_codes"})
+                          "cli.render.exit_codes", "cli.opt.diagnostic", "cli.opt.benchmark"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
 }
@@ -144,4 +147,156 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
     destroyGLContext(gl);
     if (json) write("{\"event\":\"end\",\"ok\":" + std::to_string(ok) + ",\"failed\":" + std::to_string(failed) + "}\n", false);
     return failed ? kExitRenderFailed : kExitOk;
+}
+
+// ---------------------------------------------------------------------------
+//  --diagnostic
+// ---------------------------------------------------------------------------
+int runDiagnosticCli(const std::wstring& exeDir, const std::function<void(const std::string&, bool)>& write) {
+    std::string o;
+    auto line = [&](const std::string& label, const std::string& value) { o += label + ": " + value + "\n"; };
+#if defined(_WIN32)
+    const char* os = "Windows";
+#elif defined(__APPLE__)
+    const char* os = "macOS";
+#else
+    const char* os = "Linux";
+#endif
+#if defined(__aarch64__) || defined(_M_ARM64)
+    const char* arch = "arm64";
+#else
+    const char* arch = "x86_64";
+#endif
+    o += std::string(APP_NAME_STR) + " " + APP_VER_STR + "\n";
+    line(i18n::tr8("diag.system"), std::string(os) + " " + arch);
+    line(i18n::tr8("diag.threads"), std::to_string(std::thread::hardware_concurrency()));
+    line(i18n::tr8("diag.language"), i18n::language());
+
+    GLContext gl;
+    std::wstring err;
+    if (createGLContext(gl, err)) {
+        auto gs = [](unsigned name) {
+            const unsigned char* s = glGetString(name);
+            return s ? std::string((const char*)s) : std::string("?");
+        };
+        GLint maxTex = 0;
+        glGetIntegerv(0x0D33 /*GL_MAX_TEXTURE_SIZE*/, &maxTex);
+        line(i18n::tr8("diag.gl_vendor"), gs(0x1F00));
+        line(i18n::tr8("diag.gl_renderer"), gs(0x1F01));
+        line(i18n::tr8("diag.gl_version"), gs(0x1F02));
+        line(i18n::tr8("diag.glsl_version"), gs(0x8B8C));
+        line(i18n::tr8("diag.max_texture"), std::to_string(maxTex));
+    } else {
+        line(i18n::tr8("diag.opengl"), U8(err));
+    }
+
+    const std::wstring ffmpeg = findFfmpeg(exeDir);
+    std::string first;
+    const int rc = runProcess(L"\"" + ffmpeg + L"\" -hide_banner -version", [&](const std::wstring& l) {
+        if (first.empty()) first = U8(l);
+    });
+    if (rc != 0 || first.empty()) {
+        line("ffmpeg", i18n::tr8("diag.not_found"));
+    } else {
+        line("ffmpeg", first);
+        std::string codecs, containers;
+        for (int i = 0; i < codecCount(); i++)
+            codecs += U8(codecAt(i).label) + (codecAvailable(ffmpeg, codecAt(i).id) ? "+ " : "- ");
+        for (int i = 0; i < containerCount(); i++)
+            containers += U8(containerAt(i).label) + (containerAvailable(ffmpeg, containerAt(i).id) ? "+ " : "- ");
+        line(i18n::tr8("diag.codecs"), codecs);
+        line(i18n::tr8("diag.containers"), containers);
+        Hooks H;
+        H.log = [](const std::wstring&) {};
+        std::string hw;
+        for (const char* codec : {"h264", "h265", "av1"}) {
+            Settings s;
+            s.codec = codec;
+            s.encoder = "auto";
+            hw += std::string(codec) + "=" + resolveEncoder(s, ffmpeg, H) + " ";
+        }
+        line(i18n::tr8("diag.hw_encoders"), hw);
+    }
+    if (gl.impl) destroyGLContext(gl);
+    write(o, false);
+    return kExitOk;
+}
+
+// ---------------------------------------------------------------------------
+//  --benchmark
+// ---------------------------------------------------------------------------
+int runBenchmarkCli(const std::wstring& exeDir, const std::vector<std::wstring>& args,
+                    const std::function<void(const std::string&, bool)>& write) {
+    double seconds = 2.0;
+    bool json = false, quick = false;
+    for (const auto& a : args) {
+        const std::string s = U8(a);
+        if (s == "--json") json = true;
+        else if (s == "--quick") quick = true;  // sans le 4K (machines lentes, integration continue)
+        else if (s.compare(0, 10, "--seconds=") == 0) seconds = std::max(0.5, std::min(30.0, atof(s.c_str() + 10)));
+    }
+    if (!ffmpegPresent(exeDir)) {
+        write(U8(TXF("log.error", TX("cli.no_ffmpeg").c_str())) + "\n", true);
+        return kExitNoFfmpeg;
+    }
+    GLContext gl;
+    std::wstring err;
+    if (!createGLContext(gl, err)) {
+        write(U8(TXF("log.error", err.c_str())) + "\n", true);
+        return kExitNoGL;
+    }
+    // Shader de mesure : plasma (un peu de calcul par pixel), ecrit dans un dossier temporaire a cote du programme
+    const std::wstring dir = exeDir + L"benchmark_tmp";
+    platform::makeDir(dir);
+    const std::wstring shader = dir + platform::pathSeparator() + L"bench.glsl";
+    const std::string src =
+        "void mainImage(out vec4 o, in vec2 p){ vec2 uv = p / iResolution.xy; float t = iTime;"
+        " float v = sin(uv.x * 10.0 + t) + sin(uv.y * 10.0 - t) + sin((uv.x + uv.y) * 8.0 + t * 0.5)"
+        " + sin(length(uv - 0.5) * 20.0 - t * 2.0);"
+        " o = vec4(0.5 + 0.5 * sin(vec3(v, v + 2.0, v + 4.0)), 1.0); }\n";
+    if (FILE* f = platform::openFile(shader, "wb")) {
+        fwrite(src.data(), 1, src.size(), f);
+        fclose(f);
+    }
+    struct Case { int w, h; const char* encoder; };
+    const Case cases[] = {{1280, 720, "cpu"}, {1920, 1080, "cpu"}, {1920, 1080, "auto"}, {3840, 2160, "cpu"}};
+    const std::string hwPrefix = U8(TX("log.hw_encoder")).substr(0, U8(TX("log.hw_encoder")).find('%'));
+    std::string text, js = "{\"version\":\"" + std::string(APP_VER_STR) + "\",\"results\":[";
+    bool first = true;
+    for (const Case& c : cases) {
+        if (quick && c.w > 1920) continue;
+        Settings s;
+        s.width = c.w;
+        s.height = c.h;
+        s.fps = 60;
+        s.duration = seconds;
+        s.crf = 23;
+        s.preset = "veryfast";
+        s.encoder = c.encoder;
+        s.outdir = dir;
+        s.exists = "overwrite";
+        s.chunk = 0;
+        double speed = 0;
+        std::string used = c.encoder;
+        Hooks H;
+        H.log = [&](const std::wstring& l) {
+            const std::string u = U8(l);
+            const size_t p = u.find(hwPrefix);
+            if (!hwPrefix.empty() && p != std::string::npos) used = u.substr(p + hwPrefix.size());
+        };
+        H.progress = [&](long long, long long, double sp, double) { speed = sp; };
+        std::wstring e;
+        const bool ok = convertFile(shader, exeDir, s, H, e) == Result::Ok;
+        char b[160];
+        snprintf(b, sizeof(b), "%dx%d  %-14s  %8.1f %s\n", c.w, c.h, used.c_str(), ok ? speed : 0.0, ok ? "fps" : U8(e).c_str());
+        text += b;
+        snprintf(b, sizeof(b), "%s{\"width\":%d,\"height\":%d,\"encoder\":\"%s\",\"fps\":%.1f}", first ? "" : ",", c.w, c.h, used.c_str(), ok ? speed : 0.0);
+        js += b;
+        first = false;
+    }
+    js += "]}\n";
+    removeTree(dir);
+    destroyGLContext(gl);
+    write(json ? js : U8(TX("diag.benchmark_title")) + "\n" + text, false);
+    return kExitOk;
 }

@@ -235,6 +235,8 @@ Videos longer than `chunk` seconds are rendered in parts, in a `<name>.parts` fo
 |---|---|
 | `ShaderToMP4 a.glsl b.glsl` | Add the files and start rendering |
 | `ShaderToMP4 --render [options] a.glsl b.glsl` | Render without a window, same on Windows, Linux and macOS (see below) |
+| `ShaderToMP4 --diagnostic` | Print system, graphics card, OpenGL, ffmpeg and the encoders found (no path, no personal data): paste it in a bug report |
+| `ShaderToMP4 --benchmark [--seconds=N] [--quick] [--json]` | Measure frames per second at 720p, 1080p and 4K with the CPU encoder, and with the hardware one when available |
 | `ShaderToMP4 --selftest [--update] [--quiet]` | Self-test (see below) |
 | `ShaderToMP4 --get-ffmpeg [--quiet]` | Download and install `ffmpeg` without opening the window (Windows and Linux) |
 | `ShaderToMP4 --version` | Print version, copyright and license |
