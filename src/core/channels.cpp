@@ -6,6 +6,8 @@
 #include "process.h"
 #include "util.h"
 #include "platform/platform.h"
+#include <cctype>
+#include <cwctype>
 
 namespace {
 
