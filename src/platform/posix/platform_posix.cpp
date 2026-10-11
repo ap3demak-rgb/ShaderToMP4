@@ -403,6 +403,32 @@ bool createGLContext(void*& ctx, std::wstring& err) {
     return true;
 }
 
+namespace {
+GLFWwindow* g_ownedShared = nullptr;  // fenetre creee par prepareOffThreadContexts
+}  // namespace
+
+bool prepareOffThreadContexts() {
+    if (g_shared) return true;  // l'interface en a deja confie une
+    glfwSetErrorCallback(onGlfwError);
+    if (!glfwInit()) return false;
+    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+    g_ownedShared = glfwCreateWindow(64, 64, "ShaderToMP4", nullptr, nullptr);
+    if (!g_ownedShared) return false;
+    g_shared = g_ownedShared;
+    return true;
+}
+
+void releaseOffThreadContexts() {
+    if (!g_ownedShared) return;
+    if (g_shared == g_ownedShared) g_shared = nullptr;
+    glfwDestroyWindow(g_ownedShared);
+    g_ownedShared = nullptr;
+}
+
 void destroyGLContext(void*& ctx) {
     auto* c = (PosixGL*)ctx;
     if (!c) return;

@@ -129,6 +129,7 @@ Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : 
 | **Annuler** | `Échap` | Arrête le rendu ; les parties déjà terminées sont conservées |
 | **Image PNG** | | Rend une seule image, au temps « Début », et l'ouvre |
 | **Aperçu** et curseur | `Ctrl+P` | Affiche une image du shader à un instant choisi, sans ffmpeg |
+| **Lecture** / **Arrêt** | | Joue le shader en temps réel à la taille de l'aperçu (640 px au plus), en boucle sur la plage, saut par le curseur ; l'aperçu se recharge tout seul quand le shader ou un de ses fichiers de passes change sur le disque |
 | **Retirer** | `Suppr` (dans la liste) | Retire les shaders sélectionnés |
 | **Dossier** | | Ouvre l'explorateur sur la vidéo du shader sélectionné |
 | **Profil / Enregistrer** | | Charge ou enregistre tous les réglages dans un fichier `.ini` |

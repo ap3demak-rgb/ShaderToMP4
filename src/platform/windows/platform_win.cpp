@@ -352,6 +352,9 @@ void destroyGLContext(void*& ctx) {
     ctx = nullptr;
 }
 
+bool prepareOffThreadContexts() { return true; }
+void releaseOffThreadContexts() {}
+
 bool createGLContext(void*& ctx, std::wstring& err) {
     WinGL* c = new WinGL;
     ctx = c;
