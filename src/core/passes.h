@@ -20,6 +20,10 @@ public:
     // Code de l'image : le code commun place devant le code du shader (numeros de ligne du shader conserves).
     std::string withCommon(const std::string& code) const;
     const std::wstring& commonPath() const { return commonPath_; }
+    // Passe Sound (<nom>.sound.glsl) : rendue a part par soundpass.h, pas a chaque image.
+    bool hasSound() const { return !sound_.empty(); }
+    const std::string& soundCode() const { return sound_; }
+    const std::wstring& soundPath() const { return soundPath_; }
     int commonLines() const;
     // Tout le code des passes (commun + tampons), pour le rapport de compatibilite.
     std::string allCode() const;
@@ -57,6 +61,8 @@ private:
     };
     Cube cube_;
     bool cubeUsed_ = false;
+    std::string sound_;
+    std::wstring soundPath_;
     std::string common_;
     std::wstring commonPath_;
     Buf bufs_[4];

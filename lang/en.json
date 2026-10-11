@@ -32,7 +32,7 @@
   "log.compat_version": "A #version line was ignored: the program compiles in GLSL 3.30 core.",
   "log.compat_extension": "A #extension line was ignored (not needed here).",
   "log.compat_vr": "mainVR (VR shader) is not supported: only the Image tab is rendered.",
-  "log.compat_sound": "mainSound (Sound tab) is not supported: it is ignored.",
+  "log.compat_sound": "mainSound in the main file is ignored: put the Sound tab in <name>.sound.glsl.",
   "log.compat_cubemap": "samplerCube (cubemap) is not supported yet: the channel stays black.",
   "log.compat_volume": "sampler3D (volume texture) is not supported yet: the channel stays black.",
   "log.compat_mouse": "iMouse is read: it stays 0 unless you set // mouse=x,y (fractions of the size).",
@@ -362,7 +362,7 @@
   "error.import_json": "Cannot read the Shadertoy export (not valid JSON): %ls",
   "error.import_norenderpass": "No renderpass found: this does not look like a Shadertoy export (use the Export / JSON button of the shader page).",
   "log.import_license": "Imported shader \"%ls\" by %ls: it keeps its author's license (Shadertoy default: CC BY-NC-SA 3.0); check the page of the shader before publishing a video.",
-  "log.import_note_pass": "Pass \"%ls\" is not rendered (only Image, Buffer A-D, Common and Cube A are).",
+  "log.import_note_pass": "Pass \"%ls\" is not rendered (only Image, Buffer A-D, Common, Cube A and Sound are).",
   "log.import_note_media": "iChannel%d of \"%ls\": the Shadertoy media %ls is not available offline, a generated stand-in is used (set // iChannel%d=your_file to use your own).",
   "log.import_note_audio": "iChannel%d of \"%ls\": music or microphone input; it reads the sound file of the \"audio\" setting (set audio=file.mp3).",
   "log.import_note_unsupported": "iChannel%d of \"%ls\": input type \"%ls\" is not supported (webcam, keyboard...); the channel stays empty.",
@@ -386,5 +386,8 @@
   "ui.fb.up": "Up",
   "ui.fb.home": "Home",
   "ui.fb.hidden": "Show hidden files",
-  "ui.fb.select": "Select"
+  "ui.fb.select": "Select",
+  "log.sound_rendering": "Rendering the Sound pass (mainSound) to a temporary WAV file...",
+  "log.sound_audio_wins": "The \"audio\" setting is set: it replaces the Sound pass.",
+  "selftest.fmt_sound": "Sound pass: 7 s of audio over two blocks, amplitude and continuity"
 }

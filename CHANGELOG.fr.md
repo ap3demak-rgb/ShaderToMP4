@@ -6,6 +6,12 @@
 
 Format : une section par version, la plus récente en premier. La section d'une version étiquetée est reprise dans les notes de version.
 
+## Non publié
+
+### Ajouts
+
+- Passe Sound (`nom.sound.glsl`, `mainSound`) : rendue par le GPU dans un WAV temporaire qui devient la piste audio de la vidéo ; aussi importée depuis les exports JSON de Shadertoy.
+
 ## 1.6.1 — 2026-10-11
 
 ### Modifié

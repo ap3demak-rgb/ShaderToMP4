@@ -11,6 +11,7 @@
 #include "i18n.h"
 #include "gl.h"
 #include "process.h"
+#include "soundpass.h"
 #include "util.h"
 #include "app_info.h"
 #include "platform/platform.h"
@@ -139,7 +140,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     const int SS = preview ? 1 : std::min(4, std::max(1, s.ss));  // supersampling : reduit par ffmpeg
     const int RW = W_ * SS, RH = H_ * SS;
     const size_t frameBytes = (size_t)RW * RH * 4 * bpc;
-    const bool hasAudio = videoMode && kind == OutKind::Video && !s.audio.empty();
+    bool hasAudio = videoMode && kind == OutKind::Video && !s.audio.empty();
     if (videoMode && kind != OutKind::Video && !s.audio.empty()) H.log(L"  " + TX("log.audio_ignored"));
     if (hasAudio && !fileExists(s.audio)) { err = TXF("error.audio_missing", s.audio.c_str()); return Result::Failed; }
 
@@ -444,11 +445,42 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         if (fo > 0) f = std::min(f, (N - 1 - n) / (fo * s.fps));
         return (float)std::max(0.0, std::min(1.0, f));
     };
+    // Passe Sound (<nom>.sound.glsl) : rendue en WAV avant la video, puis ajoutee comme piste audio ; le reglage « audio » est prioritaire
+    std::wstring audioFile = s.audio;
+    bool audioSeek = true;  // -ss : seulement pour un fichier audio complet (le WAV produit commence deja a « start »)
+    struct WavGuard {
+        std::wstring path;
+        ~WavGuard() {
+            if (!path.empty()) platform::removeFile(path);
+        }
+    } wavGuard;
+    if (bp.hasSound() && videoMode && kind == OutKind::Video) {
+        if (!s.audio.empty()) {
+            H.log(L"  " + TX("log.sound_audio_wins"));
+        } else {
+            H.log(L"  " + TX("log.sound_rendering"));
+            wavGuard.path = out + L".sound.wav";
+            const SoundResult sr = renderSoundWav(bp.withCommon(bp.soundCode()), bp.soundPath(), 1 + (int)std::count(bp.soundCode().begin(), bp.soundCode().end(), '\n'),
+                                                  bp.commonPath(), s.start, totalSec, wavGuard.path, H, err);
+            if (sr != SoundResult::Ok) {
+                wavGuard.path.clear();
+                cleanupGL();
+                return sr == SoundResult::Cancelled ? Result::Cancelled : Result::Failed;
+            }
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);  // l'etat du rendu principal, modifie par la passe Sound
+            glViewport(0, 0, RW, RH);
+            ogl::UseProgram(prog);
+            ogl::BindVertexArray(vao);
+            audioFile = wavGuard.path;
+            audioSeek = false;
+            hasAudio = true;
+        }
+    }
     std::wstring audioFilter;  // fondus du son
     if (fi > 0) audioFilter += wfmt(L"afade=t=in:st=0:d=%g,", fi);
     if (fo > 0) audioFilter += wfmt(L"afade=t=out:st=%g:d=%g,", totalSec - fo, fo);
     audioFilter += L"apad";  // son plus court que la video : complete par du silence
-    const std::wstring audioArgs = wfmt(L" -ss %g", s.start) + L" -i \"" + s.audio + L"\"";
+    const std::wstring audioArgs = (audioSeek ? wfmt(L" -ss %g", s.start) : std::wstring()) + L" -i \"" + audioFile + L"\"";
 
     // Metadonnees du conteneur : titre = nom du shader, commentaire = taille, cadence et version
     std::wstring metaArgs;

@@ -40,6 +40,7 @@ void BufferPasses::discover(const std::wstring& shaderPath, const std::function<
         parseLines(cube_.st, cube_.code, true);
         H.log(L"  " + TXF("log.pass_found", L"Cubemap A"));  // nom-technique
     }
+    if (find("sound", sound_, soundPath_)) H.log(L"  " + TXF("log.pass_found", L"Sound"));  // nom-technique
     if (!common_.empty()) H.log(L"  " + TX("log.pass_common"));
 }
 

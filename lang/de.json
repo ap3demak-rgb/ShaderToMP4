@@ -32,7 +32,7 @@
   "log.compat_version": "Eine #version-Zeile wurde ignoriert: Das Programm kompiliert in GLSL 3.30 core.",
   "log.compat_extension": "Eine #extension-Zeile wurde ignoriert (hier nicht nötig).",
   "log.compat_vr": "mainVR (VR-Shader) wird nicht unterstützt: Nur der Reiter Image wird gerendert.",
-  "log.compat_sound": "mainSound (Reiter Sound) wird nicht unterstützt: Er wird ignoriert.",
+  "log.compat_sound": "mainSound in der Hauptdatei wird ignoriert: den Sound-Reiter in <name>.sound.glsl ablegen.",
   "log.compat_cubemap": "samplerCube (Cubemap) wird noch nicht unterstützt: Der Kanal bleibt schwarz.",
   "log.compat_volume": "sampler3D (Volumentextur) wird noch nicht unterstützt: Der Kanal bleibt schwarz.",
   "log.compat_mouse": "iMouse wird gelesen: Sie bleibt 0, außer Sie setzen // mouse=x,y (Bruchteile der Größe).",
@@ -372,7 +372,7 @@
   "error.import_json": "Der Shadertoy-Export kann nicht gelesen werden (kein gültiges JSON): %ls",
   "error.import_norenderpass": "Kein Renderpass gefunden: Das sieht nicht wie ein Shadertoy-Export aus (die Schaltfläche Export / JSON der Shader-Seite verwenden).",
   "log.import_license": "Shader „%ls“ von %ls importiert: Er behält die Lizenz seines Autors (Shadertoy-Standard: CC BY-NC-SA 3.0); die Seite des Shaders vor dem Veröffentlichen eines Videos prüfen.",
-  "log.import_note_pass": "Pass „%ls“ wird nicht gerendert (nur Image, Buffer A-D, Common und Cube A werden gerendert).",
+  "log.import_note_pass": "Pass „%ls“ wird nicht gerendert (nur Image, Buffer A-D, Common, Cube A und Sound werden gerendert).",
   "log.import_note_media": "iChannel%d von „%ls“: Das Shadertoy-Medium %ls ist offline nicht verfügbar, ein erzeugter Ersatz wird verwendet (// iChannel%d=ihre_datei schreiben, um eine eigene Datei zu verwenden).",
   "log.import_note_audio": "iChannel%d von „%ls“: Musik- oder Mikrofoneingang; er liest die Tondatei der Einstellung „audio“ (audio=datei.mp3 setzen).",
   "log.import_note_unsupported": "iChannel%d von „%ls“: Der Eingabetyp „%ls“ wird nicht unterstützt (Webcam, Tastatur ...); der Kanal bleibt leer.",
@@ -386,5 +386,8 @@
   "cli.opt.quiet": "--quiet        Kein Meldungsfenster (--selftest, --get-ffmpeg)",
   "cli.opt.get_ffmpeg": "--get-ffmpeg   ffmpeg ohne Fenster herunterladen und installieren",
   "cli.opt.version": "--version      Version, Copyright und Lizenz anzeigen",
-  "cli.opt.help": "--help         Diese Hilfe anzeigen"
+  "cli.opt.help": "--help         Diese Hilfe anzeigen",
+  "log.sound_rendering": "Der Sound-Pass (mainSound) wird in eine temporäre WAV-Datei gerendert...",
+  "log.sound_audio_wins": "Die Einstellung „audio“ ist gesetzt: Sie ersetzt den Sound-Pass.",
+  "selftest.fmt_sound": "Sound-Pass: 7 s Audio über zwei Blöcke, Amplitude und Kontinuität"
 }

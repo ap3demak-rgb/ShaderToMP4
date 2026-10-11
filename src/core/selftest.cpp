@@ -239,6 +239,58 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         if (!problem.empty()) fails++;
     }
 
+    // Passe Sound : 7 s de sinus 440 Hz a gauche (deux blocs de 512x512 echantillons), silence a droite ; le son relu dans la
+    // video doit avoir la bonne amplitude, rester continu a la jonction des blocs et ne pas laisser de WAV temporaire
+    if (formatAvailable(ffmpeg, "h264", "mkv")) {
+        total++;
+        std::wstring problem;
+        const std::wstring sndShader = outDir + platform::pathSeparator() + L"sndtest.glsl";
+        auto put = [&](const std::wstring& path, const char* text) {
+            if (FILE* f = platform::openFile(path, "wb")) {
+                fputs(text, f);
+                fclose(f);
+            }
+        };
+        put(sndShader, "void mainImage(out vec4 c, in vec2 p){ c = vec4(0.2, 0.4, 0.6, 1.0); }\n");
+        put(outDir + platform::pathSeparator() + L"sndtest.sound.glsl",
+            "vec2 mainSound(in int samp, float t){ return vec2(0.5 * sin(6.2831853 * 440.0 * t), 0.0); }\n");
+        Settings st = base("h264", "mkv", 8);
+        st.fps = 5;
+        st.duration = 7;
+        st.name = L"sndtest_out";
+        std::wstring e;
+        std::string logText;
+        renderShader = sndShader;
+        if (!render(st, e, logText)) {
+            problem = e.empty() ? TX("selftest.render_failed") : e;
+        } else {
+            const std::wstring out = outputFile(sndShader, st, false);
+            const std::wstring raw = outDir + platform::pathSeparator() + L"sndtest.raw";
+            runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -i \"" + out +
+                           L"\" -vn -f s16le -ac 2 -ar 44100 \"" + raw + L"\"",
+                       nullptr);
+            std::string pcm;
+            readFile(raw, pcm);
+            const int16_t* sm = reinterpret_cast<const int16_t*>(pcm.data());
+            const size_t count = pcm.size() / 4;  // echantillons stereo
+            int peakL = 0, peakR = 0, jump = 0;
+            if (count > 300000) {
+                for (size_t i = 250000; i < 300000; i++) {
+                    peakL = std::max(peakL, std::abs((int)sm[2 * i]));
+                    peakR = std::max(peakR, std::abs((int)sm[2 * i + 1]));
+                }
+                for (size_t i = 262000; i < 262300; i++) jump = std::max(jump, std::abs((int)sm[2 * i] - (int)sm[2 * (i - 1)]));
+            }
+            if (count <= 300000 || peakL < 12000 || peakL > 20000 || peakR > 1500 || jump > 3000)
+                problem = TXF("selftest.fmt_bad", wfmt(L"L %d, R %d, saut %d, %d", peakL, peakR, jump, (int)count).c_str());
+            else if (fileExists(out + L".sound.wav"))
+                problem = TXF("selftest.fmt_bad", W("wav").c_str());
+        }
+        renderShader = shader;
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_sound") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
+
     // Apercu en temps reel : le lecteur envoie des images, suit un saut dans le temps et s'arrete proprement
     {
         const bool threads = platform::prepareOffThreadContexts();
