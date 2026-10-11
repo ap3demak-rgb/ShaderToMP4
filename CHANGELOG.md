@@ -6,6 +6,13 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
+## 1.5.1 — 2026-10-11
+
+### Changed
+
+- Accessibility (Windows): fields, drop-down lists and sliders are named by their label for UI Automation, so screen readers announce “Duration (s)” instead of the value.
+- Screenshots of the README refreshed (Windows and Linux, English and French).
+
 ## 1.5.0 — 2026-10-11
 
 ### Added

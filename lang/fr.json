@@ -225,6 +225,7 @@
   "ui.card.settings": "Réglages vidéo",
   "ui.card.shaders": "Shaders",
   "ui.card.preview": "Aperçu",
+  "ui.card.progress": "Progression",
   "ui.card.log": "Journal",
   "ui.tagline": "Transforme les shaders Shadertoy en vidéo, image par image",
   "ui.files_one": "%d fichier",

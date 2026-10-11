@@ -200,6 +200,7 @@
   "ui.card.settings": "Ajustes de vídeo",
   "ui.card.shaders": "Shaders",
   "ui.card.preview": "Vista previa",
+  "ui.card.progress": "Progreso",
   "ui.card.log": "Registro",
   "ui.tagline": "Convierta shaders de Shadertoy en vídeo, imagen a imagen",
   "ui.files_one": "%d archivo",

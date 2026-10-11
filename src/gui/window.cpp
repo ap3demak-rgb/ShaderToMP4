@@ -5,6 +5,7 @@
 #include "core/ffmpeg_download.h"
 #include "core/i18n.h"
 #include "core/util.h"
+#include "accessible.h"
 #include "drop_target.h"
 #include "taskbar.h"
 #include "ui_controls.h"
@@ -516,6 +517,19 @@ void createControls(HWND hw) {
     SendMessageW(g.log, EM_SETEVENTMASK, 0, ENM_MOUSEEVENTS);  // double-clic sur « fichier:ligne: » : ouvrir a la ligne
     SendMessageW(g.log, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
     ui::darkTheme(g.log, L"DarkMode_Explorer");
+
+    // Noms accessibles : champs, listes et curseurs annonces par leur libelle (lecteurs d'ecran)
+    {
+        const struct { HWND c; const char* key; } names[] = {
+            {g.cmbRes, "ui.lbl.resolution"}, {g.edW, "ui.tip.width"}, {g.edH, "ui.tip.height"}, {g.cmbFps, "ui.lbl.fps"},
+            {g.cmbSS, "ui.lbl.smoothing"}, {g.edDur, "ui.lbl.duration"}, {g.edStart, "ui.lbl.start"}, {g.cmbCodec, "ui.lbl.codec"},
+            {g.cmbPreset, "ui.lbl.preset"}, {g.trkCrf, "ui.lbl.quality"}, {g.cmbContainer, "ui.lbl.container"},
+            {g.cmbEncoder, "ui.lbl.encoder"}, {g.edBitrate, "ui.lbl.bitrate"}, {g.cmbColor, "ui.lbl.color"}, {g.cmbBlur, "ui.lbl.blur"},
+            {g.edLoop, "ui.lbl.loop"}, {g.cmbDepth, "ui.lbl.depth"}, {g.edAudio, "ui.lbl.audio"}, {g.edFadeIn, "ui.lbl.fade_in"},
+            {g.edFadeOut, "ui.tip.fade_out"}, {g.edOut, "ui.lbl.output"}, {g.trkPrev, "ui.tip.preview_time"},
+            {g.list, "ui.card.shaders"}, {g.preview, "ui.card.preview"}, {g.prog, "ui.card.progress"}};
+        for (const auto& n : names) setAccessibleName(n.c, n.key);
+    }
 
     // Info-bulles (texte demandé à l'affichage, voir TTN_GETDISPINFO)
     g.tip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, 0, 0, 0, 0, hw,

@@ -6,6 +6,13 @@
 
 Format : une section par version, la plus récente en premier. La section d'une version étiquetée est reprise dans les notes de version.
 
+## 1.5.1 — 2026-10-11
+
+### Modifications
+
+- Accessibilité (Windows) : les champs, listes déroulantes et curseurs portent leur libellé comme nom pour UI Automation, les lecteurs d'écran annoncent donc « Durée (s) » et non la valeur.
+- Captures d'écran des README rafraîchies (Windows et Linux, anglais et français).
+
 ## 1.5.0 — 2026-10-11
 
 ### Ajouts
