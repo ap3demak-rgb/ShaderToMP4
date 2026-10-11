@@ -889,6 +889,10 @@ int runGui(const std::wstring& exeDir, const std::vector<std::wstring>& files) {
 
     while (!glfwWindowShouldClose(win)) {
         glfwWaitEventsTimeout(shot ? 0.03 : app.model.running() ? 0.05 : 0.2);
+        if (app.model.attention) {  // fin de lot : la barre des taches / le Dock attire l'attention
+            glfwRequestWindowAttention(win);
+            app.model.attention = false;
+        }
         frameNo++;
         if (shot && frameNo == 3 && !app.model.paths.empty()) {
             app.model.f.previewPos = 0.5f;

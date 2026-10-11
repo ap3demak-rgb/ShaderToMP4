@@ -173,6 +173,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 | Output | `outdir` | output folder (empty = next to the shader) |
 | (shader comments) | `iChannel0`…`iChannel3`, `mouse`, `date` | textures, fixed mouse and date (see “Shadertoy compatibility”) |
 | (config.ini only) | `name`, `exists` | output file name template and what to do when it exists (see “Output formats”) |
+| (config.ini only) | `endaction` | after a successful batch: `none` (default), `folder` (show the last file in the file manager) or `sleep` (the computer sleeps after 15 s; closing the program cancels it). At the end of a batch the taskbar / Dock button always flashes |
 | (config.ini only) | `chunk` | render in parts of N seconds (30 by default, 0 = never) |
 | (config.ini only) | `metadata` | 1 = write title (shader name) and comment (size, frame rate, version) in the file, 0 = none (1 by default) |
 | (config.ini only) | `pbo` | depth of the GPU read-back queue (2 to 8, 3 by default) |

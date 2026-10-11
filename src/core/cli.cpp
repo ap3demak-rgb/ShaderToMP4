@@ -4,6 +4,7 @@
 #include "cli.h"
 #include "app_info.h"
 #include "encoder.h"
+#include "endaction.h"
 #include "ffmpeg_download.h"
 #include "formats.h"
 #include "gl.h"
@@ -118,6 +119,7 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
     }
     const bool json = progress == "json";
     int ok = 0, failed = 0, index = 0, lastDecile = -1;
+    std::wstring lastOutput;
     auto renderOne = [&](const std::wstring& f, size_t count) {
         index++;
         std::wstring currentOutput;
@@ -138,7 +140,7 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
                 write(U8(wfmt(L"  %3.0f %%  (%lld/%lld)", pct, n, total)) + "\n", false);
             }
         };
-        H.output = [&](const std::wstring& path) { currentOutput = path; };
+        H.output = [&](const std::wstring& path) { currentOutput = path; lastOutput = path; };
         lastDecile = -1;
         if (json) write("{\"event\":\"start\",\"file\":" + jsonString(U8(f)) + ",\"index\":" + std::to_string(index) + ",\"count\":" +
                             std::to_string(count) + "}\n", false);
@@ -185,6 +187,8 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
             if (watchCount == 0 || rendered < watchCount) platform::sleepMs(1000);
         }
     }
+    if (!failed && watchDir.empty() && !files.empty())  // action de fin facultative (endaction=folder|sleep)
+        performEndAction(base.endaction, lastOutput, [&](const std::wstring& m) { write(U8(m) + "\n", false); }, true);
     destroyGLContext(gl);
     if (json) write("{\"event\":\"end\",\"ok\":" + std::to_string(ok) + ",\"failed\":" + std::to_string(failed) + "}\n", false);
     return failed ? kExitRenderFailed : kExitOk;

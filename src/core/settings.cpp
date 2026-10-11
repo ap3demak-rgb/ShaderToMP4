@@ -21,7 +21,7 @@ bool sameSettings(const Settings& a, const Settings& b) {
            a.bitrate == b.bitrate && a.color == b.color && a.blur == b.blur && a.shutter == b.shutter &&
            a.loop == b.loop && a.audio == b.audio && a.fadein == b.fadein && a.fadeout == b.fadeout &&
            sameChannels(a, b) && a.mouseSet == b.mouseSet && a.mouseX == b.mouseX && a.mouseY == b.mouseY &&
-           a.mouseDown == b.mouseDown && a.date == b.date && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
+           a.mouseDown == b.mouseDown && a.date == b.date && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
            a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.metadata == b.metadata;
 }
 
@@ -73,6 +73,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
                 s.mouseSet = false;
             }
         }
+        else if (k == "endaction") s.endaction = (lower(v) == "folder" || lower(v) == "sleep") ? lower(v) : "none";
         else if (k == "date") s.date = lower(v) == "off" ? "" : v;
         else if (k == "chunk") s.chunk = std::stod(v);
         else if (k == "encoder") {
@@ -96,7 +97,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
 bool isSettingKey(const std::string& key) {
     static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
                                         "blur", "shutter", "loop", "fadein", "fadeout", "pbo", "chunk", "encoder", "color", "container",
-                                        "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "date"};
+                                        "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "date", "endaction"};
     for (const char* k : kKeys)
         if (key == k) return true;
     // ichannel0 a ichannel3, avec .filter .wrap .vflip
@@ -200,6 +201,7 @@ void writeIni(const std::wstring& path, const Settings& s) {
     }
     if (s.mouseSet) put("mouse", num(s.mouseX) + "," + num(s.mouseY) + (s.mouseDown ? ",down" : ""), "ini.mouse");
     if (!s.date.empty()) put("date", s.date, "ini.date");
+    put("endaction", s.endaction, "ini.endaction");
     put("chunk", num(s.chunk), "ini.chunk");
     put("metadata", s.metadata ? "1" : "0", "ini.metadata");
     fclose(f);

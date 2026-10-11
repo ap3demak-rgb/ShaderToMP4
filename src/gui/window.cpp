@@ -951,6 +951,8 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             if (fails) SendMessageW(g.prog, ui::STPB_SETSTATE, 2, 0);
             fails ? taskbar::error() : taskbar::clear();
             taskbar::flash(hw);
+            if (!fails && !cancelled && !g.snapshotRun && !g.paths.empty())  // action de fin facultative (config.ini : endaction)
+                performEndAction(g.base.endaction, outputFile(g.paths.back(), g.base, false), [](const std::wstring& m) { appendLog(m); }, false);
             g.snapshotRun = false;
             appendLog(L"");
             updateButtons();

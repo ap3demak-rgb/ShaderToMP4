@@ -115,6 +115,9 @@ private:
 
     std::atomic<bool> running_{false}, cancel_{false}, pause_{false};
     bool snapshotRun_ = false;
+public:
+    bool attention = false;  // un lot vient de finir : la fenetre demande l'attention (barre des taches / Dock)
+private:
     std::wstring snapshotPath_;
     double previewTime_ = 0;
     Settings runSettings_;

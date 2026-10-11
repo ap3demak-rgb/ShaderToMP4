@@ -4,6 +4,7 @@
 #include "ui_imgui/model.h"
 #include "core/ffmpeg_download.h"
 #include "core/formats.h"
+#include "core/endaction.h"
 #include "core/presets.h"
 #include "core/queue.h"
 #include "core/gl.h"
@@ -554,6 +555,9 @@ void Model::pump() {
                 else if (fails) setStatus(TXF("status.finished_errors", fails));
                 else setStatus(TX(snapshotRun_ ? "status.image_created" : "status.all_done"));
                 progressFailed = fails > 0;
+                attention = true;
+                if (!fails && !cancelled && !snapshotRun_ && !paths.empty())  // action de fin facultative (config.ini : endaction)
+                    performEndAction(base.endaction, outputFile(paths.back(), base, false), [this](const std::wstring& m) { appendLog(m); }, false);
                 if (snapshotRun_ && !fails && !cancelled && platform::fileExists(snapshotPath_)) platform::openWithDefault(snapshotPath_);
                 snapshotRun_ = false;
                 appendLog(L"");
