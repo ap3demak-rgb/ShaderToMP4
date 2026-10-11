@@ -21,13 +21,30 @@ jobs:
         run: |
           cmake -S . -B build-cmake -A x64
           cmake --build build-cmake --config Release
-      - name: Self-test
-        run: bin\ShaderToMP4.exe --selftest --quiet
-      - name: Output formats (ffmpeg download, each codec / container rendered and re-read)
+      # The program is a window application: PowerShell does not wait for it unless Start-Process -Wait is used,
+      # and the hosted runners have no OpenGL 3.3 driver, so a software OpenGL (Mesa llvmpipe) is dropped next to it.
+      - name: Software OpenGL for the tests (Mesa llvmpipe, not shipped)
+        shell: pwsh
         run: |
-          bin\ShaderToMP4.exe --get-ffmpeg --quiet
-          bin\ShaderToMP4.exe --selftest --quiet
+          $v = "26.2.3"
+          Invoke-WebRequest "https://github.com/pal1000/mesa-dist-win/releases/download/$v/mesa3d-$v-release-msvc.7z" -OutFile mesa.7z
+          7z x mesa.7z "x64\*.dll" -omesa -y | Out-Null
+          Copy-Item mesa\x64\*.dll bin\
+          "GALLIUM_DRIVER=llvmpipe" >> $env:GITHUB_ENV
+      - name: Self-test
+        shell: pwsh
+        run: |
+          $p = Start-Process bin\ShaderToMP4.exe -ArgumentList '--selftest','--quiet' -Wait -PassThru -NoNewWindow
           Get-Content tests\report.txt
+          if ($p.ExitCode -ne 0) { throw "self-test exit code $($p.ExitCode)" }
+      - name: Output formats (ffmpeg download, each codec / container rendered and re-read)
+        shell: pwsh
+        run: |
+          $p = Start-Process bin\ShaderToMP4.exe -ArgumentList '--get-ffmpeg','--quiet' -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0) { throw "ffmpeg download exit code $($p.ExitCode)" }
+          $p = Start-Process bin\ShaderToMP4.exe -ArgumentList '--selftest','--quiet' -Wait -PassThru -NoNewWindow
+          Get-Content tests\report.txt
+          if ($p.ExitCode -ne 0) { throw "self-test exit code $($p.ExitCode)" }
       - name: Command line (--render, JSON progress, exit codes)
         shell: pwsh
         run: |
