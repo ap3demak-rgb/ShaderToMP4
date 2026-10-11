@@ -6,7 +6,7 @@
 
 ShaderToMP4 is distributed under the **GNU General Public License v3.0 or later** (`GPL-3.0-or-later`, see [COPYING](COPYING)). This document lists every third-party component the program uses, with its license and why it is compatible with the GPL-3.0. **No component may be added to the project without an entry here.**
 
-Last review: ShaderToMP4 1.3.0 (multi-platform build).
+Last review: ShaderToMP4 1.4.0 (no new third-party component is shipped; Mesa is used by the continuous integration tests only and is not distributed).
 
 ## 1. Code compiled into the program
 

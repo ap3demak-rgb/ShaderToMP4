@@ -6,7 +6,7 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
-## Unreleased
+## 1.4.0 — 2026-10-11
 
 ### Added
 - Output formats: VP9 and AV1 (SVT-AV1, libaom as a fallback; hardware AV1 tried on NVENC, AMF, QuickSync and VAAPI), WebM with Opus sound, ProRes (Proxy to 4444) and DNxHR, animated GIF (optimised palette) and WebP, numbered PNG / TIFF / EXR image sequences.

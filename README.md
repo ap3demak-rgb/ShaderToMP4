@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.3.0-FF5A96?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.4.0-FF5A96?style=flat-square">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-0078D4?style=flat-square">
   <img alt="Portable" src="https://img.shields.io/badge/portable-no%20installer-3DDC97?style=flat-square">
   <img alt="Languages" src="https://img.shields.io/badge/languages-EN%20%C2%B7%20FR-7C6CFF?style=flat-square">

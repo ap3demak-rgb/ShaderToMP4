@@ -6,7 +6,7 @@
 
 Format : une section par version, la plus récente en premier. La section d'une version étiquetée est reprise dans les notes de version.
 
-## Non publié
+## 1.4.0 — 2026-10-11
 
 ### Ajouts
 - Formats de sortie : VP9 et AV1 (SVT-AV1, libaom en secours ; AV1 matériel essayé sur NVENC, AMF, QuickSync et VAAPI), WebM avec son Opus, ProRes (Proxy à 4444) et DNxHR, GIF animé (palette optimisée) et WebP, séquences d'images PNG / TIFF / EXR numérotées.
