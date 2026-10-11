@@ -71,8 +71,13 @@ void checkCompatibility(const std::string& allCode, const Settings& s, std::vect
     const std::string c = stripComments(allCode);
     if (usesWord(c, "mainVR") && !usesWord(c, "mainImage")) notes.push_back(TX("log.compat_vr"));
     if (usesWord(c, "mainSound")) notes.push_back(TX("log.compat_sound"));
-    if (usesWord(c, "samplerCube")) notes.push_back(TX("log.compat_cubemap"));
-    if (usesWord(c, "sampler3D")) notes.push_back(TX("log.compat_volume"));
+    bool hasCube = false, hasVolume = false;
+    for (int i = 0; i < 4; i++) {
+        hasCube = hasCube || s.channel[i].compare(0, 5, L"cube:") == 0;
+        hasVolume = hasVolume || s.channel[i].compare(0, 7, L"volume:") == 0;
+    }
+    if (usesWord(c, "samplerCube") && !hasCube) notes.push_back(TX("log.compat_cubemap"));
+    if (usesWord(c, "sampler3D") && !hasVolume) notes.push_back(TX("log.compat_volume"));
     if (usesWord(c, "iMouse") && !s.mouseSet) notes.push_back(TX("log.compat_mouse"));
     if (usesWord(c, "iDate") && s.date.empty()) notes.push_back(TX("log.compat_date"));
     if (usesWord(c, "iChannelTime")) notes.push_back(TX("log.compat_channel_time"));

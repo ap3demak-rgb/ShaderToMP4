@@ -6,6 +6,12 @@
 
 Format : une section par version, la plus récente en premier. La section d'une version étiquetée est reprise dans les notes de version.
 
+## Non publié
+
+### Ajouts
+
+- Canaux Shadertoy : cubemaps (`cube:`), textures 3D (`volume:`), spectre et forme d'onde du son (`audio`), vidéo (`video:`).
+
 ## 1.5.1 — 2026-10-11
 
 ### Modifications
