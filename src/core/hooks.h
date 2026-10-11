@@ -15,6 +15,8 @@ struct Hooks {
     // apercu : une image BGRA (haut en bas) au temps previewTime, renvoyee a l'appelant, sans ffmpeg
     std::function<void(int w, int h, std::vector<uint8_t>&& bgra)> previewFrame;
     double previewTime = 0;
+    // fichier produit (premiere image pour une sequence), appele une fois le rendu termine avec succes
+    std::function<void(const std::wstring&)> output;
     bool cancelled() const { return cancel && cancel->load(); }
     bool paused() const { return pause && pause->load(); }
 };

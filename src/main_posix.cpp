@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 // ShaderToMP4 sous Linux et macOS : ligne de commande, langue, puis interface GLFW + Dear ImGui (src/ui_imgui).
+#include "core/cli.h"
 #include "core/ffmpeg_download.h"
 #include "core/gl.h"
 #include "core/render.h"
@@ -27,36 +28,7 @@ std::string helpText() {
     for (const char* k : {"cli.opt.files", "cli.opt.selftest", "cli.opt.update", "cli.opt.render", "cli.opt.quiet", "cli.opt.get_ffmpeg", "cli.opt.version",
                           "cli.opt.help"})
         t += "  " + i18n::tr8(k) + "\n";
-    return t;
-}
-
-// Rendu sans fenêtre : ShaderToMP4 --render fichier.glsl... (réglages de config.ini et des commentaires // du shader)
-int renderCommandLine(const std::wstring& exeDir, const std::vector<std::wstring>& files) {
-    Settings base;
-    std::string text;
-    if (readFile(exeDir + L"config.ini", text)) parseLines(base, text, false);
-    GLContext gl;
-    std::wstring err;
-    if (!createGLContext(gl, err)) {
-        fprintf(stderr, "%s\n", U8(TXF("log.error", err.c_str())).c_str());
-        return 1;
-    }
-    Hooks H;
-    H.log = [](const std::wstring& s) {
-        puts(U8(s).c_str());
-        fflush(stdout);
-    };
-    int fails = 0;
-    for (const auto& f : files) {
-        std::wstring e;
-        puts(U8(f).c_str());
-        if (convertFile(f, exeDir, base, H, e) != Result::Ok) {
-            fprintf(stderr, "%s\n", U8(TXF("log.error", e.c_str())).c_str());
-            fails++;
-        }
-    }
-    destroyGLContext(gl);
-    return fails ? 1 : 0;
+    return t + renderHelpText();
 }
 
 }  // namespace
@@ -104,7 +76,11 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (selftest) return runSelfTest(exeDir, update, quiet);
-    if (render) return renderCommandLine(exeDir, files);
+    if (render)
+        return runRenderCli(exeDir, files, [](const std::string& s, bool isError) {
+            fputs(s.c_str(), isError ? stderr : stdout);
+            fflush(isError ? stderr : stdout);
+        });
     if (getFfmpeg) {
         std::wstring e;
         bool ok = downloadFfmpeg(exeDir, [&](int pct, const std::wstring& msg) {

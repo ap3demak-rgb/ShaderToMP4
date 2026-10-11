@@ -41,3 +41,6 @@ struct Settings {
 bool sameSettings(const Settings& a, const Settings& b);
 void parseLines(Settings& s, const std::string& text, bool onlySlashComments);  // ini (false) ou commentaires // (true)
 void writeIni(const std::wstring& path, const Settings& s);
+// Reglage nomme (ligne de commande : --width=1280) : isSettingKey dit si la cle (minuscules) existe, applySetting l'applique.
+bool isSettingKey(const std::string& key);
+void applySetting(Settings& s, const std::string& key, const std::string& value);

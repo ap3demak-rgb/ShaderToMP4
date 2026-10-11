@@ -685,6 +685,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         else if (videoMode && loopSec > 1.0)
             H.log(L"  " + TXF("log.measure_gpu_bound", 100.0 * waitSec / loopSec));
         H.log(L"  " + TXF("log.ok_output", out.c_str()));
+        if (H.output) H.output(out);
     }
     return result;
 }

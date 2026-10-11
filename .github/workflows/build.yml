@@ -28,6 +28,17 @@ jobs:
           bin\ShaderToMP4.exe --get-ffmpeg --quiet
           bin\ShaderToMP4.exe --selftest --quiet
           Get-Content tests\report.txt
+      - name: Command line (--render, JSON progress, exit codes)
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP "cli"
+          $p = Start-Process bin\ShaderToMP4.exe -ArgumentList '--render','--progress=json','--container=gif','--width=64','--height=64','--fps=10','--duration=0.5',"--outdir=$out",'tests\circle.glsl' -Wait -PassThru -NoNewWindow -RedirectStandardOutput cli.jsonl
+          Get-Content cli.jsonl
+          if ($p.ExitCode -ne 0) { throw "exit code $($p.ExitCode)" }
+          if (-not (Select-String -Path cli.jsonl -Pattern '"event":"end","ok":1,"failed":0' -Quiet)) { throw "no end event" }
+          if (-not (Test-Path (Join-Path $out "circle.gif"))) { throw "no output" }
+          $p = Start-Process bin\ShaderToMP4.exe -ArgumentList '--render','--bogus=1','tests\circle.glsl' -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 2) { throw "usage exit code $($p.ExitCode)" }
       - name: Repository checks
         shell: pwsh
         run: ./scripts/check-repo.ps1
@@ -81,6 +92,12 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --selftest --quiet
           cat tests/report.txt
           ! grep -E '^(SKIP|FAIL)' tests/report.txt
+          # command line: JSON progress and exit codes
+          xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --render --progress=json --container=gif --width=64 --height=64 --fps=10 --duration=0.5 --outdir=e2e/cli tests/circle.glsl | tee e2e/cli.jsonl
+          grep -q '"event":"end","ok":1,"failed":0' e2e/cli.jsonl
+          test -f e2e/cli/circle.gif
+          code=0; bin/ShaderToMP4 --render --bogus=1 tests/circle.glsl || code=$?
+          test "$code" -eq 2
           # portability: nothing may be created in the home folder (the graphics driver cache is tolerated)
           leftovers="$(find "$HOME" -mindepth 1 -not -path "$HOME/.cache*" | head)"
           test -z "$leftovers" || { echo "Files written outside the application folder:"; echo "$leftovers"; exit 1; }
