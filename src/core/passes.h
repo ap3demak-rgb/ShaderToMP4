@@ -25,12 +25,13 @@ public:
     std::string allCode() const;
 
     // Compile les passes, charge leurs canaux, cree les cibles RGBA32F (rw x rh) remises a zero. false + err en cas d'echec.
-    bool build(int rw, int rh, const std::wstring& shaderDir, const std::wstring& ffmpeg, const Hooks& H, std::wstring& err);
+    bool build(int rw, int rh, const std::wstring& shaderDir, const std::wstring& ffmpeg, const Hooks& H, std::wstring& err,
+               double start = 0, double fps = 60);
     // Textures les plus recentes des quatre tampons (0 si absent), pour lier les canaux de l'image.
     void latest(GLuint out[4]) const;
     // Execute les tampons pour l'image n. setUniforms(prog, n) renseigne iTime, iFrame, iMouse, iDate... de chaque programme.
     // L'appelant restaure sa cible, son viewport et son programme ensuite.
-    void step(long long n, int rw, int rh, const std::function<void(GLuint prog, long long n)>& setUniforms);
+    void step(long long n, double t, int rw, int rh, const std::function<void(GLuint prog, long long n)>& setUniforms);
     void release();
     // Remet tous les tampons a zero (retour au debut d'une boucle, ou en arriere dans l'apercu).
     void reset();

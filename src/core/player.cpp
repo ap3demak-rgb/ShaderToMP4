@@ -97,7 +97,9 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
         out = adaptShaderCode(out, notes);
         return true;
     }, quiet);
-    r.prog = buildProgram(r.bp.withCommon(code), err);
+    std::string chTypes[4];
+    channelTypes(s, chTypes);
+    r.prog = buildProgram(r.bp.withCommon(code), err, false, chTypes);
     if (!r.prog) {
         err = locateGlslErrors(err, shaderPath, 1 + (int)std::count(code.begin(), code.end(), '\n'), r.bp.commonPath());
         return false;
@@ -119,11 +121,11 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
         err = TX("error.framebuffer");
         return false;
     }
-    if (!r.bp.build(r.w, r.h, shaderDir, ffmpeg, quiet, err)) return false;
+    if (!r.bp.build(r.w, r.h, shaderDir, ffmpeg, quiet, err, s.start, s.fps)) return false;
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, r.fbo);
     glViewport(0, 0, r.w, r.h);
     ogl::UseProgram(r.prog);
-    if (!loadChannels(s, shaderDir, ffmpeg, r.chans, quiet, err, r.w, r.h)) return false;
+    if (!loadChannels(s, shaderDir, ffmpeg, r.chans, quiet, err, r.w, r.h, s.start, s.fps)) return false;
     bindChannels(r.chans, r.prog);
     r.uRes = ogl::GetUniformLocation(r.prog, "iResolution");
     r.uTime = ogl::GetUniformLocation(r.prog, "iTime");
@@ -180,13 +182,14 @@ void renderAt(Rig& r, double t, bool send, const PreviewPlayer::FrameFn& onFrame
         long long from = r.simFrame;
         if (idx - from > 600) from = idx - 600;  // rattrapage borne
         auto setter = [&](GLuint p, long long n) { setUniforms(r, p, n, r.s.start + (double)n / r.s.fps); };
-        for (long long n = from; n < idx; n++) r.bp.step(n, r.w, r.h, setter);
-        r.bp.step(idx, r.w, r.h, setter);
+        for (long long n = from; n < idx; n++) r.bp.step(n, r.s.start + (double)n / r.s.fps, r.w, r.h, setter);
+        r.bp.step(idx, r.s.start + (double)idx / r.s.fps, r.w, r.h, setter);
         r.simFrame = idx + 1;
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, r.fbo);
         glViewport(0, 0, r.w, r.h);
     }
     ogl::UseProgram(r.prog);
+    updateChannels(r.chans, t, idx);
     if (r.chans.anyBuffer()) {
         GLuint latest[4];
         r.bp.latest(latest);

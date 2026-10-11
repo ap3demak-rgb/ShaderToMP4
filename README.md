@@ -225,7 +225,8 @@ Only the **Image** tab is rendered. What works:
 | Compile errors | shown as `file:line: message` (like a compiler, the file being the shader or the pass); **double-click** the line in the log to open the file at that line (Notepad++, Sublime Text or VS Code when installed, otherwise the default application) |
 | Compatibility report | before each render the log lists what is ignored or fixed: `mainVR`, `mainSound`, cubemaps, 3D textures, `iMouse` or `iDate` read without a fixed value, `iChannelTime` |
 | Cubemap A | not supported yet |
-| cubemaps, 3D textures, video, webcam, microphone, music and keyboard channels | not supported yet |
+| cubemap, 3D texture, audio, video channels | supported: `// iChannel0=cube:sky` (generated sky), `cube:name_%d.png` (six square faces 0 to 5 = +X −X +Y −Y +Z −Z) or `cube:cross.png` (4×3 cross); `volume:noise` (generated) or `volume:image.png@N` (N slices side by side); `audio` (the soundtrack of the `audio` setting) or `audio:file.mp3` gives Shadertoy's 512×2 texture (row 0 spectrum, row 1 waveform, computed at the exact time of each frame, without the web analyser's smoothing between frames); `video:file.mp4` plays a video (looped, decoded by ffmpeg at the render frame rate, reduced to 1280×720 at most, `.vflip` as for images). The shader's own `samplerCube` / `sampler3D` declarations are matched automatically |
+| webcam, microphone and keyboard channels | not supported (the render is not interactive) |
 | `// iChannel` lines are not needed when the shader never reads the channel | a channel that is read without a texture stays black and the log says so |
 
 </details>

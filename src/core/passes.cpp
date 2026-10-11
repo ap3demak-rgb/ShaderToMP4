@@ -52,18 +52,21 @@ std::string BufferPasses::allCode() const {
     return all;
 }
 
-bool BufferPasses::build(int rw, int rh, const std::wstring& shaderDir, const std::wstring& ffmpeg, const Hooks& H, std::wstring& err) {
+bool BufferPasses::build(int rw, int rh, const std::wstring& shaderDir, const std::wstring& ffmpeg, const Hooks& H, std::wstring& err,
+                         double start, double fps) {
     for (int i = 0; i < 4; i++) {
         if (!used_[i]) continue;
         Buf& b = bufs_[i];
         std::wstring e;
-        b.prog = buildProgram(withCommon(b.code), e, true);
+        std::string types[4];
+        channelTypes(b.st, types);
+        b.prog = buildProgram(withCommon(b.code), e, true, types);
         if (!b.prog) {
             err = std::wstring(L"[") + kLabels[i] + L"] " +
                   locateGlslErrors(e, b.path, 1 + (int)std::count(b.code.begin(), b.code.end(), '\n'), commonPath_);
             return false;
         }
-        if (!loadChannels(b.st, shaderDir, ffmpeg, b.chans, H, err, rw, rh)) return false;
+        if (!loadChannels(b.st, shaderDir, ffmpeg, b.chans, H, err, rw, rh, start, fps)) return false;
         glGenTextures(2, b.tex);
         ogl::GenFramebuffers(2, b.fbo);
         for (int k = 0; k < 2; k++) {
@@ -88,7 +91,7 @@ void BufferPasses::latest(GLuint out[4]) const {
     for (int i = 0; i < 4; i++) out[i] = used_[i] ? bufs_[i].tex[bufs_[i].read] : 0;
 }
 
-void BufferPasses::step(long long n, int rw, int rh, const std::function<void(GLuint prog, long long n)>& setUniforms) {
+void BufferPasses::step(long long n, double t, int rw, int rh, const std::function<void(GLuint prog, long long n)>& setUniforms) {
     glViewport(0, 0, rw, rh);
     glDisable(GL_BLEND);
     for (int i = 0; i < 4; i++) {
@@ -100,6 +103,7 @@ void BufferPasses::step(long long n, int rw, int rh, const std::function<void(GL
         setUniforms(b.prog, n);
         GLuint src[4];
         latest(src);
+        updateChannels(b.chans, t, n);
         bindChannels(b.chans, b.prog, src);
         glDrawArrays(GL_TRIANGLES, 0, 3);
         b.read = w;

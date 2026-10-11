@@ -29,6 +29,7 @@ namespace ogl {
     F(void, Uniform3fv, (GLint, GLsizei, const GLfloat*))                            \
     F(void, ActiveTexture, (GLenum))                                                 \
     F(void, GenerateMipmap, (GLenum))                                                \
+    F(void, TexImage3D, (GLenum, GLint, GLint, GLsizei, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*)) \
     F(void, GenVertexArrays, (GLsizei, GLuint*))                                     \
     F(void, BindVertexArray, (GLuint))                                               \
     F(void, GenFramebuffers, (GLsizei, GLuint*))                                     \
@@ -77,6 +78,7 @@ bool createGLContext(GLContext& c, std::wstring& err);  // contexte 3.3 core + c
 
 // Programme principal : enveloppe Shadertoy autour du code utilisateur (mainImage). 0 + err si echec.
 // bufferOut : passe de tampon (Buffer A-D) : la couleur complete, alpha compris, est ecrite sans ponderation de fondu.
-GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut = false);
+// chType : type GLSL des quatre canaux (sampler2D, samplerCube, sampler3D) ; nullptr = quatre sampler2D.
+GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut = false, const std::string* chType = nullptr);
 // Programme de recopie : accumulation flottante (flou de mouvement) -> image 8 bits
 GLuint buildPresentProgram(std::wstring& err);

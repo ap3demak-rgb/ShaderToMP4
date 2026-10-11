@@ -315,6 +315,107 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_variants") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
         if (!problem.empty()) fails++;
     }
+    // Canaux dynamiques et cubemap par fichiers : audio (spectre), video (images au bon temps), six faces de couleurs distinctes
+    {
+        const std::wstring sep(1, platform::pathSeparator());
+        auto gen = [&](const std::wstring& args) {
+            runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y " + args, nullptr);
+        };
+        auto writeShader = [&](const std::wstring& name, const std::string& body) {
+            const std::wstring path = outDir + sep + name;
+            if (FILE* f = platform::openFile(path, "wb")) {
+                fwrite(body.data(), 1, body.size(), f);
+                fclose(f);
+            }
+            return path;
+        };
+        auto preview = [&](const std::wstring& shaderPath, int w, int h, double time, std::vector<uint8_t>& got, std::wstring& e) {
+            Settings st = base("h264", "mp4", 8);
+            st.width = w;
+            st.height = h;
+            Hooks H;
+            H.log = [](const std::wstring&) {};
+            H.previewTime = time;
+            H.previewFrame = [&](int, int, std::vector<uint8_t>&& px) { got = std::move(px); };
+            return convertFile(shaderPath, exeDir, st, H, e) == Result::Ok && got.size() == (size_t)w * h * 4;
+        };
+        auto report1 = [&](const char* key, const std::wstring& problem) {
+            total++;
+            report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX(key) + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+            if (!problem.empty()) fails++;
+        };
+        auto bad = [&](const std::string& what) { return TXF("selftest.fmt_bad", W(what).c_str()); };
+
+        // audio : un sinus de 1 kHz donne un pic dans les premieres raies du spectre, rien dans les hautes frequences
+        {
+            gen(L"-f lavfi -i sine=frequency=1000:duration=2 -ar 44100 -ac 1 \"" + outDir + sep + L"tone.wav\"");
+            const std::wstring sh = writeShader(L"audiotest.glsl",
+                "// iChannel0=audio:tone.wav\n"
+                "void mainImage(out vec4 o, in vec2 p){ float lo = 0.0, hi = 0.0;"
+                " for (int i = 0; i < 40; i++) { lo = max(lo, texture(iChannel0, vec2(float(i) / 330.0, 0.25)).x);"
+                " hi = max(hi, texture(iChannel0, vec2(0.5 + float(i) / 80.0, 0.25)).x); }"
+                " float wave = texture(iChannel0, vec2(0.3, 0.75)).x; o = vec4(lo, hi, wave, 1.0); }\n");
+            std::vector<uint8_t> got;
+            std::wstring e, problem;
+            if (!fileExists(outDir + sep + L"tone.wav")) problem = bad("no tone");
+            else if (!preview(sh, 16, 16, 1.0, got, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else if (got[2] < 200 || got[1] > 60) problem = bad("spectrum r=" + std::to_string(got[2]) + " g=" + std::to_string(got[1]));
+            else if (got[0] < 20) problem = bad("waveform");
+            report1("selftest.fmt_audio", problem);
+        }
+        // video : l'image montree au temps t est celle que ffmpeg decode a ce temps
+        {
+            gen(L"-f lavfi -i testsrc=s=64x64:d=3:r=30 -pix_fmt yuv420p \"" + outDir + sep + L"clip.mp4\"");
+            const std::wstring sh = writeShader(L"videotest.glsl",
+                "// iChannel0=video:clip.mp4\n// iChannel0.filter=nearest\n"
+                "void mainImage(out vec4 o, in vec2 p){ o = vec4(texture(iChannel0, p / iResolution.xy).rgb, 1.0); }\n");
+            std::wstring problem;
+            for (double when : {0.0, 1.5}) {
+                std::vector<uint8_t> got;
+                std::wstring e;
+                const std::wstring raw = outDir + sep + L"clip.raw";
+                gen(L"-ss " + wfmt(L"%g", when) + L" -i \"" + outDir + sep + L"clip.mp4\" -frames:v 1 -f rawvideo -pix_fmt bgra \"" + raw + L"\"");
+                std::string want;
+                if (!preview(sh, 64, 64, when, got, e) || !readFile(raw, want) || want.size() != got.size()) {
+                    problem = e.empty() ? bad("video frame") : e;
+                    break;
+                }
+                double sum = 0;
+                size_t cnt = 0;
+                for (size_t i = 0; i < got.size(); i++) {
+                    if (i % 4 == 3) continue;
+                    sum += std::abs((int)got[i] - (int)(uint8_t)want[i]);
+                    cnt++;
+                }
+                if (sum / cnt > 4.0) {
+                    problem = bad("video t=" + std::to_string(when) + " diff " + std::to_string(sum / cnt));
+                    break;
+                }
+            }
+            report1("selftest.fmt_video", problem);
+        }
+        // cubemap par six fichiers : chaque direction lit la couleur de sa face
+        {
+            static const char* kColors[6] = {"0xFF0000", "0x00FFFF", "0x00FF00", "0xFF00FF", "0x0000FF", "0xFFFF00"};  // les noms de ffmpeg ne sont pas du RVB pur
+            for (int i = 0; i < 6; i++)
+                gen(L"-f lavfi -i color=c=" + W(kColors[i]) + L":s=8x8 -frames:v 1 \"" + outDir + sep + L"face" + std::to_wstring(i) + L".png\"");
+            const std::wstring sh = writeShader(L"cubetest.glsl",
+                "// iChannel0=cube:face%d.png\n// iChannel0.filter=nearest\n"
+                "void mainImage(out vec4 o, in vec2 p){ vec3 d[6] = vec3[6](vec3(1,0,0), vec3(-1,0,0), vec3(0,1,0), vec3(0,-1,0), vec3(0,0,1), vec3(0,0,-1));"
+                " int k = int(p.x / 16.0); o = vec4(texture(iChannel0, d[k]).rgb, 1.0); }\n");
+            static const uint8_t want[6][3] = {{255, 0, 0}, {0, 255, 255}, {0, 255, 0}, {255, 0, 255}, {0, 0, 255}, {255, 255, 0}};  // R G B
+            std::vector<uint8_t> got;
+            std::wstring e, problem;
+            if (!preview(sh, 96, 16, 0.0, got, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else
+                for (int i = 0; i < 6 && problem.empty(); i++) {
+                    const uint8_t* px = &got[((size_t)8 * 96 + i * 16 + 8) * 4];  // BGRA, centre de la case
+                    const int dr = std::abs((int)px[2] - want[i][0]), dg = std::abs((int)px[1] - want[i][1]), db = std::abs((int)px[0] - want[i][2]);
+                    if (dr > 40 || dg > 40 || db > 40) problem = bad("face " + std::to_string(i));
+                }
+            report1("selftest.fmt_cube", problem);
+        }
+    }
     // Erreurs GLSL localisees « fichier:ligne: » et reconnues par le journal cliquable
     {
         total++;

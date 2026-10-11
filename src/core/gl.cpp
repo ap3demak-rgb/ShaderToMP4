@@ -47,7 +47,9 @@ static GLuint compileShader(GLenum type, const std::string& src, std::wstring& e
     return sh;
 }
 
-GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut) {
+GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut, const std::string* chType) {
+    std::string channels;
+    for (int i = 0; i < 4; i++) channels += "uniform " + (chType && !chType[i].empty() ? chType[i] : std::string("sampler2D")) + " iChannel" + std::to_string(i) + ";\n";
     const std::string vs =
         "#version 330 core\n"
         "void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);"
@@ -64,10 +66,7 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         "uniform vec4  iDate;\n"
         "uniform float iSampleRate;\n"
         "uniform float st_weight;\n"
-        "uniform sampler2D iChannel0;\n"
-        "uniform sampler2D iChannel1;\n"
-        "uniform sampler2D iChannel2;\n"
-        "uniform sampler2D iChannel3;\n"
+        + channels +
         "uniform vec3  iChannelResolution[4];\n"
         "uniform float iChannelTime[4];\n"
         "#define texture2D texture\n"  // noms GLSL ES 1.00, encore tres repandus sur Shadertoy

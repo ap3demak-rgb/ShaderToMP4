@@ -204,7 +204,9 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         checkCompatibility(code + "\n" + bp.allCode(), s, notes);
         for (const auto& n : notes) H.log(L"  " + n);
     }
-    GLuint prog = buildProgram(bp.withCommon(code), err);
+    std::string chTypes[4];
+    channelTypes(s, chTypes);
+    GLuint prog = buildProgram(bp.withCommon(code), err, false, chTypes);
     if (!prog) {  // erreurs « fichier:ligne: message », cliquables dans le journal
         err = locateGlslErrors(err, shaderPath, 1 + (int)std::count(code.begin(), code.end(), '\n'), bp.commonPath());
         return Result::Failed;
@@ -271,7 +273,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
     }
     const std::wstring shaderDir = shaderPath.find_last_of(L"\\/") == std::wstring::npos ? L"" : shaderPath.substr(0, shaderPath.find_last_of(L"\\/") + 1);
-    if (!bp.build(RW, RH, shaderDir, findFfmpeg(exeDir), H, err)) {
+    if (!bp.build(RW, RH, shaderDir, findFfmpeg(exeDir), H, err, s.start, s.fps)) {
         cleanupGL();
         return Result::Failed;
     }
@@ -297,7 +299,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         mouseV[0] = mx; mouseV[1] = my; mouseV[2] = s.mouseDown ? mx : -mx; mouseV[3] = s.mouseDown ? my : -my;
     }
     ogl::Uniform4f(uMouse, mouseV[0], mouseV[1], mouseV[2], mouseV[3]);
-    if (!loadChannels(s, shaderDir, findFfmpeg(exeDir), chans, H, err, RW, RH)) {  // canaux d'entree (textures, tampons)
+    if (!loadChannels(s, shaderDir, findFfmpeg(exeDir), chans, H, err, RW, RH, s.start, s.fps)) {  // canaux d'entree (textures, tampons)
         cleanupGL();
         return Result::Failed;
     }
@@ -339,9 +341,9 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
                 H.log(L"  " + TXF("log.buffers_replay", (long long)n));
                 replayLogged = true;
             }
-            bp.step(simFrame, RW, RH, setPassUniforms);
+            bp.step(simFrame, s.start + (double)simFrame / s.fps, RW, RH, setPassUniforms);
         }
-        bp.step(n, RW, RH, setPassUniforms);
+        bp.step(n, s.start + (double)n / s.fps, RW, RH, setPassUniforms);
         simFrame = n + 1;
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);  // retour a l'image
         ogl::UseProgram(prog);
@@ -356,6 +358,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     // Rend l'image n (temps t, facteur de fondu "fade") dans fbo ;
     // avec flou : moyenne de B sous-images etalees sur l'obturateur
     auto renderFrame = [&](long long n, double t, float fade) {
+        updateChannels(chans, t, n);  // audio et video au temps exact de l'image
         if (chans.anyBuffer()) {  // le tampon le plus recent change a chaque image
             GLuint latest[4];
             bp.latest(latest);

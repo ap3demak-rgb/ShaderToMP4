@@ -225,7 +225,8 @@ Seul l'onglet **Image** est rendu. Ce qui fonctionne :
 | Erreurs de compilation | affichées « fichier:ligne: message » (comme un compilateur, le fichier étant le shader ou la passe) ; **double-cliquez** la ligne du journal pour ouvrir le fichier à cette ligne (Notepad++, Sublime Text ou VS Code s'ils sont installés, sinon l'application par défaut) |
 | Rapport de compatibilité | avant chaque rendu le journal liste ce qui est ignoré ou figé : `mainVR`, `mainSound`, cubemaps, textures 3D, `iMouse` ou `iDate` lus sans valeur fixe, `iChannelTime` |
 | Cubemap A | pas encore pris en charge |
-| cubemaps, textures 3D, vidéo, webcam, micro, musique et clavier | pas encore pris en charge |
+| canaux cubemap, texture 3D, audio, vidéo | pris en charge : `// iChannel0=cube:sky` (ciel généré), `cube:nom_%d.png` (six faces carrées 0 à 5 = +X −X +Y −Y +Z −Z) ou `cube:croix.png` (croix 4×3) ; `volume:noise` (généré) ou `volume:image.png@N` (N tranches côte à côte) ; `audio` (la bande son du réglage `audio`) ou `audio:fichier.mp3` donne la texture 512×2 de Shadertoy (ligne 0 spectre, ligne 1 forme d'onde, calculées au temps exact de chaque image, sans le lissage entre images de l'analyseur web) ; `video:fichier.mp4` joue une vidéo (en boucle, décodée par ffmpeg à la cadence du rendu, réduite à 1280×720 au plus, `.vflip` comme pour les images). Les déclarations `samplerCube` / `sampler3D` du shader sont reconnues automatiquement |
+| canaux webcam, micro et clavier | non pris en charge (le rendu n'est pas interactif) |
 | lignes `// iChannel` inutiles si le shader ne lit pas le canal | un canal lu sans texture reste noir et le journal le signale |
 
 </details>
