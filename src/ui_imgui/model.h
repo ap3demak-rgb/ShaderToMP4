@@ -20,8 +20,6 @@ struct ResPreset {
 extern const ResPreset kRes[];
 extern const int kResCount;
 extern const char* const kPresetNames[9];
-extern const char* const kCodecs[2];
-extern const char* const kContainers[3];
 extern const char* const kColors[4];
 extern const int kBlurs[4];
 extern const std::vector<std::string>& encoderList();  // « cpu », « auto » puis les encodeurs matériels du système
@@ -30,7 +28,7 @@ extern const std::vector<std::string>& encoderList();  // « cpu », « auto » 
 struct Fields {
     int w = 1920, h = 1080;
     char fps[16] = "60", dur[16] = "90", start[16] = "0";
-    int crf = 12, preset = 6, codec = 0, container = 0, ss = 0;  // ss : 0..3 = x1..x4
+    int crf = 12, preset = 6, codec = 0, container = 0, ss = 0, depth = 0;  // ss : 0..3 = x1..x4 ; depth : 0 = 8 bits, 1 = 10 bits
     char outdir[512] = "";
     int bitrate = 0;
     int color = 0, blur = 0, encoder = 0;
@@ -54,7 +52,8 @@ public:
     Fields f;
     void fromSettings(const Settings& s);
     bool toSettings(Settings& s, std::wstring& err) const;
-    void applyQuickPreset(int idx);  // 0 brouillon, 1 YouTube, 2 4K 60, 3 vertical
+    void applyQuickPreset(int idx);  // preselections integrees (core/presets.h)
+    int formatsRevision = 0;         // change quand ffmpeg est (re)installe : les listes de formats sont a refaire
     void save() const;
     bool loadProfile(const std::wstring& path);
     bool saveProfile(const std::wstring& path);

@@ -169,7 +169,7 @@ void openFolder() {
     Settings cur = g.base;
     std::wstring e;
     if (uiToSettings(cur, e)) g.base = cur;
-    std::wstring file = outputPath(g.paths[sel], g.base.outdir, L"." + W(g.base.container));
+    std::wstring file = outputFile(g.paths[sel], g.base, false);
     if (fileExists(file)) {
         ShellExecuteW(g.wnd, L"open", L"explorer.exe", (L"/select,\"" + file + L"\"").c_str(), nullptr, SW_SHOWNORMAL);
         return;

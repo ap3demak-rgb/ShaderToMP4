@@ -3,10 +3,12 @@
 
 #include "render.h"
 #include "encoder.h"
+#include "formats.h"
 #include "i18n.h"
 #include "gl.h"
 #include "process.h"
 #include "util.h"
+#include "app_info.h"
 #include "platform/platform.h"
 
 // ---------------------------------------------------------------------------
@@ -108,6 +110,10 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     s.crf = std::min(51, std::max(0, s.crf));
     const bool preview = (bool)H.previewFrame;
     const bool videoMode = !preview && !H.snapshot;
+    const OutKind kind = outKind(s.container);
+    if (!videoMode || kind == OutKind::Gif || kind == OutKind::Webp) s.depth = 8;  // 10 bits : video et sequences seulement
+    const bool deep = s.depth >= 10;
+    const size_t bpc = deep ? 2 : 1;  // octets par composante lue sur le GPU
     const int B = std::min(64, std::max(1, s.blur));  // sous-images par image (flou de mouvement)
     const int D = std::min(8, std::max(2, s.pbo));    // profondeur de la file de lecture GPU
 
@@ -120,20 +126,37 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     const int W_ = s.width, H_ = s.height;
     const int SS = preview ? 1 : std::min(4, std::max(1, s.ss));  // supersampling : reduit par ffmpeg
     const int RW = W_ * SS, RH = H_ * SS;
-    const size_t frameBytes = (size_t)RW * RH * 4;
-    const bool hasAudio = videoMode && !s.audio.empty();
+    const size_t frameBytes = (size_t)RW * RH * 4 * bpc;
+    const bool hasAudio = videoMode && kind == OutKind::Video && !s.audio.empty();
+    if (videoMode && kind != OutKind::Video && !s.audio.empty()) H.log(L"  " + TX("log.audio_ignored"));
     if (hasAudio && !fileExists(s.audio)) { err = TXF("error.audio_missing", s.audio.c_str()); return Result::Failed; }
 
     // Chemin de sortie : dossier choisi (sinon celui du shader), meme nom, extension du conteneur (ou .png)
+    if (videoMode && !codecContainerOk(s.codec, s.container)) {
+        err = TXF("error.codec_container", codecLabel(s.codec), W(s.container).c_str());
+        return Result::Failed;
+    }
+    if (videoMode && kind == OutKind::Video && isDnxhr(s.codec) && (s.width < 256 || s.height < 120)) {
+        err = TX("error.dnxhr_size");
+        return Result::Failed;
+    }
     if (!preview && !s.outdir.empty()) platform::makeDir(s.outdir);  // sans effet si deja present
     const std::wstring ext = H.snapshot ? L".png" : L"." + W(s.container);
-    const std::wstring out = outputPath(shaderPath, s.outdir, ext);
-    const std::wstring outDir = out.substr(0, out.find_last_of(L"\\/"));
+    bool skipExisting = false;
+    const std::wstring out = !videoMode ? outputPath(shaderPath, s.outdir, ext) : outputFile(shaderPath, s, true, &skipExisting);
+    if (skipExisting) {
+        H.log(L"  " + TXF("log.skip_existing", out.c_str()));
+        return Result::Ok;
+    }
+    const bool sequence = videoMode && kind == OutKind::Sequence;
+    const std::wstring seqDir = sequence ? sequenceDir(out) : L"";
+    const std::wstring seqPattern = sequence ? sequencePattern(out) : L"";
+    const std::wstring& outRef = sequence ? seqDir : out;
+    const std::wstring outDir = outRef.substr(0, outRef.find_last_of(L"\\/"));
 
     // --- Verifications avant de commencer : espace disque ------------------------
     if (videoMode) {
-        const double bpp = 0.3 * std::pow(2.0, -(s.crf - 12) / 6.0);  // ordre de grandeur, bits par pixel et par image
-        const double est = s.bitrate > 0 ? s.bitrate * 125.0 * totalSec : (double)W_ * H_ * s.fps * totalSec * bpp / 8.0;
+        const double est = estimateSizeBytes(s, totalSec, hasAudio);
         uint64_t freeB = 0;
         if (platform::freeSpace(outDir, freeB)) {
             H.log(L"  " + TXF("log.size_estimate", est / 1048576.0, freeB / 1048576.0));
@@ -146,7 +169,13 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         }
         H.log(TXF("log.render_summary", W_, H_, s.fps, totalSec, N,
                    s.bitrate > 0 ? wfmt(L"%d kb/s", s.bitrate).c_str() : wfmt(L"crf %d", s.crf).c_str(),
-                   W(s.preset).c_str(), s.codec == "h265" ? L"H.265" : L"H.264"));
+                   W(s.preset).c_str(), kind == OutKind::Video ? codecLabel(s.codec) : containerAt(containerIndex(s.container)).label));
+        if (deep) H.log(L"  " + TX("log.depth10"));
+        if (kind == OutKind::Gif && s.fps > 30) H.log(L"  " + TXF("log.gif_fps", s.fps));
+        if (kind == OutKind::Gif && (double)W_ * H_ * N * 3 > 2.0e9) {
+            err = TXF("error.gif_too_big", W_, H_, (long long)N);
+            return Result::Failed;
+        }
         if (B > 1) H.log(L"  " + TXF("log.motion_blur", B, s.shutter));
         if (s.loop > 0) H.log(L"  " + TXF("log.perfect_loop", s.loop, duration));
     }
@@ -182,7 +211,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     ogl::BindVertexArray(vao);
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, ogl::K_RGBA8, RW, RH, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, deep ? ogl::K_RGBA16 : ogl::K_RGBA8, RW, RH, 0, GL_RGBA, deep ? GL_UNSIGNED_SHORT : GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     ogl::GenFramebuffers(1, &fbo);
@@ -291,18 +320,19 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     }
 
     // --- ffmpeg (ffmpeg.exe a cote du programme) ------------------------------
-    std::wstring ffmpeg = exeDir + platform::exeFileName(L"ffmpeg");
-    if (!fileExists(ffmpeg)) {  // sinon : PATH
-        ffmpeg = platform::findInPath(platform::exeFileName(L"ffmpeg"));
-        if (ffmpeg.empty()) ffmpeg = platform::exeFileName(L"ffmpeg");
+    const std::wstring ffmpeg = findFfmpeg(exeDir);
+    if (videoMode && !formatAvailable(ffmpeg, s.codec, s.container)) {
+        err = TXF("error.encoder_missing", W(requiredEncoders(s.codec, s.container).front()).c_str());
+        cleanupGL();
+        return Result::Failed;
     }
-    const std::string enc = videoMode ? resolveEncoder(s, ffmpeg, H) : "cpu";
+    const std::string enc = videoMode && kind == OutKind::Video ? resolveEncoder(s, ffmpeg, H) : "cpu";
 
     const std::wstring fpsStr = wfmt(L"%g", s.fps);
     const std::wstring ssFilter =
         SS > 1 ? L"scale=" + std::to_wstring(W_) + L":" + std::to_wstring(H_) + L":flags=area," : L"";
-    const std::wstring head = L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -y"
-        L" -f rawvideo -pix_fmt rgba -video_size " + std::to_wstring(RW) + L"x" + std::to_wstring(RH) +
+    const std::wstring head = L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -y" +
+        std::wstring(deep ? L" -f rawvideo -pix_fmt rgba64le -video_size " : L" -f rawvideo -pix_fmt rgba -video_size ") + std::to_wstring(RW) + L"x" + std::to_wstring(RH) +
         L" -framerate " + fpsStr + L" -i -";
     const ColorSpec cs = colorSpec(s.color);
     const double fi = videoMode ? std::max(0.0, std::min(s.fadein, totalSec)) : 0.0;
@@ -320,6 +350,16 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     audioFilter += L"apad";  // son plus court que la video : complete par du silence
     const std::wstring audioArgs = wfmt(L" -ss %g", s.start) + L" -i \"" + s.audio + L"\"";
 
+    // Metadonnees du conteneur : titre = nom du shader, commentaire = taille, cadence et version
+    std::wstring metaArgs;
+    if (s.metadata && videoMode && kind == OutKind::Video) {
+        std::wstring title = shaderPath.substr(shaderPath.find_last_of(L"\\/") + 1);
+        if (size_t dot = title.find_last_of(L'.'); dot != std::wstring::npos && dot > 0) title.erase(dot);
+        title.erase(std::remove(title.begin(), title.end(), L'"'), title.end());
+        metaArgs = L" -metadata \"title=" + title + L"\" -metadata \"comment=" + wfmt(L"%dx%d, %g fps, ", W_, H_, s.fps) +
+                   APP_NAME_WSTR + L" " + APP_VER_WSTR + L"\"";
+    }
+
     // Tout ce qui est regle pour une image depuis la boucle de rendu
     using clk = std::chrono::steady_clock;
     double waitSec = 0, loopSec = 0;  // mesure : temps bloque sur ffmpeg / temps total de rendu
@@ -330,14 +370,15 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         std::wstring cmd;
         if (H.snapshot) {  // image RGB pleine plage, sans conversion YUV
             cmd = head + L" -vf \"vflip," + ssFilter + L"format=rgb24\" -frames:v 1 -pix_fmt rgb24 \"" + dest + L"\"";
+        } else if (kind != OutKind::Video) {  // image animee ou sequence : RGB pleine plage, pas de YUV
+            cmd = head + L" -vf \"vflip," + ssFilter + imageFilterTail(s) + L"\"" + imageEncoderArgs(s) + L" \"" + dest + L"\"";
         } else {
             cmd = head;
             if (muxAudio) cmd += audioArgs;
             cmd += L" -vf \"vflip," + ssFilter + L"scale=in_range=full:out_range=" + cs.range +
-                   L":out_color_matrix=" + cs.matrix + L":flags=accurate_rnd+full_chroma_int," + encoderFormat(enc) + L"\"";
-            if (muxAudio) cmd += L" -map 0:v -map 1:a -c:a aac -b:a 192k -af \"" + audioFilter + L"\" -shortest";
-            cmd += encoderArgs(s, enc) + encoderPixFmt(enc) + L" " + cs.tags +
-                   (s.container == "mkv" ? L"" : L" -movflags +faststart") + L" \"" + dest + L"\"";
+                   L":out_color_matrix=" + cs.matrix + L":flags=accurate_rnd+full_chroma_int," + outFormat(s, enc) + L"\"";
+            if (muxAudio) cmd += L" -map 0:v -map 1:a" + audioCodecArgs(s.container) + L" -af \"" + audioFilter + L"\" -shortest";
+            cmd += encoderArgs(s, enc) + outPixFmtArg(s, enc) + L" " + cs.tags + containerArgs(s.container) + metaArgs + L" \"" + dest + L"\"";
         }
 
         // stdin de ffmpeg = les images ; stdout/stderr = tube lu par un thread et envoye au journal
@@ -421,7 +462,7 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
             renderFrame(n, t, videoMode ? fadeAt(n) : 1.0f);
 
             ogl::BindBuffer(ogl::K_PIXEL_PACK_BUFFER, pbo[k % D]);
-            glReadPixels(0, 0, RW, RH, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glReadPixels(0, 0, RW, RH, GL_RGBA, deep ? GL_UNSIGNED_SHORT : GL_UNSIGNED_BYTE, nullptr);
             if (k >= D - 1 && !fetch(k - (D - 1))) aborted = true;
 
             auto now = clk::now();
@@ -461,20 +502,21 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     };
 
     // --- Plan : un seul fichier, ou des parties reprenables puis assemblees ----------
-    const long long chunkFrames = (videoMode && s.chunk > 0) ? std::max(1LL, std::llround(s.chunk * s.fps)) : 0;
+    const long long chunkFrames = (videoMode && kind == OutKind::Video && s.chunk > 0) ? std::max(1LL, std::llround(s.chunk * s.fps)) : 0;
     Result result = Result::Ok;
     if (chunkFrames == 0 || N <= chunkFrames) {
-        result = encodeRange(0, N, out, hasAudio, 0, err);
+        if (sequence && !platform::dirExists(seqDir)) platform::makeDir(seqDir);
+        result = encodeRange(0, N, sequence ? seqPattern : out, hasAudio, 0, err);
     } else {
         const std::wstring partsDir = out.substr(0, out.find_last_of(L'.')) + L".parts";
         platform::makeDir(partsDir);
         // Signature : tout ce qui change le resultat. Differente -> les anciennes parties sont jetees.
         std::string sigSrc;
         {
-            std::wstring tail = wfmt(L"|%d|%d|%g|%g|%d|%ls|%ls|%ls|%d|%d|%ls|%g|%g|%g|%d|%ls|%lld|%lld", W_, H_, s.fps,
+            std::wstring tail = wfmt(L"|%d|%d|%g|%g|%d|%ls|%ls|%ls|%d|%d|%ls|%g|%g|%g|%d|%ls|%lld|%lld|%d", W_, H_, s.fps,
                                      s.start, s.crf, W(s.preset).c_str(), W(s.codec).c_str(), W(enc).c_str(), s.bitrate,
                                      s.blur, W(s.color).c_str(), s.shutter, s.fadein, s.fadeout, s.ss,
-                                     W(s.container).c_str(), N, chunkFrames);
+                                     W(s.container).c_str(), N, chunkFrames, s.depth);
             sigSrc = code + U8(tail);
         }
         const std::string sig = fnvHex(sigSrc);
@@ -528,9 +570,9 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
             std::wstring cmd = L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -f concat -safe 0 -i \"" + listFile + L"\"";
             if (hasAudio) cmd += audioArgs;
             cmd += L" -map 0:v";
-            if (hasAudio) cmd += L" -map 1:a -c:a aac -b:a 192k -af \"" + audioFilter + L"\" -shortest";
-            cmd += L" -c:v copy" + std::wstring(s.codec == "h265" ? L" -tag:v hvc1" : L"") +
-                   (s.container == "mkv" ? L"" : L" -movflags +faststart") + L" \"" + out + L"\"";
+            if (hasAudio) cmd += L" -map 1:a" + audioCodecArgs(s.container) + L" -af \"" + audioFilter + L"\" -shortest";
+            cmd += L" -c:v copy" + std::wstring(s.codec == "h265" ? L" -tag:v hvc1" : L"") + containerArgs(s.container) + metaArgs +
+                   L" \"" + out + L"\"";
             int rc = runProcess(cmd, [&](const std::wstring& line) { H.log(TX("log.ffmpeg_prefix") + line); });
             if (rc != 0) {
                 err = TX("error.assemble_failed");

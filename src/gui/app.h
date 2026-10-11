@@ -5,12 +5,14 @@
 #pragma once
 #include "common.h"
 #include "core/settings.h"
+#include "core/formats.h"
+#include "core/presets.h"
 
 enum {
     ID_LIST = 101, ID_ADD, ID_REMOVE, ID_CLEAR, ID_START, ID_CANCEL, ID_PROG, ID_STATUS, ID_LOG,
     ID_RES = 120, ID_W, ID_H, ID_FPS, ID_DUR, ID_START_T, ID_CODEC, ID_PRESET, ID_CRF, ID_SNAP, ID_CONTAINER, ID_SS, ID_OUT, ID_BROWSE, ID_LOADP, ID_SAVEP,
     ID_BITRATE, ID_COLOR, ID_BLUR, ID_LOOP, ID_AUDIO, ID_AUDIOB, ID_FADEIN, ID_FADEOUT, ID_PAUSE, ID_FOLDER, ID_PREVIEW,
-    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_ABOUT, ID_LANG
+    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_ABOUT, ID_LANG
 };
 enum {
     WM_APP_LOG = WM_APP + 1,  // lParam = std::wstring* (a liberer)
@@ -40,14 +42,14 @@ struct App {
          edStart = nullptr, cmbCodec = nullptr, cmbPreset = nullptr, cmbContainer = nullptr, cmbSS = nullptr, edOut = nullptr, bBrowse = nullptr, bLoadP = nullptr, bSaveP = nullptr, trkCrf = nullptr, lblCrf = nullptr;
     HWND edBitrate = nullptr, cmbColor = nullptr, cmbBlur = nullptr, edLoop = nullptr, edAudio = nullptr,
          bAudio = nullptr, edFadeIn = nullptr, edFadeOut = nullptr, bPause = nullptr, bFolder = nullptr,
-         preview = nullptr, trkPrev = nullptr, lblPrev = nullptr, bPrev = nullptr, cmbEncoder = nullptr;
+         preview = nullptr, trkPrev = nullptr, lblPrev = nullptr, bPrev = nullptr, cmbEncoder = nullptr, cmbDepth = nullptr, lblEst = nullptr;
     HBITMAP prevBmp = nullptr;  // derniere image d apercu
     int prevW = 0, prevH = 0;
     std::vector<HWND> labels;  // libelles du panneau de reglages (dans l ordre de layout())
     HFONT font = nullptr, fontBold = nullptr;
     UINT dpi = 96;
     HBRUSH brCard = nullptr, brField = nullptr;
-    HWND chips[4] = {nullptr, nullptr, nullptr, nullptr};  // preselections rapides
+    HWND chips[5] = {nullptr, nullptr, nullptr, nullptr, nullptr};  // preselections rapides
     HWND tip = nullptr;
     HWND bAbout = nullptr, bLang = nullptr;  // en-tête : À propos, langue
     int chipRight = 0;                       // bord droit de la pastille de version (à gauche des boutons de l'en-tête)
@@ -100,6 +102,8 @@ std::wstring getText(HWND h);
 bool parseSeconds(std::wstring t, double& out);  // "90", "1:30", "0:01:30" -> secondes
 void syncResCombo();
 void updateCrfLabel();
+void updateEstimate();      // taille estimee du fichier, sous le preset
+void showPresetMenu();      // menu « Plus » : preselections integrees et fichiers presets/*.ini
 void settingsToUI(const Settings& s);
 bool uiToSettings(Settings& s, std::wstring& err);  // false + message si une valeur est invalide
 void saveSettings();                                // ecrit config.ini

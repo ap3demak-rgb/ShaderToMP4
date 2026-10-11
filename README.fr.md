@@ -155,11 +155,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 | Résolution | `width`, `height` | 16 à 16384 (arrondi au nombre pair) |
 | FPS | `fps` | 1 à 240 |
 | Durée, Début | `duration`, `start` | secondes (`90`) ou `mm:ss` dans la fenêtre |
-| Codec | `codec` | `h264`, `h265` |
+| Codec | `codec` | `h264`, `h265`, `vp9`, `av1`, `prores_*`, `dnxhr_*` (voir « Formats de sortie ») |
 | Preset | `preset` | `ultrafast` ... `veryslow` |
 | Qualité (CRF) | `crf` | 0 (sans perte), 12 (quasi parfait), 18 (très bon) |
 | Débit | `bitrate` | kb/s ; 0 = qualité constante (CRF) |
-| Conteneur | `container` | `mp4`, `mov`, `mkv` |
+| Conteneur | `container` | `mp4`, `mov`, `mkv`, `webm`, `gif`, `webp`, `png`, `tiff`, `exr` (WebM : VP9/AV1 seulement ; MOV : pas VP9/AV1 ; MP4 : pas ProRes/DNxHR) |
+| Bits | `depth` | 8 ou 10 bits par canal (10 : H.265, AV1, VP9, ProRes, PNG/TIFF) |
 | Encodeur | `encoder` | `cpu`, `auto`, `nvenc`, `amf`, `qsv` (repli sur le CPU si indisponible) |
 | Lissage | `ss` | 1 à 4 : rendu à N× la taille puis réduction (supersampling) |
 | Couleur | `color` | `bt709`, `bt709full` (pleine plage), `srgb`, `bt601` |
@@ -168,8 +169,31 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 | Audio | `audio` | fichier son, calé sur le temps « Début », complété par du silence s'il est plus court |
 | Fondu entrée / sortie | `fadein`, `fadeout` | secondes, image et son |
 | Sortie | `outdir` | dossier de sortie (vide = à côté du shader) |
+| (config.ini seulement) | `name`, `exists` | modèle du nom de sortie et conduite si le fichier existe (voir « Formats de sortie ») |
 | (config.ini seulement) | `chunk` | rendu par parties de N secondes (30 par défaut, 0 = jamais) |
+| (config.ini seulement) | `metadata` | 1 = écrire titre (nom du shader) et commentaire (taille, cadence, version) dans le fichier, 0 = aucun (1 par défaut) |
 | (config.ini seulement) | `pbo` | profondeur de la file de lecture GPU (2 à 8, 3 par défaut) |
+
+</details>
+
+<details>
+<summary><b>Formats de sortie, 10 bits, noms de fichiers et préréglages</b></summary>
+
+| Format | `codec` | `container` | Remarques |
+|---|---|---|---|
+| H.264, H.265 | `h264`, `h265` | `mp4`, `mov`, `mkv` | encodeurs matériels : NVENC, AMF, QuickSync, VAAPI, VideoToolbox |
+| VP9, AV1 | `vp9`, `av1` | `webm`, `mp4`, `mkv` | VP9 sur le CPU (libvpx-vp9) ; AV1 avec SVT-AV1 (libaom en secours), et essayé d'abord sur NVENC / AMF / QuickSync / VAAPI quand un encodeur est choisi (repli sur le CPU) ; le son WebM est en Opus |
+| ProRes | `prores_proxy`, `prores_lt`, `prores_422`, `prores_hq`, `prores_4444` | `mov`, `mkv` | format de montage : 10 bits 4:2:2 (4:4:4 pour le 4444), très gros fichiers, CRF et débit ignorés |
+| DNxHR | `dnxhr_sq`, `dnxhr_hq`, `dnxhr_hqx`, `dnxhr_444` | `mov`, `mkv` | format de montage, au moins 256×120 |
+| GIF animé | (ignoré) | `gif` | palette optimisée sur toute l'animation, pas de son ; 15 à 25 images/s conseillé et une limite de taille protège la mémoire |
+| WebP animé | (ignoré) | `webp` | qualité tirée du curseur CRF, pas de son |
+| Séquence d'images | (ignoré) | `png`, `tiff`, `exr` | dossier `<nom>_frames/` contenant `<nom>_000000.png`… ; RVB pleine plage, sans conversion YUV ; PNG / TIFF en 16 bits avec 10 bits ; EXR en demi-flottant |
+
+- **Bits** (`depth`, 8 ou 10) : à 10, le shader est rendu en 16 bits par canal et encodé en H.265 Main10, AV1, VP9 profil 2, ProRes / DNxHR (toujours 10 bits) ou PNG / TIFF 16 bits, ce qui supprime les bandes des dégradés doux. Les encodeurs matériels sont en 8 bits seulement : le CPU est alors utilisé (le journal l'indique).
+- Un codec ou un conteneur que le ffmpeg installé ne sait pas produire est marqué « absent de ce ffmpeg » dans les listes ; installez une version complète de ffmpeg (le téléchargement automatique en est une). Une combinaison impossible (WebM avec H.264, MOV avec VP9, MP4 avec ProRes) est refusée avec une explication avant le début du rendu.
+- **Taille estimée** : affichée sous les réglages (approximative, elle dépend du shader), avec un avertissement si le disque de destination est trop petit.
+- **Nom du fichier** (config.ini ou commentaire du shader) : `name` est un modèle, `{shader}` par défaut ; `{w}`, `{h}`, `{fps}`, `{date}` et `{codec}` sont remplacés (`// name={shader}_{w}x{h}`). `exists` décide ce qui se passe si le résultat existe déjà : `overwrite` (par défaut), `number` (`nom-2`, `nom-3`…) ou `skip`.
+- **Préréglages** : les pastilles (Brouillon, YouTube, 4K 60, Vertical) et le menu « Plus » (X 720p30, GIF léger, ProRes pour le montage, WebM VP9) ne changent que la taille, la cadence, le codec, le conteneur et la qualité. Vos propres préréglages sont des fichiers `.ini` dans un dossier `presets` à côté du programme : ils apparaissent dans le menu « Plus » (même format qu'un profil enregistré avec « Enregistrer »).
 
 </details>
 
@@ -291,7 +315,7 @@ bin/        dossier de travail : l'exécutable (généré), ffmpeg, config.ini
 ### Limites connues
 
 - L'interface s'adapte au DPI de l'écran mais n'a été vérifiée qu'à 100 %.
-- Les encodeurs matériels AMD et Intel (AMF, QuickSync, VAAPI) n'ont pas été testés sur du matériel réel.
+- Les encodeurs matériels AMD et Intel (AMF, QuickSync, VAAPI), et l'AV1 matériel, n'ont pas été testés sur du matériel réel.
 - macOS : le programme est compilé et empaqueté par l'intégration continue, mais les machines macOS hébergées n'ont pas de GPU : la fenêtre n'a donc pas été lancée sur un vrai Mac. Signale tout problème.
 - Linux et macOS : les boîtes de dialogue de fichiers sont intégrées au programme (pas de boîte système), et il n'y a pas d'indicateur de progression dans la barre des tâches ou le Dock.
 

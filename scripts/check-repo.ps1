@@ -94,7 +94,7 @@ foreach ($f in $srcFiles) {
 foreach ($k in $used.Keys) { if ($enKeys -notcontains $k -and $k -notmatch "\.h$|\.cpp$") { Fail "cle utilisee mais absente de lang/en.json : $k ($($used[$k]))" } }
 foreach ($k in $enKeys) { if (-not $used.ContainsKey($k)) { Fail "cle de langue jamais utilisee : $k" } }
 # Texte visible ecrit en dur : deux mots separes par une espace dans un litteral large, hors arguments ffmpeg, adresses et noms techniques.
-$allowLine = '-hide_banner|-pix_fmt|-f rawvideo|-vf|-map|-c:v|-ss |-movflags|-nostdin|-framerate|-preset|-rc |-quality|-global_quality|-tag:v|-colorspace|nullsrc|tar\.exe|fade=|http|Segoe UI|Cascadia|DarkMode|^\s*//|#include|#pragma|PASS|FAIL|UPDATED|i18n-bootstrap|NVIDIA NVENC|APP_NAME_WSTR L" "|L" \(|L"\) ?"|%ls|%d|%02d|%05'
+$allowLine = '-hide_banner|-pix_fmt|-f rawvideo|-vf|-map|-c:v|-ss |-movflags|-nostdin|-framerate|-preset|-rc |-quality|-global_quality|-tag:v|-colorspace|nullsrc|tar\.exe|fade=|http|Segoe UI|Cascadia|DarkMode|^\s*//|#include|#pragma|PASS|FAIL|UPDATED|i18n-bootstrap|nom-technique|NVIDIA NVENC|APP_NAME_WSTR L" "|L" \(|L"\) ?"|%ls|%d|%02d|%05'
 foreach ($f in $srcFiles) {
   $n = 0
   foreach ($line in (Get-Content $f.FullName -Encoding UTF8)) {
