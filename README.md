@@ -363,7 +363,7 @@ bin/        working folder: the executable (generated), ffmpeg, config.ini
 - The interface adapts to the screen DPI but has only been checked at 100 %.
 - AMD and Intel hardware encoders (AMF, QuickSync, VAAPI), and hardware AV1, have not been tested on real hardware.
 - macOS: the program is built and packaged by the continuous integration, but the hosted macOS machines have no GPU, so the window has not been run on a real Mac. Please report any problem.
-- Linux and macOS: the file dialogs are built into the program (no system dialog), and there is no taskbar / dock progress indicator.
+- Linux and macOS: the file dialogs are built into the program (no system dialog), and the render progress is shown in the macOS Dock (written from the documentation of the system and compiled by the continuous integration, but never run on a real Mac); on Linux there is no progress on the taskbar button (the launchers' API needs D-Bus, a library the program does not ship), the window only asks for attention at the end of a batch.
 
 ## Project information
 

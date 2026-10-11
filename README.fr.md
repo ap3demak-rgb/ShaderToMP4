@@ -363,7 +363,7 @@ bin/        dossier de travail : l'exécutable (généré), ffmpeg, config.ini
 - L'interface s'adapte au DPI de l'écran mais n'a été vérifiée qu'à 100 %.
 - Les encodeurs matériels AMD et Intel (AMF, QuickSync, VAAPI), et l'AV1 matériel, n'ont pas été testés sur du matériel réel.
 - macOS : le programme est compilé et empaqueté par l'intégration continue, mais les machines macOS hébergées n'ont pas de GPU : la fenêtre n'a donc pas été lancée sur un vrai Mac. Signale tout problème.
-- Linux et macOS : les boîtes de dialogue de fichiers sont intégrées au programme (pas de boîte système), et il n'y a pas d'indicateur de progression dans la barre des tâches ou le Dock.
+- Linux et macOS : les boîtes de dialogue de fichiers sont intégrées au programme (pas de boîte système), et la progression du rendu s'affiche dans le Dock de macOS (écrite d'après la documentation du système et compilée par l'intégration continue, mais jamais exécutée sur un vrai Mac) ; sous Linux il n'y a pas de progression sur le bouton de la barre des tâches (l'API des lanceurs passe par D-Bus, une bibliothèque que le programme ne livre pas), la fenêtre demande seulement l'attention à la fin d'un lot.
 
 ## Informations sur le projet
 
