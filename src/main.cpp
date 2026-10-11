@@ -4,6 +4,7 @@
 // ShaderToMP4 : Shadertoy (onglet Image) -> vidéo parfaite via ffmpeg.exe.
 // Point d'entrée : ligne de commande, langue, fenêtre principale. Le moteur est dans src/core, l'interface dans src/gui.
 #include "gui/app.h"
+#include "core/cli.h"
 #include "core/ffmpeg_download.h"
 #include "core/i18n.h"
 #include "core/selftest.h"
@@ -55,10 +56,10 @@ std::string versionText() {
 
 std::string helpText() {
     std::string t = versionText() + "\n" + i18n::tr8("cli.usage") + "\n\n";
-    for (const char* k : {"cli.opt.files", "cli.opt.selftest", "cli.opt.update", "cli.opt.quiet", "cli.opt.get_ffmpeg",
+    for (const char* k : {"cli.opt.files", "cli.opt.selftest", "cli.opt.update", "cli.opt.render", "cli.opt.quiet", "cli.opt.get_ffmpeg",
                           "cli.opt.version", "cli.opt.help"})
         t += "  " + i18n::tr8(k) + "\n";
-    return t;
+    return t + renderHelpText();
 }
 
 }  // namespace
@@ -83,10 +84,11 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     std::vector<std::wstring> files;
-    bool selftest = false, update = false, quiet = false, getFfmpeg = false, version = false, help = false;
+    bool selftest = false, update = false, quiet = false, getFfmpeg = false, version = false, help = false, render = false;
     for (int i = 1; argv && i < argc; i++) {
         std::wstring a = argv[i];
         if (a == L"--selftest") selftest = true;
+        else if (a == L"--render") render = true;
         else if (a == L"--update") update = true;
         else if (a == L"--quiet") quiet = true;
         else if (a == L"--get-ffmpeg") getFfmpeg = true;
@@ -101,6 +103,8 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         writeConsole(help ? helpText() : versionText());
         return 0;
     }
+    if (render)  // ShaderToMP4 --render [options] fichiers : sans fenetre, texte sur la console de l'appelant
+        return runRenderCli(g.exeDir, files, [](const std::string& s, bool) { writeConsole(s); });
     std::string iniText;
     const std::wstring ini = g.exeDir + L"config.ini";
     if (selftest) return runSelfTest(g.exeDir, update, quiet);

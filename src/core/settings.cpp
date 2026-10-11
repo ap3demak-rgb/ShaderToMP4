@@ -93,6 +93,20 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
     } catch (...) {}
 }
 
+bool isSettingKey(const std::string& key) {
+    static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
+                                        "blur", "shutter", "loop", "fadein", "fadeout", "pbo", "chunk", "encoder", "color", "container",
+                                        "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "date"};
+    for (const char* k : kKeys)
+        if (key == k) return true;
+    // ichannel0 a ichannel3, avec .filter .wrap .vflip
+    if (key.size() >= 9 && key.compare(0, 8, "ichannel") == 0 && key[8] >= '0' && key[8] <= '3')
+        return key.size() == 9 || key.substr(9) == ".filter" || key.substr(9) == ".wrap" || key.substr(9) == ".vflip";
+    return false;
+}
+
+void applySetting(Settings& s, const std::string& key, const std::string& value) { applyKV(s, key, value); }
+
 void parseLines(Settings& s, const std::string& text, bool onlySlashComments) {
     size_t pos = 0;
     while (pos <= text.size()) {
