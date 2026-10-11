@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.5.0-FF5A96?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.5.1-FF5A96?style=flat-square">
   <img alt="Plateforme" src="https://img.shields.io/badge/plateforme-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-0078D4?style=flat-square">
   <img alt="Portable" src="https://img.shields.io/badge/portable-sans%20installeur-3DDC97?style=flat-square">
   <img alt="Langues" src="https://img.shields.io/badge/langues-EN%20%C2%B7%20FR-7C6CFF?style=flat-square">
@@ -362,7 +362,7 @@ bin/        dossier de travail : l'exécutable (généré), ffmpeg, config.ini
 
 ### Limites connues
 
-- L'interface Windows s'adapte au DPI de l'écran. Sa mise en page a été vérifiée à 100 %, 125 %, 150 % et 200 % avec `--dpi=120|144|192` (option de test qui force l'échelle ; le comportement d'une fenêtre déplacée entre deux vrais écrans d'échelles différentes n'a pas été testé). Lecteurs d'écran : l'automatisation de l'interface de Windows (UI Automation) montre les boutons, le journal et la liste, mais les champs et les listes déroulantes sont annoncés par leur valeur et non par leur libellé (leur donner un nom demande un fournisseur UI Automation propre, non fait) ; Narrator et NVDA eux-mêmes n'ont pas été essayés.
+- L'interface Windows s'adapte au DPI de l'écran. Sa mise en page a été vérifiée à 100 %, 125 %, 150 % et 200 % avec `--dpi=120|144|192` (option de test qui force l'échelle ; le comportement d'une fenêtre déplacée entre deux vrais écrans d'échelles différentes n'a pas été testé). Lecteurs d'écran : les champs, les listes déroulantes et les curseurs portent leur libellé comme nom pour l'automatisation de l'interface de Windows (UI Automation, vérifié avec un client UI Automation) ; Narrator et NVDA eux-mêmes n'ont pas été essayés.
 - Les encodeurs matériels AMD et Intel (AMF, QuickSync, VAAPI), et l'AV1 matériel, n'ont pas été testés sur du matériel réel.
 - macOS : le programme est compilé et empaqueté par l'intégration continue, mais les machines macOS hébergées n'ont pas de GPU : la fenêtre n'a donc pas été lancée sur un vrai Mac. Signale tout problème.
 - Linux et macOS : les boîtes de dialogue de fichiers sont intégrées au programme (pas de boîte système), et la progression du rendu s'affiche dans le Dock de macOS (écrite d'après la documentation du système et compilée par l'intégration continue, mais jamais exécutée sur un vrai Mac) ; sous Linux il n'y a pas de progression sur le bouton de la barre des tâches (l'API des lanceurs passe par D-Bus, une bibliothèque que le programme ne livre pas), la fenêtre demande seulement l'attention à la fin d'un lot.

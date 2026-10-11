@@ -200,6 +200,7 @@
   "ui.card.settings": "Impostazioni video",
   "ui.card.shaders": "Shader",
   "ui.card.preview": "Anteprima",
+  "ui.card.progress": "Avanzamento",
   "ui.card.log": "Registro",
   "ui.tagline": "Trasforma gli shader di Shadertoy in video, fotogramma per fotogramma",
   "ui.files_one": "%d file",

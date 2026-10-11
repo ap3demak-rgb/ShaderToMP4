@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.5.0-FF5A96?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.5.1-FF5A96?style=flat-square">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-0078D4?style=flat-square">
   <img alt="Portable" src="https://img.shields.io/badge/portable-no%20installer-3DDC97?style=flat-square">
   <img alt="Languages" src="https://img.shields.io/badge/languages-EN%20%C2%B7%20FR-7C6CFF?style=flat-square">
@@ -362,7 +362,7 @@ bin/        working folder: the executable (generated), ffmpeg, config.ini
 
 ### Known limits
 
-- The Windows interface adapts to the screen DPI. Its layout was checked at 100 %, 125 %, 150 % and 200 % with `--dpi=120|144|192` (a test option that forces the scale; the behaviour when moving a window between two real monitors of different scales has not been tested). Screen readers: Windows UI Automation shows the buttons, the log and the list, but the fields and drop-down lists are announced by their value, not by their label (giving them a name needs a custom UI Automation provider, which is not done); Narrator and NVDA themselves have not been tried.
+- The Windows interface adapts to the screen DPI. Its layout was checked at 100 %, 125 %, 150 % and 200 % with `--dpi=120|144|192` (a test option that forces the scale; the behaviour when moving a window between two real monitors of different scales has not been tested). Screen readers: the fields, drop-down lists and sliders are named by their label for Windows UI Automation (checked with a UI Automation client); Narrator and NVDA themselves have not been tried.
 - AMD and Intel hardware encoders (AMF, QuickSync, VAAPI), and hardware AV1, have not been tested on real hardware.
 - macOS: the program is built and packaged by the continuous integration, but the hosted macOS machines have no GPU, so the window has not been run on a real Mac. Please report any problem.
 - Linux and macOS: the file dialogs are built into the program (no system dialog), and the render progress is shown in the macOS Dock (written from the documentation of the system and compiled by the continuous integration, but never run on a real Mac); on Linux there is no progress on the taskbar button (the launchers' API needs D-Bus, a library the program does not ship), the window only asks for attention at the end of a batch.
