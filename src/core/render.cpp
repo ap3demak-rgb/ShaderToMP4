@@ -360,7 +360,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     auto renderFrame = [&](long long n, double t, float fade) {
         updateChannels(chans, t, n);  // audio et video au temps exact de l'image
         if (chans.anyBuffer()) {  // le tampon le plus recent change a chaque image
-            GLuint latest[4];
+            GLuint latest[5];
             bp.latest(latest);
             bindChannels(chans, prog, latest);
         }

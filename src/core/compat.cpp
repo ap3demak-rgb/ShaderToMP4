@@ -73,7 +73,7 @@ void checkCompatibility(const std::string& allCode, const Settings& s, std::vect
     if (usesWord(c, "mainSound")) notes.push_back(TX("log.compat_sound"));
     bool hasCube = false, hasVolume = false;
     for (int i = 0; i < 4; i++) {
-        hasCube = hasCube || s.channel[i].compare(0, 5, L"cube:") == 0;
+        hasCube = hasCube || s.channel[i].compare(0, 4, L"cube") == 0;
         hasVolume = hasVolume || s.channel[i].compare(0, 7, L"volume:") == 0;
     }
     if (usesWord(c, "samplerCube") && !hasCube) notes.push_back(TX("log.compat_cubemap"));

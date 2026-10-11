@@ -16,6 +16,9 @@ public:
     virtual void update(double t, long long frameIndex) = 0;
 };
 
+// Taille d'une face de la passe « Cubemap A » (cubeA)
+constexpr int kCubeSize = 512;
+
 struct ChannelSet {
     GLuint tex[4] = {0, 0, 0, 0};
     GLenum target[4] = {GL_TEXTURE_2D, GL_TEXTURE_2D, GL_TEXTURE_2D, GL_TEXTURE_2D};  // 2D, cubemap ou 3D
@@ -33,7 +36,7 @@ std::string channelSamplerType(const std::wstring& spec);
 void channelTypes(const Settings& s, std::string out[4]);
 
 // Charge les canaux demandes par `s` (chemins relatifs au dossier du shader). Descriptions :
-//   fichier image | noise | grid | bufferA..D | cube:fichier_%d.png (six faces) | cube:croix.png | cube:sky |
+//   fichier image | noise | grid | bufferA..D | cubeA (passe Cubemap A) | cube:fichier_%d.png (six faces) | cube:croix.png | cube:sky |
 //   volume:fichier.png@N (N tranches cote a cote) | volume:noise | audio | audio:fichier | video:fichier
 // Les images et sons sont lus par ffmpeg. `start` et `fps` calent l'audio et la video sur le temps de rendu.
 // Contexte OpenGL courant requis. bufW x bufH : taille des tampons des passes multiples.

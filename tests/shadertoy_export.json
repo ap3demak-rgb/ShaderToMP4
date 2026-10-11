@@ -1,0 +1,91 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "tSTexp",
+  "date": "1700000000",
+  "viewed": 1,
+  "name": "Test export \u00e9\u00e0",
+  "username": "tester",
+  "description": "ShaderToMP4 import test",
+  "likes": 0,
+  "published": 3,
+  "flags": 0,
+  "tags": [
+   "test"
+  ],
+  "hasliked": 0
+ },
+ "renderpass": [
+  {
+   "inputs": [
+    {
+     "id": 257,
+     "src": "/media/previz/buffer00.png",
+     "ctype": "buffer",
+     "channel": 0,
+     "sampler": {
+      "filter": "linear",
+      "wrap": "clamp",
+      "vflip": "true",
+      "srgb": "false",
+      "internal": "byte"
+     },
+     "published": 1
+    },
+    {
+     "id": 17,
+     "src": "/media/a/8de3a3924cb95bd0e95a443fff0326c869f9d4979cd1d5b6e94e2a01f5be53e9.jpg",
+     "ctype": "texture",
+     "channel": 1,
+     "sampler": {
+      "filter": "mipmap",
+      "wrap": "repeat",
+      "vflip": "true",
+      "srgb": "false",
+      "internal": "byte"
+     },
+     "published": 1
+    }
+   ],
+   "outputs": [
+    {
+     "id": 37,
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n    fragColor = texture(iChannel0, fragCoord / iResolution.xy);\n}\n",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  },
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": 257,
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n    fragColor = vec4(COL, 1.0);\n}\n",
+   "name": "Buffer A",
+   "description": "",
+   "type": "buffer"
+  },
+  {
+   "inputs": [],
+   "outputs": [],
+   "code": "#define COL vec3(0.2, 0.6, 0.9)\n",
+   "name": "Common",
+   "description": "",
+   "type": "common"
+  },
+  {
+   "inputs": [],
+   "outputs": [],
+   "code": "vec2 mainSound( in int samp, float time ) { return vec2(0.0); }\n",
+   "name": "Sound",
+   "description": "",
+   "type": "sound"
+  }
+ ]
+}

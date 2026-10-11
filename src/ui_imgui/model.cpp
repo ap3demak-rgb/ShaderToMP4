@@ -7,6 +7,7 @@
 #include "core/endaction.h"
 #include "core/presets.h"
 #include "core/queue.h"
+#include "core/shadertoy_import.h"
 #include "core/gl.h"
 #include "core/i18n.h"
 #include "core/render.h"
@@ -202,7 +203,13 @@ std::wstring Model::statusOf(int st) const {
 
 void Model::addFiles(const std::vector<std::wstring>& files) {
     if (running()) return;
-    for (const auto& file : files) {
+    for (const auto& file0 : files) {
+        std::wstring ie;  // un .json exporte de Shadertoy est importe, puis le shader obtenu est ajoute
+        const std::wstring file = resolveShaderInput(exeDir, file0, [this](const std::wstring& m) { appendLog(m); }, ie);
+        if (file.empty()) {
+            appendLog(TXF("log.error", ie.c_str()));
+            continue;
+        }
         bool dup = false;
         for (const auto& p : paths)
             if (p == file) { dup = true; break; }

@@ -10,6 +10,7 @@
 #include "core/locate.h"
 #include "core/player.h"
 #include "core/queue.h"
+#include "core/shadertoy_import.h"
 #include "core/presets.h"
 
 enum {

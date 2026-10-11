@@ -10,7 +10,9 @@ Format : une section par version, la plus récente en premier. La section d'une 
 
 ### Ajouts
 
-- Canaux Shadertoy : cubemaps (`cube:`), textures 3D (`volume:`), spectre et forme d'onde du son (`audio`), vidéo (`video:`).
+- Canaux Shadertoy : cubemaps (`cube:`), textures 3D (`volume:`), spectre et forme d'onde du son (`audio`), vidéo `video:`
+- Passe Cubemap A (`nom.cubemapA.glsl`, canal `cubeA`).
+- Import hors ligne d'un export `.json` de Shadertoy (interface, ligne de commande), sans compte ni clé d'API.
 
 ## 1.5.1 — 2026-10-11
 

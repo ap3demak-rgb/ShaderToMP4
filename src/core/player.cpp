@@ -191,7 +191,7 @@ void renderAt(Rig& r, double t, bool send, const PreviewPlayer::FrameFn& onFrame
     ogl::UseProgram(r.prog);
     updateChannels(r.chans, t, idx);
     if (r.chans.anyBuffer()) {
-        GLuint latest[4];
+        GLuint latest[5];
         r.bp.latest(latest);
         bindChannels(r.chans, r.prog, latest);
     }

@@ -47,7 +47,7 @@ static GLuint compileShader(GLenum type, const std::string& src, std::wstring& e
     return sh;
 }
 
-GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut, const std::string* chType) {
+GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut, const std::string* chType, bool cubemapOut) {
     std::string channels;
     for (int i = 0; i < 4; i++) channels += "uniform " + (chType && !chType[i].empty() ? chType[i] : std::string("sampler2D")) + " iChannel" + std::to_string(i) + ";\n";
     const std::string vs =
@@ -66,6 +66,7 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         "uniform vec4  iDate;\n"
         "uniform float iSampleRate;\n"
         "uniform float st_weight;\n"
+        "uniform int   st_face;\n"
         + channels +
         "uniform vec3  iChannelResolution[4];\n"
         "uniform float iChannelTime[4];\n"
@@ -75,7 +76,12 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         "out vec4 st_outColor;\n"
         "#line 1\n" +
         userCode +
-        (bufferOut ? "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy); st_outColor = c; }\n"
+        (cubemapOut ? "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); vec2 q = gl_FragCoord.xy / iResolution.xy * 2.0 - 1.0; vec3 d;"
+                      " if (st_face == 0) d = vec3(1.0, -q.y, -q.x); else if (st_face == 1) d = vec3(-1.0, -q.y, q.x);"
+                      " else if (st_face == 2) d = vec3(q.x, 1.0, q.y); else if (st_face == 3) d = vec3(q.x, -1.0, -q.y);"
+                      " else if (st_face == 4) d = vec3(q.x, -q.y, 1.0); else d = vec3(-q.x, -q.y, -1.0);"
+                      " mainCubemap(c, gl_FragCoord.xy, vec3(0.0), normalize(d)); st_outColor = c; }\n"
+         : bufferOut ? "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy); st_outColor = c; }\n"
                    : "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy);"
                      " st_outColor = vec4(c.rgb * st_weight, 1.0); }\n");
 

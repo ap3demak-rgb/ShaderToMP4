@@ -11,6 +11,7 @@
 #include "i18n.h"
 #include "process.h"
 #include "render.h"
+#include "shadertoy_import.h"
 #include "util.h"
 #include "platform/platform.h"
 #include <cwctype>
@@ -51,7 +52,7 @@ std::string num(double v) {
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
     for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_watch",
-                          "cli.render.exit_codes", "cli.opt.diagnostic", "cli.opt.benchmark"})
+                          "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
 }
@@ -156,7 +157,20 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
             else write(U8(TXF("log.error", e.c_str())) + "\n", true);
         }
     };
-    for (const auto& f : files) renderOne(f, files.size());
+    for (const auto& f0 : files) {
+        std::wstring ie;
+        const std::wstring f = resolveShaderInput(exeDir, f0, [&](const std::wstring& m) {
+            if (json) write("{\"event\":\"log\",\"message\":" + jsonString(U8(m)) + "}\n", false);
+            else write(U8(m) + "\n", false);
+        }, ie);
+        if (f.empty()) {  // import impossible : compte comme un rendu en echec
+            failed++;
+            if (json) write("{\"event\":\"error\",\"file\":" + jsonString(U8(f0)) + ",\"message\":" + jsonString(U8(ie)) + "}\n", false);
+            else write(U8(TXF("log.error", ie.c_str())) + "\n", true);
+            continue;
+        }
+        renderOne(f, files.size());
+    }
     if (!watchDir.empty()) {  // surveillance : un shader est rendu des que sa taille ne change plus entre deux releves
         if (json) write("{\"event\":\"watching\",\"dir\":" + jsonString(U8(watchDir)) + "}\n", false);
         else write(U8(TXF("cli.watching", watchDir.c_str())) + "\n", false);

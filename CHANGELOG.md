@@ -11,6 +11,8 @@ Format: one section per version, newest first. The section of a tagged version i
 ### Added
 
 - Shadertoy channels: cubemaps (`cube:`), 3D textures (`volume:`), audio spectrum and waveform (`audio`), video (`video:`).
+- Cubemap A pass (`name.cubemapA.glsl`, channel `cubeA`).
+- Offline import of a Shadertoy `.json` export (UI, command line); no account or API key.
 
 ## 1.5.1 — 2026-10-11
 

@@ -79,6 +79,8 @@ bool createGLContext(GLContext& c, std::wstring& err);  // contexte 3.3 core + c
 // Programme principal : enveloppe Shadertoy autour du code utilisateur (mainImage). 0 + err si echec.
 // bufferOut : passe de tampon (Buffer A-D) : la couleur complete, alpha compris, est ecrite sans ponderation de fondu.
 // chType : type GLSL des quatre canaux (sampler2D, samplerCube, sampler3D) ; nullptr = quatre sampler2D.
-GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut = false, const std::string* chType = nullptr);
+// cubemapOut : passe « Cubemap A » (mainCubemap) : le programme est execute une fois par face (uniform st_face 0 a 5).
+GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut = false, const std::string* chType = nullptr,
+                    bool cubemapOut = false);
 // Programme de recopie : accumulation flottante (flou de mouvement) -> image 8 bits
 GLuint buildPresentProgram(std::wstring& err);
