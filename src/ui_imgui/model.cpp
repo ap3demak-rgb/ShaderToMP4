@@ -5,6 +5,7 @@
 #include "core/ffmpeg_download.h"
 #include "core/formats.h"
 #include "core/presets.h"
+#include "core/queue.h"
 #include "core/gl.h"
 #include "core/i18n.h"
 #include "core/render.h"
@@ -208,6 +209,7 @@ void Model::addFiles(const std::vector<std::wstring>& files) {
         state.push_back(ST_PENDING);
         stateText.push_back(statusOf(ST_PENDING));
     }
+    saveQueue();
 }
 
 void Model::removeSelected() {
@@ -216,6 +218,7 @@ void Model::removeSelected() {
     state.erase(state.begin() + selected);
     stateText.erase(stateText.begin() + selected);
     selected = std::min(selected, (int)paths.size() - 1);
+    saveQueue();
 }
 
 void Model::clearList() {
@@ -224,6 +227,14 @@ void Model::clearList() {
     state.clear();
     stateText.clear();
     selected = 0;
+    saveQueue();
+}
+
+void Model::saveQueue() const {
+    std::vector<std::wstring> pending;
+    for (size_t i = 0; i < paths.size() && i < state.size(); i++)
+        if (state[i] != ST_DONE) pending.push_back(paths[i]);
+    ::saveQueue(exeDir, pending);
 }
 
 void Model::refreshTexts() {
@@ -496,6 +507,7 @@ void Model::pump() {
                     if (e.n == ST_RUNNING) progress = 0;
                     if (e.n == ST_DONE) progress = 1;
                     progressFailed = e.n == ST_FAILED;
+                    saveQueue();
                 }
                 break;
             case Event::Preview:

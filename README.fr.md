@@ -135,6 +135,8 @@ Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : 
 
 `Tab` passe d'un réglage au suivant.
 
+**File d'attente conservée entre deux sessions** : les shaders pas encore rendus (en attente, en échec, annulés ou interrompus) sont notés dans `queue.txt` à côté du programme et remis dans la liste à la prochaine ouverture sans fichier (le journal l'indique ; appuyez sur Démarrer). Les shaders terminés sont oubliés, tout comme un fichier qui n'existe plus.
+
 </details>
 
 <details>

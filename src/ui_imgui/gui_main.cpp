@@ -6,6 +6,7 @@
 #include "core/formats.h"
 #include "core/locate.h"
 #include "core/presets.h"
+#include "core/queue.h"
 #include "core/i18n.h"
 #include "core/util.h"
 #include "platform/platform.h"
@@ -869,6 +870,13 @@ int runGui(const std::wstring& exeDir, const std::vector<std::wstring>& files) {
     glfwSetDropCallback(win, onDrop);
     app.model.appendLog(std::wstring(APP_NAME_WSTR) + L" " + APP_VER_WSTR);
     app.model.addFiles(files);
+    if (files.empty() && g_shotPath.empty()) {  // shaders restes a rendre lors de la derniere session
+        const std::vector<std::wstring> restored = loadQueue(exeDir);
+        if (!restored.empty()) {
+            app.model.addFiles(restored);
+            app.model.appendLog(TXF("log.queue_restored", (int)restored.size()));
+        }
+    }
     const bool shot = !g_shotPath.empty();
     int frameNo = 0;
     if (shot) {

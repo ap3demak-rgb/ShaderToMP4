@@ -135,6 +135,8 @@ The [`examples`](examples) folder contains four shaders ready to convert: plasma
 
 `Tab` moves from one setting to the next.
 
+**Queue kept between sessions**: the shaders that are not rendered yet (waiting, failed, cancelled or interrupted) are noted in `queue.txt` next to the program and put back in the list the next time you open it without files (the log says so; press Start). Finished shaders are forgotten, and so is a file that no longer exists.
+
 </details>
 
 <details>

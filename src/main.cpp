@@ -184,8 +184,13 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     if (!files.empty()) {
         addFiles(files);
         startJobs();
-    } else if (!ffmpegPresent(g.exeDir)) {
-        promptDownload();
+    } else {
+        const std::vector<std::wstring> restored = loadQueue(g.exeDir);  // shaders restes a rendre lors de la derniere session
+        if (!restored.empty()) {
+            addFiles(restored);
+            appendLog(TXF("log.queue_restored", (int)restored.size()));
+        }
+        if (!ffmpegPresent(g.exeDir)) promptDownload();
     }
 
     MSG m;

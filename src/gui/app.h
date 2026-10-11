@@ -7,6 +7,7 @@
 #include "core/settings.h"
 #include "core/formats.h"
 #include "core/locate.h"
+#include "core/queue.h"
 #include "core/presets.h"
 
 enum {
@@ -103,6 +104,7 @@ std::wstring getText(HWND h);
 bool parseSeconds(std::wstring t, double& out);  // "90", "1:30", "0:01:30" -> secondes
 void syncResCombo();
 void updateCrfLabel();
+void saveQueueNow();         // file d'attente (shaders pas encore rendus) dans queue.txt
 void updateForced();        // reglages imposes par le shader selectionne (// cle=valeur)
 void updateEstimate();      // taille estimee du fichier, sous le preset
 void showPresetMenu();      // menu « Plus » : preselections integrees et fichiers presets/*.ini
