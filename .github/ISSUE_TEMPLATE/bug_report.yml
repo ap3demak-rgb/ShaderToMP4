@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Patrick JAILLET
+name: Bug report / Rapport de bug
+description: Something does not work / Quelque chose ne fonctionne pas
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: What happened? / Que s'est-il passé ?
+      description: Expected result and steps to reproduce / Résultat attendu et étapes pour reproduire
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Diagnostic
+      description: Run `ShaderToMP4 --diagnostic` and paste the result (no path, no personal data) / Lancez `ShaderToMP4 --diagnostic` et collez le résultat (sans chemin ni donnée personnelle)
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Shader and log / Shader et journal
+      description: Attach the shader (or a link) and the red / orange lines of the log / Joignez le shader (ou un lien) et les lignes rouges / orange du journal

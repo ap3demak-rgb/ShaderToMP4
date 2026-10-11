@@ -16,5 +16,11 @@ constexpr int kExitNoFfmpeg = 4;     // ffmpeg introuvable (voir --get-ffmpeg)
 int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& args,
                  const std::function<void(const std::string&, bool isError)>& write);
 
+// --diagnostic : systeme, carte graphique, OpenGL, ffmpeg et encodeurs, sans chemin ni donnee personnelle (a joindre a un ticket).
+int runDiagnosticCli(const std::wstring& exeDir, const std::function<void(const std::string&, bool isError)>& write);
+// --benchmark [--seconds=N] [--json] : images par seconde par resolution et par encodeur (rendu reel puis encodage).
+int runBenchmarkCli(const std::wstring& exeDir, const std::vector<std::wstring>& args,
+                    const std::function<void(const std::string&, bool isError)>& write);
+
 // Texte de l'aide des options de rendu (localise), a ajouter a --help.
 std::string renderHelpText();

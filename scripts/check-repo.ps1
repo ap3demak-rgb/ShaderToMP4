@@ -89,7 +89,7 @@ $srcFiles = Get-ChildItem src -Recurse -Include *.cpp, *.h
 $used = @{}
 foreach ($f in $srcFiles) {
   $text = Get-Content $f.FullName -Raw -Encoding UTF8
-  foreach ($m in [regex]::Matches($text, '"((?:ui|log|error|dialog|status|dl|selftest|ini|about|cli)\.[a-z0-9_.]+)"')) { $used[$m.Groups[1].Value] = $f.Name }
+  foreach ($m in [regex]::Matches($text, '"((?:ui|log|error|dialog|status|dl|selftest|ini|about|cli|diag)\.[a-z0-9_.]+)"')) { $used[$m.Groups[1].Value] = $f.Name }
 }
 foreach ($k in $used.Keys) { if ($enKeys -notcontains $k -and $k -notmatch "\.h$|\.cpp$") { Fail "cle utilisee mais absente de lang/en.json : $k ($($used[$k]))" } }
 foreach ($k in $enKeys) { if (-not $used.ContainsKey($k)) { Fail "cle de langue jamais utilisee : $k" } }

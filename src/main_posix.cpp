@@ -51,11 +51,13 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::vector<std::wstring> files;
-    bool render = false, selftest = false, update = false, quiet = false, getFfmpeg = false, version = false, help = false;
+    bool render = false, diagnostic = false, benchmark = false, selftest = false, update = false, quiet = false, getFfmpeg = false, version = false, help = false;
     for (int i = 1; i < argc; i++) {
         const std::string a = argv[i];
         if (a == "--selftest") selftest = true;
         else if (a == "--render") render = true;
+        else if (a == "--diagnostic") diagnostic = true;
+        else if (a == "--benchmark") benchmark = true;
         else if (a == "--update") update = true;
         else if (a == "--quiet") quiet = true;
         else if (a == "--get-ffmpeg") getFfmpeg = true;
@@ -75,6 +77,12 @@ int main(int argc, char** argv) {
         fputs((help ? helpText() : versionText()).c_str(), stdout);
         return 0;
     }
+    auto out = [](const std::string& s, bool isError) {
+        fputs(s.c_str(), isError ? stderr : stdout);
+        fflush(isError ? stderr : stdout);
+    };
+    if (diagnostic) return runDiagnosticCli(exeDir, out);
+    if (benchmark) return runBenchmarkCli(exeDir, files, out);
     if (selftest) return runSelfTest(exeDir, update, quiet);
     if (render)
         return runRenderCli(exeDir, files, [](const std::string& s, bool isError) {

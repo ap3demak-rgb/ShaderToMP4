@@ -84,11 +84,14 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     std::vector<std::wstring> files;
-    bool selftest = false, update = false, quiet = false, getFfmpeg = false, version = false, help = false, render = false;
+    bool selftest = false, update = false, quiet = false, getFfmpeg = false, version = false, help = false, render = false,
+         diagnostic = false, benchmark = false;
     for (int i = 1; argv && i < argc; i++) {
         std::wstring a = argv[i];
         if (a == L"--selftest") selftest = true;
         else if (a == L"--render") render = true;
+        else if (a == L"--diagnostic") diagnostic = true;
+        else if (a == L"--benchmark") benchmark = true;
         else if (a == L"--update") update = true;
         else if (a == L"--quiet") quiet = true;
         else if (a == L"--get-ffmpeg") getFfmpeg = true;
@@ -103,6 +106,8 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         writeConsole(help ? helpText() : versionText());
         return 0;
     }
+    if (diagnostic) return runDiagnosticCli(g.exeDir, [](const std::string& s, bool) { writeConsole(s); });
+    if (benchmark) return runBenchmarkCli(g.exeDir, files, [](const std::string& s, bool) { writeConsole(s); });
     if (render)  // ShaderToMP4 --render [options] fichiers : sans fenetre, texte sur la console de l'appelant
         return runRenderCli(g.exeDir, files, [](const std::string& s, bool) { writeConsole(s); });
     std::string iniText;
