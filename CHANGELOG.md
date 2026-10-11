@@ -6,6 +6,16 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
+## 1.5.0 — 2026-10-11
+
+### Added
+
+- Variants: `// variant=720p:width=1280|height=720` (or `--variant=`) renders the same shader again with other settings in one go.
+- macOS: the render progress is shown in the Dock icon.
+- Linux: `gpu=high|low` (config.ini or `--gpu=`) picks the discrete or integrated GPU on two-GPU PCs.
+- Real-time preview: a Play button plays the shader at preview size, loops, follows the slider and reloads when the shader file changes on disk.
+- Windows: `--dpi=N` forces the interface scale (used to check the layout at 125 % to 200 %).
+
 ## 1.4.0 — 2026-10-11
 
 ### Added
@@ -22,11 +32,6 @@ Format: one section per version, newest first. The section of a tagged version i
 - End of batch: the taskbar / Dock button flashes, and an optional action (`endaction`: show the folder, or sleep after 15 s) can be set in `config.ini` (also with `--render`).
 - Interface languages: German, Spanish, Italian and Portuguese (`lang/*.json` shipped next to the program; not yet reviewed by native speakers), chosen from the system language when available.
 - Accessibility: discreet and accent text now reach a 4.5:1 contrast (WCAG AA); the repository check verifies it and that both interfaces share the same palette.
-- Variants: `// variant=720p:width=1280|height=720` (or `--variant=`) renders the same shader again with other settings in one go.
-- macOS: the render progress is shown in the Dock icon.
-- Linux: `gpu=high|low` (config.ini or `--gpu=`) picks the discrete or integrated GPU on two-GPU PCs.
-- Real-time preview: a Play button plays the shader at preview size, loops, follows the slider and reloads when the shader file changes on disk.
-- Windows: `--dpi=N` forces the interface scale (used to check the layout at 125 % to 200 %).
 - `--watch=folder`: renders every shader dropped in a folder (explicit, off by default).
 - `--diagnostic` (system, graphics card, OpenGL, ffmpeg and encoders, no personal data) and `--benchmark` (frames per second by resolution and encoder).
 
