@@ -349,6 +349,12 @@ bin/        working folder: the executable (generated), ffmpeg, config.ini
 
 `scripts\check-repo.ps1` checks the repository before each commit: license headers, matching language files, no hard-coded interface text, bilingual documentation, portability rules.
 
+### Publishing a version
+
+1. Set the new number in `src/app_info.h` (`APP_VER_MAJOR`, `APP_VER_MINOR`, `APP_VER_PATCH`, `APP_VER_STR`).
+2. In `CHANGELOG.md` and `CHANGELOG.fr.md`, rename the “Unreleased” section to the version (`## 1.4.0 — date`).
+3. Commit, then `git tag v1.4.0 && git push --tags`. The continuous integration builds the four archives, writes `SHA256SUMS.txt` and publishes the release with the changelog section; it refuses a tag that differs from `APP_VER_STR` or a changelog without a section for that version.
+
 ### Known limits
 
 - The interface adapts to the screen DPI but has only been checked at 100 %.
