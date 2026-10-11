@@ -133,7 +133,7 @@ The [`examples`](examples) folder contains four shaders ready to convert: plasma
 | **About** | `F1` | Version, copyright, license, contact, website |
 | **EN / FR** | | Switch the interface language |
 
-`Tab` moves from one setting to the next.
+`Tab` moves from one setting to the next. All text of the interface has a contrast of at least 4.5:1 against its background (WCAG AA), checked automatically for both interfaces.
 
 **Queue kept between sessions**: the shaders that are not rendered yet (waiting, failed, cancelled or interrupted) are noted in `queue.txt` next to the program and put back in the list the next time you open it without files (the log says so; press Start). Finished shaders are forgotten, and so is a file that no longer exists.
 

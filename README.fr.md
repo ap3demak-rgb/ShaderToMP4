@@ -133,7 +133,7 @@ Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : 
 | **À propos** | `F1` | Version, copyright, licence, contact, site web |
 | **EN / FR** | | Change la langue de l'interface |
 
-`Tab` passe d'un réglage au suivant.
+`Tab` passe d'un réglage au suivant. Tous les textes de l'interface ont un contraste d'au moins 4,5:1 avec leur fond (WCAG AA), contrôlé automatiquement pour les deux interfaces.
 
 **File d'attente conservée entre deux sessions** : les shaders pas encore rendus (en attente, en échec, annulés ou interrompus) sont notés dans `queue.txt` à côté du programme et remis dans la liste à la prochaine ouverture sans fichier (le journal l'indique ; appuyez sur Démarrer). Les shaders terminés sont oubliés, tout comme un fichier qui n'existe plus.
 

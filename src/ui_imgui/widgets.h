@@ -12,8 +12,8 @@ namespace ui {
 // Palette (0xRRGGBB), identique à src/gui/ui_theme.h
 namespace pal {
 constexpr unsigned BG = 0x0E1014, CARD = 0x161920, CARD_BORDER = 0x252A35, FIELD = 0x1E222B, FIELD_HOT = 0x282D39, FIELD_DOWN = 0x181B22,
-                   FIELD_BORDER = 0x2D3340, BORDER_HOT = 0x465066, TEXT = 0xE8EAF0, MUTED = 0x8B93A7, FAINT = 0x555D70,
-                   ACCENT_A = 0xFF5A96, ACCENT_B = 0x465AFF, ACCENT = 0x7C6CFF, OK = 0x3DDC97, ERR = 0xFF5C70, WARN = 0xFFB020;
+                   FIELD_BORDER = 0x2D3340, BORDER_HOT = 0x465066, TEXT = 0xE8EAF0, MUTED = 0x8B93A7, FAINT = 0x838BA0,
+                   ACCENT_A = 0xFF5A96, ACCENT_B = 0x465AFF, ACCENT = 0x8678FF, OK = 0x3DDC97, ERR = 0xFF5C70, WARN = 0xFFB020;
 }
 
 ImVec4 colv(unsigned hex, float alpha = 1.0f);

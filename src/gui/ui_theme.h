@@ -16,10 +16,10 @@ constexpr unsigned FIELD_BORDER = 0x2D3340;
 constexpr unsigned BORDER_HOT = 0x465066;
 constexpr unsigned TEXT = 0xE8EAF0;
 constexpr unsigned MUTED = 0x8B93A7;
-constexpr unsigned FAINT = 0x555D70;
+constexpr unsigned FAINT = 0x838BA0;      // texte discret : contraste >= 4,5:1 (WCAG AA, controle par check-repo)
 constexpr unsigned ACCENT_A = 0xFF5A96;     // degrade d'accentuation (rose -> bleu)
 constexpr unsigned ACCENT_B = 0x465AFF;
-constexpr unsigned ACCENT = 0x7C6CFF;
+constexpr unsigned ACCENT = 0x8678FF;
 constexpr unsigned OK = 0x3DDC97;
 constexpr unsigned ERR = 0xFF5C70;
 constexpr unsigned WARN = 0xFFB020;
