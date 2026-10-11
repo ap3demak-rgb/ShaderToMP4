@@ -74,6 +74,7 @@ Model::Model(const std::wstring& dir) : exeDir(dir) {
 }
 
 Model::~Model() {
+    player_.reset();
     cancel_ = true;
     join();
 }
@@ -386,6 +387,7 @@ void Model::startFfmpegDownload() {
 
 void Model::startJobs(bool snapshot) {
     if (running()) return;
+    stopPlay();
     if (ffmpegMissing()) {
         if (ffmpegDownloadSupported()) {
             askDownload = true;
@@ -434,6 +436,7 @@ void Model::startJobs(bool snapshot) {
 
 void Model::runPreview() {
     if (running() || paths.empty()) return;
+    stopPlay();
     Settings cur = base;
     std::wstring serr;
     if (!toSettings(cur, serr)) {
@@ -452,6 +455,54 @@ void Model::runPreview() {
     running_ = true;
     setStatus(TX("status.rendering_preview"));
     worker_ = std::thread(&Model::runJobsThread, this, std::vector<std::pair<int, std::wstring>>{{sel, paths[sel]}});
+}
+
+void Model::stopPlay() { player_.reset(); }
+
+void Model::togglePlay() {
+    if (playing()) {
+        stopPlay();
+        return;
+    }
+    if (running() || paths.empty()) return;
+    Settings cur = base;
+    std::wstring serr;
+    if (!toSettings(cur, serr)) {
+        dialogTitle = TX("dialog.invalid_settings");
+        dialogText = serr;
+        return;
+    }
+    base = cur;
+    const int sel = std::min(std::max(0, selected), (int)paths.size() - 1);
+    playPath_ = paths[sel];
+    playStart_ = cur.start;
+    playDur_ = cur.duration > 0 ? cur.duration : 1;
+    playPending_ = 0;
+    player_.reset(new PreviewPlayer);
+    player_->start(playPath_, exeDir, cur, cur.start + f.previewPos * cur.duration,
+                   [this](int w, int h, std::vector<uint8_t>&& px, double t) {
+                       playPending_++;
+                       Event e;
+                       e.kind = Event::Preview;
+                       e.idx = 1;  // image du lecteur
+                       e.w = w;
+                       e.h = h;
+                       e.speed = t;  // temps du shader
+                       e.px = std::move(px);
+                       post(std::move(e));
+                   },
+                   [this] { return playPending_.load() < 2; },  // l'interface n'a pas fini d'afficher : on saute l'image
+                   [this](const std::wstring& s) {
+                       Event e;
+                       e.kind = Event::Log;
+                       e.text = s;
+                       post(std::move(e));
+                   });
+    setStatus(TX("status.playing"));
+}
+
+void Model::seekPlay() {
+    if (player_ && player_->running()) player_->seek(playStart_ + f.previewPos * playDur_);
 }
 
 void Model::togglePause() {
@@ -484,6 +535,10 @@ void Model::openOutputFolder() {
 }
 
 void Model::pump() {
+    if (playing() && !paths.empty() && selected >= 0 && selected < (int)paths.size() && paths[selected] != playPath_) {
+        stopPlay();  // autre shader selectionne : la lecture repart sur celui-la
+        togglePlay();
+    }
     std::vector<Event> evs;
     {
         std::lock_guard<std::mutex> l(evMutex_);
@@ -512,6 +567,10 @@ void Model::pump() {
                 }
                 break;
             case Event::Preview:
+                if (e.idx == 1) {  // image du lecteur : la position suit le temps du shader
+                    if (playPending_ > 0) playPending_--;
+                    if (player_ && player_->running()) f.previewPos = (float)std::min(1.0, std::max(0.0, (e.speed - playStart_) / playDur_));
+                }
                 prevPixels = std::move(e.px);
                 prevW = e.w;
                 prevH = e.h;

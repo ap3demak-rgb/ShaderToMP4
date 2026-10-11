@@ -106,6 +106,8 @@ void updateButtons() {
     EnableWindow(g.bCancel, r && !g.previewRun);
     EnableWindow(g.bPause, r && !g.previewRun);
     EnableWindow(g.bPrev, !r && !g.paths.empty());
+    EnableWindow(g.bPlay, !r && !g.paths.empty());
+    if (g.paths.empty() && g.player) stopPlayer();
     EnableWindow(g.bFolder, !g.paths.empty());
     if (!r) {
         g.pause = false;

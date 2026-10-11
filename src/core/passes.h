@@ -32,6 +32,8 @@ public:
     // L'appelant restaure sa cible, son viewport et son programme ensuite.
     void step(long long n, int rw, int rh, const std::function<void(GLuint prog, long long n)>& setUniforms);
     void release();
+    // Remet tous les tampons a zero (retour au debut d'une boucle, ou en arriere dans l'apercu).
+    void reset();
 
 private:
     struct Buf {

@@ -106,6 +106,19 @@ void BufferPasses::step(long long n, int rw, int rh, const std::function<void(GL
     }
 }
 
+void BufferPasses::reset() {
+    for (int i = 0; i < 4; i++) {
+        if (!used_[i]) continue;
+        Buf& b = bufs_[i];
+        for (int k = 0; k < 2; k++) {
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, b.fbo[k]);
+            glClearColor(0, 0, 0, 0);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+        b.read = 0;
+    }
+}
+
 void BufferPasses::release() {
     for (int i = 0; i < 4; i++) {
         Buf& b = bufs_[i];

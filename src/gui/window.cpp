@@ -174,7 +174,8 @@ void layout() {
     int imgBottom = pr.bottom - S(10) - S(70);
     MoveWindow(g.preview, px0, pr.top + S(46), pw, std::max<int>(S(40), imgBottom - (int)(pr.top + S(46))), TRUE);
     MoveWindow(g.trkPrev, px0, imgBottom + S(6), pw, S(28), TRUE);
-    MoveWindow(g.lblPrev, px0, imgBottom + S(40), std::max(40, pw - S(110)), S(20), TRUE);
+    MoveWindow(g.lblPrev, px0, imgBottom + S(40), std::max(40, pw - S(222)), S(20), TRUE);
+    MoveWindow(g.bPlay, px0 + pw - S(104) - S(8) - S(104), imgBottom + S(38), S(104), S(28), TRUE);
     MoveWindow(g.bPrev, px0 + pw - S(104), imgBottom + S(38), S(104), S(28), TRUE);
     y += bandH + S(14);
 
@@ -500,9 +501,10 @@ void createControls(HWND hw) {
 
     g.preview = mk(hw, L"STATIC", L"", SS_OWNERDRAW, ID_PREVIEW);
     g.trkPrev = mk(hw, L"STSlider", L"", WS_TABSTOP, ID_PREVTRK);
-    SendMessageW(g.trkPrev, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
+    SendMessageW(g.trkPrev, TBM_SETRANGE, TRUE, MAKELPARAM(0, kPrevSteps));
     g.lblPrev = mk(hw, L"STATIC", L"", SS_LEFT | SS_NOPREFIX, 0);
     g.bPrev = button("ui.btn.preview", ID_PREVBTN, IC_EYE, BtnStyle::Secondary, CARD);
+    g.bPlay = button(nullptr, ID_PLAY, IC_PLAY, BtnStyle::Secondary, CARD);  // texte : Lecture / Arret (updatePlayButton)
 
     g.prog = mk(hw, L"STProgress", L"", 0, ID_PROG);
     SendMessageW(g.prog, PBM_SETRANGE32, 0, 1000);
@@ -535,7 +537,7 @@ void createControls(HWND hw) {
         {g.bSaveP, "ui.tip.profile_save"}, {g.chips[0], "ui.tip.chip_draft"}, {g.chips[1], "ui.tip.chip_youtube"},
         {g.chips[2], "ui.tip.chip_4k60"}, {g.chips[3], "ui.tip.chip_vertical"}, {g.chips[4], "ui.tip.chip_more"},
         {g.cmbDepth, "ui.tip.depth"}, {g.lblEst, "ui.tip.estimate"}, {g.lblForced, "ui.tip.forced"}, {g.trkPrev, "ui.tip.preview_time"},
-        {g.bPrev, "ui.tip.preview"},
+        {g.bPrev, "ui.tip.preview"}, {g.bPlay, "ui.tip.play"},
     };
     for (const auto& t : tips) addTip(t.c, t.key);
 }
@@ -560,7 +562,8 @@ void applyLanguage() {
         if (g.state[i] != ST_RUNNING) setItemText((int)i, 1, statusText(g.state[i]));
     updateCrfLabel();
     updatePrevLabel();
-    if (!g.running) setStatus(TX("ui.status.idle"));
+    updatePlayButton();
+    if (!g.running && !(g.player && g.player->running())) setStatus(TX("ui.status.idle"));
     layout();
     InvalidateRect(g.preview, nullptr, FALSE);
     InvalidateRect(g.wnd, nullptr, FALSE);
@@ -719,6 +722,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                     }
                 } else if (nh->code == LVN_ITEMCHANGED) {
                     updateForced();
+                    followSelection();  // autre shader selectionne : la lecture suit
                 } else if (nh->code == LVN_KEYDOWN) {
                     if (((NMLVKEYDOWN*)lp)->wVKey == VK_DELETE) removeSelected();
                 } else if (nh->code == NM_CUSTOMDRAW) {  // statut colore
@@ -740,7 +744,13 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             if ((HWND)lp == g.trkCrf) { updateCrfLabel(); updateEstimate(); }
             if ((HWND)lp == g.trkPrev) {
                 updatePrevLabel();
-                if (LOWORD(wp) == TB_ENDTRACK) runPreview();  // curseur relache -> nouvel apercu
+                if (g.player && g.player->running()) {  // lecture en cours : le curseur deplace la position
+                    Settings cur = g.base;
+                    std::wstring e;
+                    if (uiToSettings(cur, e)) g.player->seek(cur.start + SendMessageW(g.trkPrev, TBM_GETPOS, 0, 0) / (double)kPrevSteps * cur.duration);
+                } else if (LOWORD(wp) == TB_ENDTRACK) {
+                    runPreview();  // curseur relache -> nouvel apercu
+                }
             }
             return 0;
         case WM_DRAWITEM: {
@@ -787,6 +797,17 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_APP_PREVIEW: {
             PreviewData* p = (PreviewData*)lp;
+            if (p->t >= 0) {  // image du lecteur : la position suit le temps du shader
+                if (g.previewPending > 0) g.previewPending--;
+                if (g.player && g.player->running()) {
+                    Settings cur = g.base;
+                    if (cur.duration > 0) {
+                        const int pos = (int)std::lround((p->t - cur.start) / cur.duration * kPrevSteps);
+                        SendMessageW(g.trkPrev, TBM_SETPOS, TRUE, std::min(kPrevSteps, std::max(0, pos)));
+                        updatePrevLabel();
+                    }
+                }
+            }
             BITMAPINFO bi{};
             bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
             bi.bmiHeader.biWidth = p->w;
@@ -847,6 +868,15 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (id >= ID_PRE0 && id <= ID_PRE3) {
                 if (!g.running) applyQuickPreset(id - ID_PRE0);
+                return 0;
+            }
+            if (id == ID_PLAY) {
+                if (g.player && g.player->running()) {
+                    stopPlayer();
+                    setStatus(TX("ui.status.idle"));
+                } else {
+                    startPlayer();
+                }
                 return 0;
             }
             if (id == ID_PRE4) {
@@ -959,6 +989,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_CLOSE:
+            stopPlayer();
             if (g.running) {
                 g.cancel = true;
                 g.pause = false;

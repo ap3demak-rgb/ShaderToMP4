@@ -306,9 +306,13 @@ void drawPreview(App& a, float height) {
         ImGui::TextColored(colv(pal::MUTED), "%s", timeText.c_str());
         ImGui::SameLine();
         const float bw = buttonWidth("ui.btn.preview", true);
-        ImGui::SetNextItemWidth(std::max(S(60), ImGui::GetContentRegionAvail().x - bw - S(8)));
-        ImGui::SliderFloat("##pt", &m.f.previewPos, 0.0f, 1.0f, "");
+        const bool on = m.playing();
+        const float pw = std::max(buttonWidth("ui.btn.play", true), buttonWidth("ui.btn.stop_play", true));
+        ImGui::SetNextItemWidth(std::max(S(60), ImGui::GetContentRegionAvail().x - bw - pw - S(16)));
+        if (ImGui::SliderFloat("##pt", &m.f.previewPos, 0.0f, 1.0f, "") && on) m.seekPlay();
         tip("ui.tip.preview_time");
+        ImGui::SameLine();
+        if (button(on ? "ui.btn.stop_play" : "ui.btn.play", on ? "stop" : "play", 0, !m.running() && !m.paths.empty(), pw, "ui.tip.play")) m.togglePlay();
         ImGui::SameLine();
         if (button("ui.btn.preview", "eye", 0, !m.running() && !m.paths.empty(), 0, "ui.tip.preview")) m.runPreview();
     }
@@ -889,7 +893,7 @@ int runGui(const std::wstring& exeDir, const std::vector<std::wstring>& files) {
     }
 
     while (!glfwWindowShouldClose(win)) {
-        glfwWaitEventsTimeout(shot ? 0.03 : app.model.running() ? 0.05 : 0.2);
+        glfwWaitEventsTimeout(shot ? 0.03 : app.model.running() ? 0.05 : app.model.playing() ? 0.016 : 0.2);
         if (app.model.attention) {  // fin de lot : la barre des taches / le Dock attire l'attention
             glfwRequestWindowAttention(win);
             app.model.attention = false;
