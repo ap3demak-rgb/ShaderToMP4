@@ -21,6 +21,11 @@ set(UI_SOURCES
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp)
+if(APPLE)
+    list(APPEND UI_SOURCES src/ui_imgui/dock_mac.mm)
+else()
+    list(APPEND UI_SOURCES src/ui_imgui/dock.cpp)
+endif()
 set(UI_INCLUDE_DIRS ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${nanosvg_SOURCE_DIR}/src)
 set(UI_LIBRARIES)
 

@@ -11,6 +11,7 @@
 #include "core/util.h"
 #include "platform/platform.h"
 #include "platform/posix/glfw_bridge.h"
+#include "ui_imgui/dock.h"
 #include "ui_imgui/file_browser.h"
 #include "ui_imgui/icons.h"
 #include "ui_imgui/model.h"
@@ -904,6 +905,14 @@ int runGui(const std::wstring& exeDir, const std::vector<std::wstring>& files) {
             app.drops.clear();
         }
         app.model.pump();
+        {  // progression dans le Dock (macOS) : seulement quand le pourcentage change
+            static int lastPct = -2;
+            const int pct = app.model.running() && !app.model.previewRun ? (int)(app.model.progress * 100.0f) : -1;
+            if (pct != lastPct) {
+                lastPct = pct;
+                setDockProgress(pct < 0 ? -1.0f : pct / 100.0f);
+            }
+        }
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();

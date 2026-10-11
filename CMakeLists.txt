@@ -4,6 +4,9 @@
 # ShaderToMP4 : Windows (Direct2D), Linux et macOS (GLFW + Dear ImGui). L'exécutable est produit dans bin/.
 cmake_minimum_required(VERSION 3.20)
 project(ShaderToMP4 LANGUAGES CXX)
+if(APPLE)
+    enable_language(OBJCXX)  # dock_mac.mm : progression dans le Dock
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
