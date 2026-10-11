@@ -70,9 +70,9 @@ void layout() {
     RECT sc{m, y, w - m, y + titleH + rows * rowH() + S(8)};
     g.cards.push_back({sc, TX("ui.card.settings"), IC_SLIDERS});
     {  // preselections rapides, alignees a droite du titre
-        static const int cw[4] = {112, 100, 76, 96};
+        static const int cw[5] = {112, 100, 76, 96, 84};
         int cx = sc.right - pad;
-        for (int i = 3; i >= 0; i--) {
+        for (int i = 4; i >= 0; i--) {
             cx -= S(cw[i]);
             MoveWindow(g.chips[i], cx, sc.top + S(10), S(cw[i]), S(28), TRUE);
             cx -= S(6);
@@ -107,26 +107,29 @@ void layout() {
     put(g.labels[4], 52, 2);
     put(g.edStart, 72);
     put(g.labels[5], 48, 2);
-    put(g.cmbCodec, 84, 1);
+    put(g.cmbCodec, 112, 1);
     put(g.labels[6], 52, 2);
     put(g.cmbPreset, 104, 1);
+    put(g.lblEst, 190, 2);
     nextRow();
     put(g.labels[7], 80, 2);
     put(g.trkCrf, 170, 3);
     put(g.lblCrf, 124, 2);
     put(g.labels[8], 76, 2);
-    put(g.cmbContainer, 72, 1);
+    put(g.cmbContainer, 84, 1);
     put(g.labels[18], 62, 2);
     put(g.cmbEncoder, 150, 1);
     nextRow();
     put(g.labels[11], 80, 2);
     put(g.edBitrate, 72);
     put(g.labels[12], 58, 2);
-    put(g.cmbColor, 192, 1);
+    put(g.cmbColor, 150, 1);
     put(g.labels[13], 34, 2);
     put(g.cmbBlur, 80, 1);
     put(g.labels[14], 66, 2);
     put(g.edLoop, 64);
+    put(g.labels[19], 40, 2);
+    put(g.cmbDepth, 64, 1);
     nextRow();
     put(g.labels[15], 80, 2);
     put(g.edAudio, std::max(100, (int)((w - 2 * m - 2 * pad) * 96 / (int)g.dpi) - 80 - 100 - 82 - 54 - 48 - 54 - 7 * 6));
@@ -198,7 +201,7 @@ void createFonts() {
     g.font = CreateFontW(-MulDiv(9, (int)g.dpi, 72), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     g.fontBold = CreateFontW(-MulDiv(9, (int)g.dpi, 72), 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI Semibold");
     if (g.font) EnumChildWindows(g.wnd, setFontProc, (LPARAM)g.font);
-    for (HWND c : {g.cmbRes, g.cmbFps, g.cmbCodec, g.cmbPreset, g.cmbContainer, g.cmbSS, g.cmbColor, g.cmbBlur, g.cmbEncoder})
+    for (HWND c : {g.cmbRes, g.cmbFps, g.cmbCodec, g.cmbPreset, g.cmbContainer, g.cmbSS, g.cmbColor, g.cmbBlur, g.cmbEncoder, g.cmbDepth})
         SendMessageW(c, CB_SETITEMHEIGHT, (WPARAM)-1, S(18));
     // ligne plus haute dans la liste des shaders (image-liste vide de la bonne hauteur)
     HIMAGELIST il = ImageList_Create(1, S(30), ILC_COLOR32, 1, 1);
@@ -324,11 +327,11 @@ COLORREF statusColor(int st) {
 }
 
 // Textes dépendant de la langue : clés enregistrées à la création, appliquées par applyLanguage()
-const char* const kLabelKeys[19] = {
+const char* const kLabelKeys[20] = {
     "ui.lbl.resolution", "ui.lbl.times",    "ui.lbl.fps",      "ui.lbl.duration", "ui.lbl.start",
     "ui.lbl.codec",      "ui.lbl.preset",   "ui.lbl.quality",  "ui.lbl.container", "ui.lbl.smoothing",
     "ui.lbl.output",     "ui.lbl.bitrate",  "ui.lbl.color",    "ui.lbl.blur",     "ui.lbl.loop",
-    "ui.lbl.audio",      "ui.lbl.fade_in",  "ui.lbl.fade_out", "ui.lbl.encoder"};
+    "ui.lbl.audio",      "ui.lbl.fade_in",  "ui.lbl.fade_out", "ui.lbl.encoder", "ui.lbl.depth"};
 std::vector<std::pair<HWND, const char*>> g_btnKeys;  // boutons : texte
 std::vector<std::pair<HWND, const char*>> g_tips;     // info-bulles : texte
 
@@ -365,6 +368,19 @@ void fillCombos() {
     fillCombo(g.cmbColor, {TX("ui.color.bt709tv"), TX("ui.color.bt709pc"), TX("ui.color.srgb"), TX("ui.color.bt601")});
     fillCombo(g.cmbBlur, {TX("ui.opt.none"), L"x4", L"x8", L"x16"});
     fillCombo(g.cmbEncoder, {TX("ui.enc.cpu"), TX("ui.enc.auto"), L"NVIDIA NVENC", L"AMD AMF", L"Intel QuickSync"});
+    fillCombo(g.cmbDepth, {L"8", L"10"});
+    // Codecs et conteneurs : ceux que ce ffmpeg ne sait pas produire sont signales dans la liste
+    const std::wstring ff = findFfmpeg(g.exeDir);
+    const std::wstring na = L"  (" + TX("ui.opt.unavailable") + L")";
+    std::vector<std::wstring> codecs, containers;
+    for (int i = 0; i < codecCount(); i++)
+        codecs.push_back(codecAt(i).label + (codecAvailable(ff, codecAt(i).id) ? L"" : na));
+    for (int i = 0; i < containerCount(); i++)
+        containers.push_back(containerAt(i).label + (containerAvailable(ff, containerAt(i).id) ? L"" : na));
+    fillCombo(g.cmbCodec, codecs);
+    fillCombo(g.cmbContainer, containers);
+    SendMessageW(g.cmbCodec, CB_SETDROPPEDWIDTH, S(210), 0);
+    SendMessageW(g.cmbContainer, CB_SETDROPPEDWIDTH, S(170), 0);
 }
 
 HWND mk(HWND parent, const wchar_t* cls, const wchar_t* txt, DWORD style, int id, DWORD ex = 0) {
@@ -436,7 +452,6 @@ void createControls(HWND hw) {
     g.edStart = edit(ID_START_T);
     label();  // 5 codec
     g.cmbCodec = combo(ID_CODEC);
-    for (const wchar_t* c : {L"H.264", L"H.265"}) SendMessageW(g.cmbCodec, CB_ADDSTRING, 0, (LPARAM)c);
     label();  // 6 preset
     g.cmbPreset = combo(ID_PRESET);
     for (auto p : kPresets) SendMessageW(g.cmbPreset, CB_ADDSTRING, 0, (LPARAM)p);
@@ -446,7 +461,6 @@ void createControls(HWND hw) {
     g.lblCrf = mk(hw, L"STATIC", L"", SS_LEFT | SS_NOPREFIX, 0);
     label();  // 8 conteneur
     g.cmbContainer = combo(ID_CONTAINER);
-    for (const wchar_t* c : {L"MP4", L"MOV", L"MKV"}) SendMessageW(g.cmbContainer, CB_ADDSTRING, 0, (LPARAM)c);
     label();  // 9 lissage
     g.cmbSS = combo(ID_SS);
     label();  // 10 sortie
@@ -471,11 +485,15 @@ void createControls(HWND hw) {
     g.edFadeOut = edit(ID_FADEOUT);
     label();  // 18 encodeur
     g.cmbEncoder = combo(ID_ENCODER);
+    label();  // 19 profondeur (bits)
+    g.cmbDepth = combo(ID_DEPTH);
+    g.lblEst = mk(hw, L"STATIC", L"", SS_LEFT | SS_NOPREFIX, 0);
 
-    static const struct { const char* key; int id; int icon; } chips[4] = {
+    static const struct { const char* key; int id; int icon; } chips[5] = {
         {"ui.chip.draft", ID_PRE0, IC_ZAP}, {"ui.chip.youtube", ID_PRE1, IC_YOUTUBE},
-        {"ui.chip.4k60", ID_PRE2, IC_MONITOR}, {"ui.chip.vertical", ID_PRE3, IC_PHONE}};
-    for (int i = 0; i < 4; i++) g.chips[i] = button(chips[i].key, chips[i].id, chips[i].icon, BtnStyle::Chip, CARD);
+        {"ui.chip.4k60", ID_PRE2, IC_MONITOR}, {"ui.chip.vertical", ID_PRE3, IC_PHONE},
+        {"ui.chip.more", ID_PRE4, IC_SLIDERS}};
+    for (int i = 0; i < 5; i++) g.chips[i] = button(chips[i].key, chips[i].id, chips[i].icon, BtnStyle::Chip, CARD);
 
     g.preview = mk(hw, L"STATIC", L"", SS_OWNERDRAW, ID_PREVIEW);
     g.trkPrev = mk(hw, L"STSlider", L"", WS_TABSTOP, ID_PREVTRK);
@@ -511,7 +529,8 @@ void createControls(HWND hw) {
         {g.bAudio, "ui.tip.audio_browse"}, {g.edFadeIn, "ui.tip.fade_in"}, {g.edFadeOut, "ui.tip.fade_out"},
         {g.edOut, "ui.tip.output"}, {g.bBrowse, "ui.tip.output_browse"}, {g.bLoadP, "ui.tip.profile_load"},
         {g.bSaveP, "ui.tip.profile_save"}, {g.chips[0], "ui.tip.chip_draft"}, {g.chips[1], "ui.tip.chip_youtube"},
-        {g.chips[2], "ui.tip.chip_4k60"}, {g.chips[3], "ui.tip.chip_vertical"}, {g.trkPrev, "ui.tip.preview_time"},
+        {g.chips[2], "ui.tip.chip_4k60"}, {g.chips[3], "ui.tip.chip_vertical"}, {g.chips[4], "ui.tip.chip_more"},
+        {g.cmbDepth, "ui.tip.depth"}, {g.lblEst, "ui.tip.estimate"}, {g.trkPrev, "ui.tip.preview_time"},
         {g.bPrev, "ui.tip.preview"},
     };
     for (const auto& t : tips) addTip(t.c, t.key);
@@ -527,7 +546,7 @@ void applyLanguage() {
     for (const auto& b : g_btnKeys) SetWindowTextW(b.first, TX(b.second).c_str());
     SetWindowTextW(g.bPause, TX(g.pause ? "ui.btn.resume" : "ui.btn.pause").c_str());
     SetWindowTextW(g.bLang, langLabel().c_str());
-    for (size_t i = 0; i < g.labels.size() && i < 19; i++) SetWindowTextW(g.labels[i], TX(kLabelKeys[i]).c_str());
+    for (size_t i = 0; i < g.labels.size() && i < 20; i++) SetWindowTextW(g.labels[i], TX(kLabelKeys[i]).c_str());
     for (HWND e : {g.edOut, g.edBitrate, g.edLoop, g.edAudio}) {
         const char* key = e == g.edOut ? "ui.cue.output" : e == g.edBitrate ? "ui.cue.bitrate" : e == g.edLoop ? "ui.cue.loop" : "ui.cue.audio";
         SendMessageW(e, EM_SETCUEBANNER, TRUE, (LPARAM)TX(key).c_str());
@@ -676,7 +695,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                 if (nh->code == NM_DBLCLK) {  // double-clic : lire la video terminee
                     int i = ((NMITEMACTIVATE*)lp)->iItem;
                     if (i >= 0 && i < (int)g.paths.size() && g.state[i] == ST_DONE) {
-                        std::wstring p = outputPath(g.paths[i], g.base.outdir, L"." + W(g.base.container));
+                        std::wstring p = outputFile(g.paths[i], g.base, false);
                         if (fileExists(p)) ShellExecuteW(hw, L"open", p.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
                     }
                 } else if (nh->code == LVN_KEYDOWN) {
@@ -697,7 +716,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_HSCROLL:
-            if ((HWND)lp == g.trkCrf) updateCrfLabel();
+            if ((HWND)lp == g.trkCrf) { updateCrfLabel(); updateEstimate(); }
             if ((HWND)lp == g.trkPrev) {
                 updatePrevLabel();
                 if (LOWORD(wp) == TB_ENDTRACK) runPreview();  // curseur relache -> nouvel apercu
@@ -729,6 +748,8 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             if (g.worker.joinable()) g.worker.join();
             g.running = false;
             if (wp) {
+                forgetFfmpegCapabilities();
+                fillCombos();
                 setStatus(TX("status.ffmpeg_installed"));
                 appendLog(TX("log.ffmpeg_installed"));
                 taskbar::clear();
@@ -790,6 +811,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_COMMAND: {
             const int id = LOWORD(wp);
+            if (HIWORD(wp) == EN_CHANGE || HIWORD(wp) == CBN_SELCHANGE || HIWORD(wp) == CBN_EDITCHANGE) updateEstimate();
             if (id == ID_RES && HIWORD(wp) == CBN_SELCHANGE) {
                 int i = (int)SendMessageW(g.cmbRes, CB_GETCURSEL, 0, 0);
                 if (i >= 0 && i < kResCount) {
@@ -804,6 +826,10 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (id >= ID_PRE0 && id <= ID_PRE3) {
                 if (!g.running) applyQuickPreset(id - ID_PRE0);
+                return 0;
+            }
+            if (id == ID_PRE4) {
+                if (!g.running) showPresetMenu();
                 return 0;
             }
             switch (id) {

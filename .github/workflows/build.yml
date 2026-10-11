@@ -23,6 +23,11 @@ jobs:
           cmake --build build-cmake --config Release
       - name: Self-test
         run: bin\ShaderToMP4.exe --selftest --quiet
+      - name: Output formats (ffmpeg download, each codec / container rendered and re-read)
+        run: |
+          bin\ShaderToMP4.exe --get-ffmpeg --quiet
+          bin\ShaderToMP4.exe --selftest --quiet
+          Get-Content tests\report.txt
       - name: Repository checks
         shell: pwsh
         run: ./scripts/check-repo.ps1
@@ -72,6 +77,10 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --render e2e/chunked.glsl e2e/single.glsl
           for f in chunked single; do bin/ffmpeg -hide_banner -i "e2e/$f.mp4" 2>&1 | grep -E "Duration|Video:"; done
           test ! -d e2e/chunked.parts
+          # every output format (H.264/H.265/VP9/AV1/ProRes/DNxHR, WebM, GIF, WebP, PNG/TIFF/EXR, 10-bit) rendered and re-read with ffmpeg
+          xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --selftest --quiet
+          cat tests/report.txt
+          ! grep -E '^(SKIP|FAIL)' tests/report.txt
           # portability: nothing may be created in the home folder (the graphics driver cache is tolerated)
           leftovers="$(find "$HOME" -mindepth 1 -not -path "$HOME/.cache*" | head)"
           test -z "$leftovers" || { echo "Files written outside the application folder:"; echo "$leftovers"; exit 1; }

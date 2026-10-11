@@ -4,6 +4,7 @@
 #include "app.h"
 #include "core/i18n.h"
 #include "core/util.h"
+#include "platform/platform.h"
 
 // --- Panneau de reglages video ---
 const ResPreset kRes[] = {
@@ -75,8 +76,9 @@ void settingsToUI(const Settings& s) {
     SendMessageW(g.trkCrf, TBM_SETPOS, TRUE, std::min(35, std::max(0, s.crf)));
     int p = (int)SendMessageW(g.cmbPreset, CB_FINDSTRINGEXACT, (WPARAM)-1, (LPARAM)W(s.preset).c_str());
     SendMessageW(g.cmbPreset, CB_SETCURSEL, (WPARAM)(p < 0 ? 6 : p), 0);
-    SendMessageW(g.cmbCodec, CB_SETCURSEL, s.codec == "h265" ? 1 : 0, 0);
-    SendMessageW(g.cmbContainer, CB_SETCURSEL, s.container == "mov" ? 1 : s.container == "mkv" ? 2 : 0, 0);
+    SendMessageW(g.cmbCodec, CB_SETCURSEL, codecIndex(s.codec), 0);
+    SendMessageW(g.cmbContainer, CB_SETCURSEL, containerIndex(s.container), 0);
+    SendMessageW(g.cmbDepth, CB_SETCURSEL, s.depth >= 10 ? 1 : 0, 0);
     SendMessageW(g.cmbSS, CB_SETCURSEL, (WPARAM)(std::min(4, std::max(1, s.ss)) - 1), 0);
     SetWindowTextW(g.edOut, s.outdir.c_str());
     SetWindowTextW(g.edBitrate, std::to_wstring(s.bitrate).c_str());
@@ -112,9 +114,9 @@ bool uiToSettings(Settings& s, std::wstring& err) {
     int ps = (int)SendMessageW(g.cmbPreset, CB_GETCURSEL, 0, 0);
     s.preset = "";
     for (const wchar_t* c = kPresets[ps < 0 ? 6 : ps]; *c; c++) s.preset += (char)*c;
-    s.codec = SendMessageW(g.cmbCodec, CB_GETCURSEL, 0, 0) == 1 ? "h265" : "h264";
-    int ct = (int)SendMessageW(g.cmbContainer, CB_GETCURSEL, 0, 0);
-    s.container = ct == 1 ? "mov" : ct == 2 ? "mkv" : "mp4";
+    s.codec = codecAt((int)SendMessageW(g.cmbCodec, CB_GETCURSEL, 0, 0)).id;
+    s.container = containerAt((int)SendMessageW(g.cmbContainer, CB_GETCURSEL, 0, 0)).id;
+    s.depth = SendMessageW(g.cmbDepth, CB_GETCURSEL, 0, 0) == 1 ? 10 : 8;
     s.ss = std::max(0, (int)SendMessageW(g.cmbSS, CB_GETCURSEL, 0, 0)) + 1;
     {
         std::wstring od(GetWindowTextLengthW(g.edOut) + 1, L'\0');
@@ -223,27 +225,55 @@ void saveProfile() {
 }
 
 
-// Preselections rapides : modifient seulement les reglages de qualite, le reste est conserve.
+// Preselections rapides : modifient seulement taille, cadence, codec, conteneur et qualite ; le reste est conserve.
 void applyQuickPreset(int idx) {
     Settings s = g.base;
     std::wstring e;
     if (!uiToSettings(s, e)) s = g.base;  // une valeur invalide dans la fenetre : on repart des derniers reglages valides
-    s.blur = 1;
-    s.ss = 1;
-    switch (idx) {
-        case 0:  // brouillon : rapide pour tester
-            s.width = 1280; s.height = 720; s.fps = 30; s.crf = 23; s.preset = "veryfast"; s.codec = "h264";
-            break;
-        case 1:  // YouTube 1080p60
-            s.width = 1920; s.height = 1080; s.fps = 60; s.crf = 16; s.preset = "slow"; s.codec = "h264"; s.container = "mp4";
-            break;
-        case 2:  // 4K 60 images/s
-            s.width = 3840; s.height = 2160; s.fps = 60; s.crf = 20; s.preset = "medium"; s.codec = "h265"; s.container = "mp4";
-            break;
-        default:  // vertical 9:16
-            s.width = 1080; s.height = 1920; s.fps = 30; s.crf = 16; s.preset = "slow"; s.codec = "h264"; s.container = "mp4";
-            break;
-    }
-    s.bitrate = 0;
+    applyBuiltinPreset(idx, s);
     settingsToUI(s);
+}
+
+// Menu « Plus » : preselections integrees supplementaires, puis fichiers presets/*.ini du dossier de l'application
+void showPresetMenu() {
+    HMENU m = CreatePopupMenu();
+    for (int i = kChipPresetCount; i < kBuiltinPresetCount; i++) AppendMenuW(m, MF_STRING, 100 + i, TX(builtinPresetKey(i)).c_str());
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    const std::vector<UserPreset> users = userPresets(g.exeDir);
+    if (users.empty()) AppendMenuW(m, MF_STRING | MF_GRAYED, 1, TX("ui.preset.none").c_str());
+    for (size_t i = 0; i < users.size() && i < 100; i++) AppendMenuW(m, MF_STRING, (UINT_PTR)(200 + i), users[i].name.c_str());
+    RECT r;
+    GetWindowRect(g.chips[4], &r);
+    const int cmd = (int)TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTALIGN, r.right, r.bottom, 0, g.wnd, nullptr);
+    DestroyMenu(m);
+    if (cmd >= 100 && cmd < 200) {
+        applyQuickPreset(cmd - 100);
+    } else if (cmd >= 200 && cmd - 200 < (int)users.size()) {
+        bool ok = false;
+        const Settings p = loadUserPreset(users[cmd - 200], &ok);
+        if (!ok) {
+            MessageBoxW(g.wnd, TX("error.profile_read").c_str(), TX("dialog.profile_title").c_str(), MB_ICONWARNING);
+            return;
+        }
+        settingsToUI(p);
+        appendLog(TXF("log.profile_loaded", users[cmd - 200].path.c_str()));
+    }
+}
+
+// Taille estimee du fichier de sortie, comparee a l'espace libre du volume de destination
+void updateEstimate() {
+    if (!g.lblEst || !g.cmbDepth) return;
+    Settings s = g.base;
+    std::wstring e;
+    if (!uiToSettings(s, e)) {
+        SetWindowTextW(g.lblEst, L"");
+        return;
+    }
+    std::wstring dir = s.outdir;
+    if (dir.empty() && !g.paths.empty()) {
+        const size_t cut = g.paths[0].find_last_of(L"\\/");
+        dir = cut == std::wstring::npos ? L"" : g.paths[0].substr(0, cut);
+    }
+    const std::wstring txt = estimateText(s, dir);
+    SetWindowTextW(g.lblEst, txt.c_str());
 }

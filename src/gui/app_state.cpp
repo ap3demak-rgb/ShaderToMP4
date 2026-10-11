@@ -74,8 +74,8 @@ void appendLog(const std::wstring& text) {
 void updateButtons() {
     const bool r = g.running.load();
     for (HWND c : {g.cmbRes, g.edW, g.edH, g.cmbFps, g.edDur, g.edStart, g.cmbCodec, g.cmbPreset, g.cmbContainer, g.cmbSS, g.edOut, g.bBrowse, g.bLoadP, g.bSaveP, g.trkCrf,
-                   g.edBitrate, g.cmbColor, g.cmbBlur, g.edLoop, g.edAudio, g.bAudio, g.edFadeIn, g.edFadeOut, g.cmbEncoder,
-                   g.chips[0], g.chips[1], g.chips[2], g.chips[3]})
+                   g.edBitrate, g.cmbColor, g.cmbBlur, g.edLoop, g.edAudio, g.bAudio, g.edFadeIn, g.edFadeOut, g.cmbEncoder, g.cmbDepth,
+                   g.chips[0], g.chips[1], g.chips[2], g.chips[3], g.chips[4]})
         EnableWindow(c, !r);
     EnableWindow(g.bAdd, !r);
     EnableWindow(g.bRemove, !r);

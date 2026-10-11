@@ -59,6 +59,7 @@ constexpr GLenum K_PIXEL_PACK_BUFFER = 0x88EB;
 constexpr GLenum K_STREAM_READ = 0x88E1;
 constexpr GLenum K_READ_ONLY = 0x88B8;
 constexpr GLenum K_RGBA8 = 0x8058;
+constexpr GLenum K_RGBA16 = 0x805B;
 constexpr GLenum K_RGBA32F = 0x8814;
 }  // namespace ogl
 

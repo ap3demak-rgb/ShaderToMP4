@@ -3,6 +3,8 @@
 
 // Interface Linux / macOS : GLFW (fenêtre, entrées, glisser-déposer) + Dear ImGui + icônes SVG (NanoSVG).
 #include "core/ffmpeg_download.h"
+#include "core/formats.h"
+#include "core/presets.h"
 #include "core/i18n.h"
 #include "core/util.h"
 #include "platform/platform.h"
@@ -343,6 +345,27 @@ std::string encoderName(const std::string& id) {
     return id;
 }
 
+// Noms des codecs et des conteneurs ; ceux que ce ffmpeg ne sait pas produire sont signales (liste refaite si la langue
+// ou ffmpeg change)
+const std::vector<std::string>& formatLabels(Model& m, bool codecs) {
+    static std::vector<std::string> codecNames, containerNames;
+    static int revision = -1;
+    static std::string lang;
+    if (revision != m.formatsRevision || lang != i18n::language() || codecNames.empty()) {
+        revision = m.formatsRevision;
+        lang = i18n::language();
+        const std::wstring ff = findFfmpeg(m.exeDir);
+        const std::string na = "  (" + T("ui.opt.unavailable") + ")";
+        codecNames.clear();
+        containerNames.clear();
+        for (int i = 0; i < codecCount(); i++)
+            codecNames.push_back(U8(codecAt(i).label) + (codecAvailable(ff, codecAt(i).id) ? "" : na));
+        for (int i = 0; i < containerCount(); i++)
+            containerNames.push_back(U8(containerAt(i).label) + (containerAvailable(ff, containerAt(i).id) ? "" : na));
+    }
+    return codecs ? codecNames : containerNames;
+}
+
 void drawSettings(App& a, float height) {
     Model& m = a.model;
     Fields& f = m.f;
@@ -354,6 +377,27 @@ void drawSettings(App& a, float height) {
         for (int i = 0; i < 4; i++) {
             if (i) ImGui::SameLine();
             if (chip(chips[i][0], chips[i][1])) m.applyQuickPreset(i);
+        }
+        {  // « Plus » : preselections supplementaires et fichiers presets/*.ini
+            static std::vector<UserPreset> users;
+            ImGui::SameLine();
+            if (chip("ui.chip.more", "ui.tip.chip_more")) {
+                users = userPresets(m.exeDir);
+                ImGui::OpenPopup("##morepresets");
+            }
+            if (ImGui::BeginPopup("##morepresets")) {
+                for (int i = kChipPresetCount; i < kBuiltinPresetCount; i++)
+                    if (ImGui::Selectable(T(builtinPresetKey(i)).c_str())) m.applyQuickPreset(i);
+                ImGui::Separator();
+                if (users.empty()) {
+                    ImGui::BeginDisabled();
+                    ImGui::Selectable(T("ui.preset.none").c_str());
+                    ImGui::EndDisabled();
+                }
+                for (const auto& u : users)
+                    if (ImGui::Selectable(U8(u.name).c_str())) m.loadProfile(u.path);
+                ImGui::EndPopup();
+            }
         }
         ImGui::BeginChild("##rows", ImVec2(0, -(ImGui::GetFrameHeight() + S(14))), ImGuiChildFlags_None);
         const float full = ImGui::GetContentRegionAvail().x - S(120) - ImGui::GetStyle().ScrollbarSize;
@@ -401,7 +445,7 @@ void drawSettings(App& a, float height) {
         tip("ui.tip.start_time");
 
         label("ui.lbl.codec");
-        comboList("##codec", &f.codec, {"H.264", "H.265"}, full * 0.46f);
+        comboList("##codec", &f.codec, formatLabels(m, true), full * 0.46f);
         tip("ui.tip.codec");
         ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
@@ -421,8 +465,30 @@ void drawSettings(App& a, float height) {
         ImGui::TextColored(colv(pal::MUTED), "%s", T(hint).c_str());
 
         label("ui.lbl.container");
-        comboList("##container", &f.container, {"MP4", "MOV", "MKV"}, full * 0.46f);
+        comboList("##container", &f.container, formatLabels(m, false), full * 0.46f);
         tip("ui.tip.container");
+
+        label("ui.lbl.depth");
+        comboList("##depth", &f.depth, {"8", "10"}, full * 0.30f);
+        tip("ui.tip.depth");
+
+        label("ui.lbl.estimate");
+        {
+            Settings cur = m.base;
+            std::wstring e;
+            std::string est;
+            if (m.toSettings(cur, e)) {
+                std::wstring dir = cur.outdir;
+                if (dir.empty() && !m.paths.empty()) {
+                    const size_t cut = m.paths[0].find_last_of(L"\\/");
+                    dir = cut == std::wstring::npos ? L"" : m.paths[0].substr(0, cut);
+                }
+                est = U8(estimateText(cur, dir));
+            }
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(colv(pal::MUTED), "%s", est.c_str());
+            tip("ui.tip.estimate");
+        }
 
         label("ui.lbl.encoder");
         std::vector<std::string> encs;

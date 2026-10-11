@@ -3,6 +3,8 @@
 
 #include "ui_imgui/model.h"
 #include "core/ffmpeg_download.h"
+#include "core/formats.h"
+#include "core/presets.h"
 #include "core/gl.h"
 #include "core/i18n.h"
 #include "core/render.h"
@@ -21,8 +23,6 @@ const ResPreset kRes[] = {
 };
 const int kResCount = (int)(sizeof(kRes) / sizeof(kRes[0]));
 const char* const kPresetNames[9] = {"ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"};
-const char* const kCodecs[2] = {"h264", "h265"};
-const char* const kContainers[3] = {"mp4", "mov", "mkv"};
 const char* const kColors[4] = {"bt709", "bt709full", "srgb", "bt601"};
 const int kBlurs[4] = {1, 4, 8, 16};
 
@@ -91,8 +91,9 @@ void Model::fromSettings(const Settings& s) {
     f.preset = 6;
     for (int i = 0; i < 9; i++)
         if (s.preset == kPresetNames[i]) f.preset = i;
-    f.codec = s.codec == "h265" ? 1 : 0;
-    f.container = s.container == "mov" ? 1 : s.container == "mkv" ? 2 : 0;
+    f.codec = codecIndex(s.codec);
+    f.container = containerIndex(s.container);
+    f.depth = s.depth >= 10 ? 1 : 0;
     f.ss = std::min(4, std::max(1, s.ss)) - 1;
     copyTo(f.outdir, sizeof(f.outdir), U8(s.outdir));
     f.bitrate = s.bitrate;
@@ -129,8 +130,9 @@ bool Model::toSettings(Settings& s, std::wstring& err) const {
     s.start = start;
     s.crf = f.crf;
     s.preset = kPresetNames[std::min(8, std::max(0, f.preset))];
-    s.codec = kCodecs[f.codec ? 1 : 0];
-    s.container = kContainers[std::min(2, std::max(0, f.container))];
+    s.codec = codecAt(f.codec).id;
+    s.container = containerAt(f.container).id;
+    s.depth = f.depth == 1 ? 10 : 8;
     s.ss = f.ss + 1;
     std::wstring od = W(f.outdir);
     while (!od.empty() && (od.back() == L' ' || od.back() == L'/' || od.back() == L'\\')) od.pop_back();
@@ -151,23 +153,7 @@ void Model::applyQuickPreset(int idx) {
     Settings s = base;
     std::wstring e;
     if (!toSettings(s, e)) s = base;
-    s.blur = 1;
-    s.ss = 1;
-    switch (idx) {
-        case 0:
-            s.width = 1280; s.height = 720; s.fps = 30; s.crf = 23; s.preset = "veryfast"; s.codec = "h264";
-            break;
-        case 1:
-            s.width = 1920; s.height = 1080; s.fps = 60; s.crf = 16; s.preset = "slow"; s.codec = "h264"; s.container = "mp4";
-            break;
-        case 2:
-            s.width = 3840; s.height = 2160; s.fps = 60; s.crf = 20; s.preset = "medium"; s.codec = "h265"; s.container = "mp4";
-            break;
-        default:
-            s.width = 1080; s.height = 1920; s.fps = 30; s.crf = 16; s.preset = "slow"; s.codec = "h264"; s.container = "mp4";
-            break;
-    }
-    s.bitrate = 0;
+    applyBuiltinPreset(idx, s);
     fromSettings(s);
 }
 
@@ -475,7 +461,7 @@ void Model::openOutputFolder() {
     Settings cur = base;
     std::wstring e;
     if (toSettings(cur, e)) base = cur;
-    const std::wstring file = outputPath(paths[sel], base.outdir, L"." + W(base.container));
+    const std::wstring file = outputFile(paths[sel], base, false);
     if (platform::fileExists(file)) {
         platform::revealInFolder(file);
         return;
@@ -526,6 +512,8 @@ void Model::pump() {
                 join();
                 running_ = false;
                 if (e.idx) {
+                    forgetFfmpegCapabilities();
+                    formatsRevision++;
                     appendLog(TX("log.ffmpeg_installed"));
                     setStatus(TX("status.ffmpeg_installed"));
                 } else {

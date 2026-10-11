@@ -4,6 +4,7 @@
 #include "settings.h"
 #include "i18n.h"
 #include "util.h"
+#include "formats.h"
 #include "platform/platform.h"
 
 bool sameSettings(const Settings& a, const Settings& b) {
@@ -12,13 +13,15 @@ bool sameSettings(const Settings& a, const Settings& b) {
            a.container == b.container && a.ss == b.ss && a.outdir == b.outdir &&
            a.bitrate == b.bitrate && a.color == b.color && a.blur == b.blur && a.shutter == b.shutter &&
            a.loop == b.loop && a.audio == b.audio && a.fadein == b.fadein && a.fadeout == b.fadeout &&
-           a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk;
+           a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
+           a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.metadata == b.metadata;
 }
 
 static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn) {
     std::string k = lower(trim(kIn)), v = trim(vIn);
     if (k == "outdir") { s.outdir = W(v); return; }  // chemin complet (peut contenir des espaces)
     if (k == "audio") { s.audio = W(v); return; }
+    if (k == "name") { s.name = W(v); return; }  // modele du nom de sortie (peut contenir des espaces)
     // ne garder que le premier mot de la valeur (ignore un commentaire derriere)
     size_t sp = v.find_first_of(" \t");
     if (sp != std::string::npos) v = v.substr(0, sp);
@@ -39,6 +42,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "fadein") s.fadein = std::stod(v);
         else if (k == "fadeout") s.fadeout = std::stod(v);
         else if (k == "pbo") s.pbo = std::stoi(v);
+        else if (k == "metadata") s.metadata = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
         else if (k == "chunk") s.chunk = std::stod(v);
         else if (k == "encoder") {
             std::string c = lower(v);
@@ -48,10 +52,12 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
             std::string c = lower(v);
             s.color = (c == "bt709full" || c == "srgb" || c == "bt601") ? c : "bt709";
         }
-        else if (k == "container") s.container = (v == "mov" || v == "mkv") ? lower(v) : "mp4";
-        else if (k == "codec") {
-            std::string c = lower(v);
-            s.codec = (c == "h265" || c == "hevc" || c == "x265") ? "h265" : "h264";
+        else if (k == "container") s.container = normalizeContainer(v);
+        else if (k == "codec") s.codec = normalizeCodec(v);
+        else if (k == "depth") s.depth = std::stoi(v) >= 10 ? 10 : 8;
+        else if (k == "exists") {
+            const std::string c = lower(v);
+            s.exists = (c == "number" || c == "skip") ? c : "overwrite";
         }
     } catch (...) {}
 }
@@ -112,6 +118,10 @@ void writeIni(const std::wstring& path, const Settings& s) {
     put("fadeout", num(s.fadeout), "ini.fadeout");
     put("encoder", s.encoder, "ini.encoder");
     put("pbo", std::to_string(s.pbo), "ini.pbo");
+    put("depth", std::to_string(s.depth), "ini.depth");
+    put("name", U8(s.name), "ini.name");
+    put("exists", s.exists, "ini.exists");
     put("chunk", num(s.chunk), "ini.chunk");
+    put("metadata", s.metadata ? "1" : "0", "ini.metadata");
     fclose(f);
 }
