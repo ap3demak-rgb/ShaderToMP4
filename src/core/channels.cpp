@@ -156,10 +156,10 @@ GLuint upload(const Pixels& p, const std::string& filter, const std::string& wra
     glPixelStorei(0x0CF5 /*GL_UNPACK_ALIGNMENT*/, 1);
     glTexImage2D(GL_TEXTURE_2D, 0, p.isFloat ? ogl::K_RGBA32F : ogl::K_RGBA8, p.w, p.h, 0, GL_RGBA,
                  p.isFloat ? GL_FLOAT : GL_UNSIGNED_BYTE, p.data.data());
-    const bool mip = filter == "mipmap";
+    const bool mip = filter.empty() || filter == "mipmap";
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter == "nearest" ? GL_NEAREST : mip ? K_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter == "nearest" ? GL_NEAREST : GL_LINEAR);
-    const GLint mode = wrap == "repeat" ? K_REPEAT : K_CLAMP_TO_EDGE;
+    const GLint mode = wrap.empty() || wrap == "repeat" ? K_REPEAT : K_CLAMP_TO_EDGE;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, mode);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, mode);
     if (mip) ogl::GenerateMipmap(GL_TEXTURE_2D);
@@ -169,11 +169,20 @@ GLuint upload(const Pixels& p, const std::string& filter, const std::string& wra
 }  // namespace
 
 bool loadChannels(const Settings& s, const std::wstring& shaderDir, const std::wstring& ffmpeg, ChannelSet& out, const Hooks& H,
-                  std::wstring& err) {
+                  std::wstring& err, int bufW, int bufH) {
     for (int i = 0; i < 4; i++) {
         const std::wstring& spec = s.channel[i];
         if (spec.empty()) continue;
         Pixels p;
+        if (spec.size() == 7 && (spec.compare(0, 6, L"buffer") == 0 || spec.compare(0, 6, L"Buffer") == 0) && towlower(spec[6]) >= L'a' &&
+            towlower(spec[6]) <= L'd') {  // tampon d'une passe multiple : pas de texture a charger
+            out.buffer[i] = (int)(towlower(spec[6]) - L'a');
+            out.w[i] = bufW;
+            out.h[i] = bufH;
+            out.filter[i] = s.chFilter[i].empty() || s.chFilter[i] == "mipmap" ? "linear" : s.chFilter[i];
+            out.wrap[i] = s.chWrap[i].empty() ? "clamp" : s.chWrap[i];
+            continue;
+        }
         if (spec == L"noise") {
             p = makeNoise(i);
         } else if (spec == L"grid") {
@@ -194,11 +203,21 @@ bool loadChannels(const Settings& s, const std::wstring& shaderDir, const std::w
     return true;
 }
 
-void bindChannels(const ChannelSet& cs, GLuint prog) {
+void bindChannels(const ChannelSet& cs, GLuint prog, const GLuint* bufferTex) {
     float res[12] = {0};
     for (int i = 0; i < 4; i++) {
         ogl::ActiveTexture(K_TEXTURE0 + 1 + i);
-        glBindTexture(GL_TEXTURE_2D, cs.tex[i]);
+        if (cs.buffer[i] >= 0) {
+            glBindTexture(GL_TEXTURE_2D, bufferTex ? bufferTex[cs.buffer[i]] : 0);
+            const GLint f = cs.filter[i] == "nearest" ? GL_NEAREST : GL_LINEAR;
+            const GLint m = cs.wrap[i] == "repeat" ? K_REPEAT : K_CLAMP_TO_EDGE;
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, f);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, f);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, m);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, m);
+        } else {
+            glBindTexture(GL_TEXTURE_2D, cs.tex[i]);
+        }
         ogl::Uniform1i(ogl::GetUniformLocation(prog, ("iChannel" + std::to_string(i)).c_str()), 1 + i);
         res[i * 3] = (float)cs.w[i];
         res[i * 3 + 1] = (float)cs.h[i];

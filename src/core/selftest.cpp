@@ -92,10 +92,11 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         st.name = L"case" + std::to_wstring(++index);
         return st;
     };
+    std::wstring renderShader = shader;  // shader rendu par `render` (circle.glsl, sauf pour les tests de passes)
     auto render = [&](const Settings& st, std::wstring& e, std::string& logText) {
         Hooks H;
         H.log = [&](const std::wstring& l) { logText += U8(l) + "\n"; };
-        return convertFile(shader, exeDir, st, H, e) == Result::Ok;
+        return convertFile(renderShader, exeDir, st, H, e) == Result::Ok;
     };
 
     for (const FmtCase& fc : kFmtCases) {
@@ -201,6 +202,36 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_chunks") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
         if (!problem.empty()) fails++;
     }
+    // Passes multiples : le rendu par parties (etat des tampons conserve d'une partie a l'autre) doit donner
+    // exactement les memes images qu'un rendu d'un seul tenant
+    if (formatAvailable(ffmpeg, "h264", "mkv") && fileExists(dir + L"buffers.glsl")) {
+        total++;
+        std::wstring problem;
+        std::string rawA, rawB;
+        renderShader = dir + L"buffers.glsl";
+        for (int pass = 0; pass < 2 && problem.empty(); pass++) {
+            Settings st = base("h264", "mkv", 8);
+            st.crf = 0;
+            st.chunk = pass ? 0.2 : 0;
+            st.name = pass ? L"buffers_chunked" : L"buffers_single";
+            std::wstring e;
+            std::string logText;
+            if (!render(st, e, logText)) {
+                problem = e.empty() ? TX("selftest.render_failed") : e;
+                break;
+            }
+            const std::wstring raw = outDir + platform::pathSeparator() + L"buffers.raw";
+            runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -i \"" + outputFile(dir + L"buffers.glsl", st, false) +
+                           L"\" -f rawvideo -pix_fmt rgb24 \"" + raw + L"\"",
+                       nullptr);
+            readFile(raw, pass ? rawB : rawA);
+        }
+        if (problem.empty() && (rawA.empty() || rawA != rawB)) problem = TXF("selftest.fmt_bad", W("chunks != single").c_str());
+        renderShader = shader;
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_buffers") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
+
     // Textures par fichier : image decodee par ffmpeg (PNG 8 bits, HDR flottant) lue en 1:1 par le shader
     for (const char* ext : {"png", "hdr"}) {
         total++;
@@ -281,7 +312,9 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
         std::vector<platform::DirEntry> entries, shaders;
         platform::listDir(dir, entries);
         for (const auto& en : entries)
-            if (!en.isDir && en.name.size() > 5 && en.name.compare(en.name.size() - 5, 5, L".glsl") == 0) shaders.push_back(en);
+            if (!en.isDir && en.name.size() > 5 && en.name.compare(en.name.size() - 5, 5, L".glsl") == 0 &&
+                en.name.find(L'.') == en.name.size() - 5)  // les passes <nom>.bufferA.glsl ne sont pas des tests
+                shaders.push_back(en);
         std::sort(shaders.begin(), shaders.end(), [](const platform::DirEntry& x, const platform::DirEntry& y) { return x.name < y.name; });
         if (shaders.empty()) {
             report = TXF("selftest.no_shaders", dir.c_str()) + L"\r\n";
