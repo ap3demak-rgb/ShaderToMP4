@@ -628,7 +628,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_CREATE: {
             g.wnd = hw;
-            g.dpi = GetDpiForWindow(hw);
+            g.dpi = theme::dpiFor(hw);
             g.brCard = CreateSolidBrush(cref(CARD));
             g.brField = CreateSolidBrush(cref(FIELD));
             ui::darkTitleBar(hw);
@@ -677,7 +677,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             return (LRESULT)g.brCard;
         }
         case WM_DPICHANGED: {
-            g.dpi = HIWORD(wp);
+            g.dpi = theme::dpiOverride ? theme::dpiOverride : HIWORD(wp);
             RECT* r = (RECT*)lp;
             SetWindowPos(hw, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
             createFonts();

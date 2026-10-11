@@ -26,6 +26,7 @@ Format: one section per version, newest first. The section of a tagged version i
 - macOS: the render progress is shown in the Dock icon.
 - Linux: `gpu=high|low` (config.ini or `--gpu=`) picks the discrete or integrated GPU on two-GPU PCs.
 - Real-time preview: a Play button plays the shader at preview size, loops, follows the slider and reloads when the shader file changes on disk.
+- Windows: `--dpi=N` forces the interface scale (used to check the layout at 125 % to 200 %).
 - `--watch=folder`: renders every shader dropped in a folder (explicit, off by default).
 - `--diagnostic` (system, graphics card, OpenGL, ffmpeg and encoders, no personal data) and `--benchmark` (frames per second by resolution and encoder).
 

@@ -24,6 +24,10 @@ constexpr unsigned OK = 0x3DDC97;
 constexpr unsigned ERR = 0xFF5C70;
 constexpr unsigned WARN = 0xFFB020;
 
+// Echelle d'affichage : celle de la fenetre, ou la valeur forcee par --dpi=N (verification de la mise en page a 125 - 200 %)
+inline UINT dpiOverride = 0;
+inline UINT dpiFor(HWND h) { return dpiOverride ? dpiOverride : GetDpiForWindow(h); }
+
 inline COLORREF cref(unsigned hex) { return RGB((hex >> 16) & 255, (hex >> 8) & 255, hex & 255); }
 inline int scale(int v, UINT dpi) { return MulDiv(v, (int)dpi, 96); }
 }  // namespace theme

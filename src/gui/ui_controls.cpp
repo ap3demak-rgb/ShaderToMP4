@@ -103,7 +103,7 @@ void sliderNotify(HWND h, int code) {
 }
 
 int sliderFromX(HWND h, Slider* s, int x) {
-    UINT dpi = GetDpiForWindow(h);
+    UINT dpi = theme::dpiFor(h);
     RECT rc;
     GetClientRect(h, &rc);
     float pad = px(10, dpi);
@@ -117,7 +117,7 @@ void sliderPaint(HWND h, Slider* s) {
     HDC hdc = BeginPaint(h, &ps);
     RECT rc;
     GetClientRect(h, &rc);
-    UINT dpi = GetDpiForWindow(h);
+    UINT dpi = theme::dpiFor(h);
     Frame f(rc.right, rc.bottom, rgb(CARD));
     float w = (float)rc.right, mid = rc.bottom / 2.0f;
     float pad = px(10, dpi), trackH = px(4, dpi);
@@ -271,7 +271,7 @@ LRESULT CALLBACK progressProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             HDC hdc = BeginPaint(h, &ps);
             RECT rc;
             GetClientRect(h, &rc);
-            UINT dpi = GetDpiForWindow(h);
+            UINT dpi = theme::dpiFor(h);
             Frame f(rc.right, rc.bottom, rgb(CARD));
             float rad = rc.bottom / 2.0f;
             f.fillRound(rectf(0, 0, (float)rc.right, (float)rc.bottom), rad, rgb(FIELD));

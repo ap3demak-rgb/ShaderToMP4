@@ -183,7 +183,7 @@ void showAbout(HWND parent) {
         registered = true;
     }
     D = Dialog();
-    D.dpi = GetDpiForWindow(parent);
+    D.dpi = theme::dpiFor(parent);
     RECT want{0, 0, S(540), S(520)};
     const DWORD style = WS_CAPTION | WS_SYSMENU;
     AdjustWindowRectExForDpi(&want, style, FALSE, WS_EX_DLGMODALFRAME, D.dpi);
