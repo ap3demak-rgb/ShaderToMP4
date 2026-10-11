@@ -362,7 +362,7 @@ bin/        working folder: the executable (generated), ffmpeg, config.ini
 
 ### Known limits
 
-- The Windows interface adapts to the screen DPI. Its layout was checked at 100 %, 125 %, 150 % and 200 % with `--dpi=120|144|192` (a test option that forces the scale; the behaviour when moving a window between two real monitors of different scales has not been tested). Screen readers (Narrator, NVDA) have not been tested.
+- The Windows interface adapts to the screen DPI. Its layout was checked at 100 %, 125 %, 150 % and 200 % with `--dpi=120|144|192` (a test option that forces the scale; the behaviour when moving a window between two real monitors of different scales has not been tested). Screen readers: Windows UI Automation shows the buttons, the log and the list, but the fields and drop-down lists are announced by their value, not by their label (giving them a name needs a custom UI Automation provider, which is not done); Narrator and NVDA themselves have not been tried.
 - AMD and Intel hardware encoders (AMF, QuickSync, VAAPI), and hardware AV1, have not been tested on real hardware.
 - macOS: the program is built and packaged by the continuous integration, but the hosted macOS machines have no GPU, so the window has not been run on a real Mac. Please report any problem.
 - Linux and macOS: the file dialogs are built into the program (no system dialog), and the render progress is shown in the macOS Dock (written from the documentation of the system and compiled by the continuous integration, but never run on a real Mac); on Linux there is no progress on the taskbar button (the launchers' API needs D-Bus, a library the program does not ship), the window only asks for attention at the end of a batch.
