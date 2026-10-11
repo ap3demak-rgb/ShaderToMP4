@@ -38,6 +38,13 @@ std::string BufferPasses::withCommon(const std::string& code) const {
     return common_ + "\n#line 1\n" + code;
 }
 
+std::string BufferPasses::allCode() const {
+    std::string all = common_;
+    for (int i = 0; i < 4; i++)
+        if (used_[i]) all += "\n" + bufs_[i].code;
+    return all;
+}
+
 bool BufferPasses::build(int rw, int rh, const std::wstring& shaderDir, const std::wstring& ffmpeg, const Hooks& H, std::wstring& err) {
     for (int i = 0; i < 4; i++) {
         if (!used_[i]) continue;

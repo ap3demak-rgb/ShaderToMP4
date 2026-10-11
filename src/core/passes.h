@@ -19,6 +19,8 @@ public:
     bool any() const { return used_[0] || used_[1] || used_[2] || used_[3]; }
     // Code de l'image : le code commun place devant le code du shader (numeros de ligne du shader conserves).
     std::string withCommon(const std::string& code) const;
+    // Tout le code des passes (commun + tampons), pour le rapport de compatibilite.
+    std::string allCode() const;
 
     // Compile les passes, charge leurs canaux, cree les cibles RGBA32F (rw x rh) remises a zero. false + err en cas d'echec.
     bool build(int rw, int rh, const std::wstring& shaderDir, const std::wstring& ffmpeg, const Hooks& H, std::wstring& err);
