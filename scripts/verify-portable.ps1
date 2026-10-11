@@ -36,7 +36,7 @@ void mainImage(out vec4 c, in vec2 f) { c = vec4(f / iResolution.xy, 0.5, 1.0); 
 # Etat du registre avant
 $before = RegQuery "HKCU\Software\Microsoft\DirectX\UserGpuPreferences"
 
-# Session : rendu d'un shader, puis aperçu (ID 148), changement de langue (ID 155), A propos (ID 154), fermeture
+# Session : rendu d'un shader, puis aperçu, lecture, changement de langue, A propos, fermeture (identifiants lus dans src\gui\app.h)
 Add-Type @"
 using System; using System.Runtime.InteropServices;
 public class PortableUi {
@@ -47,7 +47,12 @@ $env:USERPROFILE = $profileDir; $env:APPDATA = "$profileDir\AppData\Roaming"; $e
 $env:TEMP = "$profileDir\Temp"; $env:TMP = "$profileDir\Temp"; $env:HOMEPATH = $profileDir
 $p = Start-Process "$app\ShaderToMP4.exe" -ArgumentList "`"$work\t.glsl`"" -PassThru -WorkingDirectory $work
 Start-Sleep 7; $p.Refresh()
-foreach ($id in 148, 155) { [void][PortableUi]::PostMessage($p.MainWindowHandle, 0x111, [IntPtr]$id, [IntPtr]::Zero); Start-Sleep -Seconds 2 }
+$enumText = [System.IO.File]::ReadAllText("src\gui\app.h")
+$enumBody = [regex]::Match($enumText, 'enum\s*\{(.*?)\};', 'Singleline').Groups[1].Value -replace '//[^\r\n]*', ''
+$names = @($enumBody -split ',' | ForEach-Object { ($_ -split '=')[0].Trim() } | Where-Object { $_ })
+$base = 120
+function CtrlId([string]$n) { $base + [array]::IndexOf($names, $n) }
+foreach ($id in (CtrlId "ID_PREVBTN"), (CtrlId "ID_PLAY"), (CtrlId "ID_PLAY"), (CtrlId "ID_LANG")) { [void][PortableUi]::PostMessage($p.MainWindowHandle, 0x111, [IntPtr]$id, [IntPtr]::Zero); Start-Sleep -Seconds 2 }
 [void]$p.CloseMainWindow(); Start-Sleep 2
 if (-not $p.HasExited) { Stop-Process $p.Id -Force }
 
@@ -58,7 +63,7 @@ $written = Get-ChildItem $profileDir -Recurse -File -ErrorAction SilentlyContinu
 foreach ($f in $written) { $problems.Add("fichier ecrit hors du dossier de l'application : $($f.FullName.Substring($profileDir.Length))") }
 $ignored = @(Get-ChildItem $profileDir -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match $driverCache }).Count
 # 2. Dossier de l'application : seuls ses fichiers attendus
-$expected = "ShaderToMP4.exe", "ffmpeg.exe", "config.ini", "window.ini"
+$expected = "ShaderToMP4.exe", "ffmpeg.exe", "config.ini", "window.ini", "queue.txt"
 Get-ChildItem $app -Recurse -File | ForEach-Object { if ($expected -notcontains $_.Name) { $problems.Add("fichier inattendu dans le dossier de l'application : $($_.Name)") } }
 # 3. Sortie a cote du shader (comportement voulu) : la video doit exister
 if (-not (Test-Path "$work\t.mp4")) { $problems.Add("la video de test n'a pas ete creee (la session n'a pas abouti)") }
