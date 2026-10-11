@@ -511,6 +511,7 @@ void createControls(HWND hw) {
     g.log = mk(hw, L"RICHEDIT50W", L"", WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_NOHIDESEL, ID_LOG);
     SendMessageW(g.log, EM_SETBKGNDCOLOR, 0, cref(0x0F1116));
     SendMessageW(g.log, EM_LIMITTEXT, 1 << 24, 0);
+    SendMessageW(g.log, EM_SETEVENTMASK, 0, ENM_MOUSEEVENTS);  // double-clic sur « fichier:ligne: » : ouvrir a la ligne
     SendMessageW(g.log, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
     ui::darkTheme(g.log, L"DarkMode_Explorer");
 
@@ -692,6 +693,21 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                         di->lpszText = const_cast<LPWSTR>(tipText.c_str());
                         break;
                     }
+                return 0;
+            }
+            if (nh->hwndFrom == g.log && nh->code == EN_MSGFILTER) {
+                const MSGFILTER* mf = (const MSGFILTER*)lp;
+                if (mf->msg == WM_LBUTTONDBLCLK) {
+                    POINTL pt{(LONG)(short)LOWORD(mf->lParam), (LONG)(short)HIWORD(mf->lParam)};
+                    const LRESULT ch = SendMessageW(g.log, EM_CHARFROMPOS, 0, (LPARAM)&pt);
+                    const LRESULT ln = SendMessageW(g.log, EM_EXLINEFROMCHAR, 0, ch);
+                    wchar_t buf[2048];
+                    *(WORD*)buf = 2040;
+                    const LRESULT n = SendMessageW(g.log, EM_GETLINE, (WPARAM)ln, (LPARAM)buf);
+                    std::wstring path;
+                    int line = 0;
+                    if (n > 0 && parseLocation(std::wstring(buf, (size_t)n), path, line)) openAtLine(path, line);
+                }
                 return 0;
             }
             if (nh->hwndFrom == g.list) {

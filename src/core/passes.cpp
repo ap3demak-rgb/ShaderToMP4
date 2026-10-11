@@ -3,6 +3,7 @@
 
 #include "passes.h"
 #include "i18n.h"
+#include "locate.h"
 #include "util.h"
 
 namespace {
@@ -16,16 +17,20 @@ void BufferPasses::discover(const std::wstring& shaderPath, const std::function<
     const size_t slash = shaderPath.find_last_of(L"\\/");
     const std::wstring stem = (dot == std::wstring::npos || (slash != std::wstring::npos && dot < slash)) ? shaderPath : shaderPath.substr(0, dot);
     std::vector<std::wstring> exts = {dot == std::wstring::npos ? L".glsl" : shaderPath.substr(dot), L".glsl", L".txt"};
-    auto find = [&](const std::string& name, std::string& code) {
+    auto find = [&](const std::string& name, std::string& code, std::wstring& path) {
         for (const auto& e : exts) {
             const std::wstring p = stem + L"." + W(name) + e;
-            if (fileExists(p) && read(p, code)) return true;
+            if (fileExists(p) && read(p, code)) {
+                path = p;
+                return true;
+            }
         }
         return false;
     };
-    find("common", common_);
+    find("common", common_, commonPath_);
+    if (common_.empty()) commonPath_.clear();
     for (int i = 0; i < 4; i++) {
-        if (!find(kNames[i], bufs_[i].code)) continue;
+        if (!find(kNames[i], bufs_[i].code, bufs_[i].path)) continue;
         used_[i] = true;
         parseLines(bufs_[i].st, bufs_[i].code, true);  // canaux propres a la passe
         H.log(L"  " + TXF("log.pass_found", kLabels[i]));
@@ -37,6 +42,8 @@ std::string BufferPasses::withCommon(const std::string& code) const {
     if (common_.empty()) return code;
     return common_ + "\n#line 1\n" + code;
 }
+
+int BufferPasses::commonLines() const { return 1 + (int)std::count(common_.begin(), common_.end(), '\n'); }
 
 std::string BufferPasses::allCode() const {
     std::string all = common_;
@@ -52,7 +59,8 @@ bool BufferPasses::build(int rw, int rh, const std::wstring& shaderDir, const st
         std::wstring e;
         b.prog = buildProgram(withCommon(b.code), e, true);
         if (!b.prog) {
-            err = std::wstring(L"[") + kLabels[i] + L"] " + e;
+            err = std::wstring(L"[") + kLabels[i] + L"] " +
+                  locateGlslErrors(e, b.path, 1 + (int)std::count(b.code.begin(), b.code.end(), '\n'), commonPath_);
             return false;
         }
         if (!loadChannels(b.st, shaderDir, ffmpeg, b.chans, H, err, rw, rh)) return false;

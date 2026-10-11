@@ -6,6 +6,7 @@
 #include "common.h"
 #include "core/settings.h"
 #include "core/formats.h"
+#include "core/locate.h"
 #include "core/presets.h"
 
 enum {

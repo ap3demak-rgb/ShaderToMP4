@@ -4,6 +4,7 @@
 #include "selftest.h"
 #include "formats.h"
 #include "gl.h"
+#include "locate.h"
 #include "i18n.h"
 #include "process.h"
 #include "render.h"
@@ -232,6 +233,39 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         if (!problem.empty()) fails++;
     }
 
+    // Erreurs GLSL localisees « fichier:ligne: » et reconnues par le journal cliquable
+    {
+        total++;
+        const std::wstring broken = outDir + platform::pathSeparator() + L"broken.glsl";
+        const std::string src = "// ligne 1\nvoid mainImage(out vec4 o, in vec2 p)\n{\n    o = vec4(undefined_name, 0.0, 0.0, 1.0);\n}\n";
+        if (FILE* f = platform::openFile(broken, "wb")) {
+            fwrite(src.data(), 1, src.size(), f);
+            fclose(f);
+        }
+        Settings st = base("h264", "mp4", 8);
+        std::vector<uint8_t> unused;
+        Hooks H;
+        H.log = [](const std::wstring&) {};
+        H.previewFrame = [&](int, int, std::vector<uint8_t>&& px) { unused = std::move(px); };
+        std::wstring e, problem;
+        if (convertFile(broken, exeDir, st, H, e) == Result::Ok) {
+            problem = TXF("selftest.fmt_bad", W("no error").c_str());
+        } else {
+            std::wstring path;
+            int line = 0;
+            size_t pos = 0;
+            bool found = false;
+            while (pos <= e.size() && !found) {
+                size_t nl = e.find(L'\n', pos);
+                if (nl == std::wstring::npos) nl = e.size();
+                found = parseLocation(e.substr(pos, nl - pos), path, line) && line == 4 && path == broken;
+                pos = nl + 1;
+            }
+            if (!found) problem = TXF("selftest.fmt_bad", W("file:line").c_str());
+        }
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_locate") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
     // Textures par fichier : image decodee par ffmpeg (PNG 8 bits, HDR flottant) lue en 1:1 par le shader
     for (const char* ext : {"png", "hdr"}) {
         total++;
