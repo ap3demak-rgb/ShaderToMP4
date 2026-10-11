@@ -6,6 +6,7 @@
 // qui ne parle au modèle que par une file d'événements vidée par pump() dans le thread de l'interface.
 #pragma once
 #include "common.h"
+#include "core/player.h"
 #include "core/settings.h"
 
 namespace ui {
@@ -72,6 +73,11 @@ public:
     void startJobs(bool snapshot);
     void runPreview();
     void togglePause();
+    // Apercu en temps reel (lecture) : demarre / arrete, suit le curseur et le shader selectionne
+    bool playing() const { return player_ && player_->running(); }
+    void togglePlay();
+    void stopPlay();
+    void seekPlay();  // le curseur d'apercu a bouge : saute a ce temps
     void cancelRun();
     void openOutputFolder();
     void startFfmpegDownload();
@@ -122,6 +128,10 @@ private:
     double previewTime_ = 0;
     Settings runSettings_;
     std::thread worker_;
+    std::unique_ptr<PreviewPlayer> player_;
+    std::atomic<int> playPending_{0};  // images du lecteur pas encore affichees
+    std::wstring playPath_;
+    double playStart_ = 0, playDur_ = 1;
     std::mutex evMutex_;
     std::vector<Event> events_;
 };

@@ -7,6 +7,8 @@
 #include "core/gl.h"
 #include "core/render.h"
 #include "core/util.h"
+#include "ui_controls.h"
+#include "../../res/resource.h"
 
 static void postLog(const std::wstring& s) {
     PostMessageW(g.wnd, WM_APP_LOG, 0, (LPARAM) new std::wstring(s));
@@ -88,6 +90,7 @@ void promptDownload() {
 }
 
 void startJobs(bool snapshot) {
+    stopPlayer();
     if (!g.running && !ffmpegPresent(g.exeDir)) {
         promptDownload();
         return;
@@ -133,7 +136,7 @@ void updatePrevLabel() {
     double start = 0, dur = 0;
     if (!parseSeconds(getText(g.edStart), start)) start = 0;
     if (!parseSeconds(getText(g.edDur), dur)) dur = 0;
-    double t = start + SendMessageW(g.trkPrev, TBM_GETPOS, 0, 0) / 100.0 * dur;
+    double t = start + SendMessageW(g.trkPrev, TBM_GETPOS, 0, 0) / (double)kPrevSteps * dur;
     SetWindowTextW(g.lblPrev, TXF("ui.preview_time", i18n::fixed(t, 2).c_str()).c_str());
 }
 
@@ -142,8 +145,51 @@ static int selectedOrFirst() {
     return sel < 0 ? 0 : sel;
 }
 
+// --- Lecture en temps reel -----------------------------------------------------------------------------------------
+void updatePlayButton() {
+    const bool on = g.player && g.player->running();
+    SetWindowTextW(g.bPlay, TX(on ? "ui.btn.stop_play" : "ui.btn.play").c_str());
+    ui::setButtonIcon(g.bPlay, on ? IC_STOP : IC_PLAY);
+}
+
+void stopPlayer() {
+    g.player.reset();  // arrete et joint le thread
+    updatePlayButton();
+}
+
+void startPlayer() {
+    if (g.running || g.paths.empty()) return;
+    stopPlayer();
+    Settings cur = g.base;
+    std::wstring serr;
+    if (!uiToSettings(cur, serr)) {
+        MessageBoxW(g.wnd, serr.c_str(), TX("dialog.invalid_settings").c_str(), MB_ICONWARNING);
+        return;
+    }
+    g.base = cur;
+    const int sel = selectedOrFirst();
+    const double t0 = cur.start + SendMessageW(g.trkPrev, TBM_GETPOS, 0, 0) / (double)kPrevSteps * cur.duration;
+    g.previewPending = 0;
+    g.playerPath = g.paths[sel];
+    g.player.reset(new PreviewPlayer);
+    g.player->start(g.paths[sel], g.exeDir, cur, t0,
+                    [](int w, int h, std::vector<uint8_t>&& px, double t) {
+                        g.previewPending++;
+                        PostMessageW(g.wnd, WM_APP_PREVIEW, 0, (LPARAM) new PreviewData{w, h, std::move(px), t});
+                    },
+                    [] { return g.previewPending.load() < 2; },  // l'interface n'a pas fini d'afficher : on saute l'image
+                    postLog);
+    updatePlayButton();
+    setStatus(TX("status.playing"));
+}
+
+void followSelection() {
+    if (g.player && g.player->running() && !g.paths.empty() && g.paths[selectedOrFirst()] != g.playerPath) startPlayer();
+}
+
 void runPreview() {
     if (g.running || g.paths.empty()) return;
+    stopPlayer();
     Settings cur = g.base;
     std::wstring serr;
     if (!uiToSettings(cur, serr)) {
@@ -152,7 +198,7 @@ void runPreview() {
     }
     g.base = cur;
     int sel = selectedOrFirst();
-    g.previewTime = cur.start + SendMessageW(g.trkPrev, TBM_GETPOS, 0, 0) / 100.0 * cur.duration;
+    g.previewTime = cur.start + SendMessageW(g.trkPrev, TBM_GETPOS, 0, 0) / (double)kPrevSteps * cur.duration;
     g.previewRun = true;
     g.snapshotRun = false;
     g.cancel = false;

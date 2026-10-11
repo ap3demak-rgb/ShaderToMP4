@@ -8,6 +8,7 @@
 #include "core/formats.h"
 #include "core/endaction.h"
 #include "core/locate.h"
+#include "core/player.h"
 #include "core/queue.h"
 #include "core/presets.h"
 
@@ -15,7 +16,7 @@ enum {
     ID_LIST = 101, ID_ADD, ID_REMOVE, ID_CLEAR, ID_START, ID_CANCEL, ID_PROG, ID_STATUS, ID_LOG,
     ID_RES = 120, ID_W, ID_H, ID_FPS, ID_DUR, ID_START_T, ID_CODEC, ID_PRESET, ID_CRF, ID_SNAP, ID_CONTAINER, ID_SS, ID_OUT, ID_BROWSE, ID_LOADP, ID_SAVEP,
     ID_BITRATE, ID_COLOR, ID_BLUR, ID_LOOP, ID_AUDIO, ID_AUDIOB, ID_FADEIN, ID_FADEOUT, ID_PAUSE, ID_FOLDER, ID_PREVIEW,
-    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_ABOUT, ID_LANG
+    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_PLAY, ID_ABOUT, ID_LANG
 };
 enum {
     WM_APP_LOG = WM_APP + 1,  // lParam = std::wstring* (a liberer)
@@ -26,11 +27,13 @@ enum {
     WM_APP_DL,                // telechargement de ffmpeg : wParam = pourcentage, lParam = std::wstring* (message)
     WM_APP_DLDONE             // fin du telechargement : wParam = 1 si ok, lParam = std::wstring* (erreur)
 };
+constexpr int kPrevSteps = 10000;  // graduations du curseur d'apercu (de Debut a Debut + Duree)
 enum FileStatus { ST_PENDING, ST_RUNNING, ST_DONE, ST_FAILED, ST_CANCELLED };
 
 struct PreviewData {
     int w, h;
     std::vector<uint8_t> bgra;  // haut en bas
+    double t = -1;              // temps du shader si l'image vient du lecteur, sinon -1
 };
 
 struct ProgressInfo {
@@ -45,7 +48,7 @@ struct App {
          edStart = nullptr, cmbCodec = nullptr, cmbPreset = nullptr, cmbContainer = nullptr, cmbSS = nullptr, edOut = nullptr, bBrowse = nullptr, bLoadP = nullptr, bSaveP = nullptr, trkCrf = nullptr, lblCrf = nullptr;
     HWND edBitrate = nullptr, cmbColor = nullptr, cmbBlur = nullptr, edLoop = nullptr, edAudio = nullptr,
          bAudio = nullptr, edFadeIn = nullptr, edFadeOut = nullptr, bPause = nullptr, bFolder = nullptr,
-         preview = nullptr, trkPrev = nullptr, lblPrev = nullptr, bPrev = nullptr, cmbEncoder = nullptr, cmbDepth = nullptr, lblEst = nullptr, lblForced = nullptr;
+         preview = nullptr, trkPrev = nullptr, lblPrev = nullptr, bPrev = nullptr, bPlay = nullptr, cmbEncoder = nullptr, cmbDepth = nullptr, lblEst = nullptr, lblForced = nullptr;
     HBITMAP prevBmp = nullptr;  // derniere image d apercu
     int prevW = 0, prevH = 0;
     std::vector<HWND> labels;  // libelles du panneau de reglages (dans l ordre de layout())
@@ -68,6 +71,9 @@ struct App {
     std::vector<std::wstring> paths;
     std::vector<int> state;  // FileStatus, parallele a paths
     std::thread worker;
+    std::unique_ptr<PreviewPlayer> player;  // apercu en temps reel (lecture) ; null si arrete
+    std::wstring playerPath;                // shader lu par le lecteur
+    std::atomic<int> previewPending{0};     // images envoyees par le lecteur et pas encore affichees
     std::atomic<bool> running{false}, cancel{false}, pause{false};
     bool previewRun = false;   // le lot en cours est un apercu (UI uniquement)
     double previewTime = 0;
@@ -105,6 +111,10 @@ std::wstring getText(HWND h);
 bool parseSeconds(std::wstring t, double& out);  // "90", "1:30", "0:01:30" -> secondes
 void syncResCombo();
 void updateCrfLabel();
+void startPlayer();         // lecture en temps reel du shader selectionne
+void stopPlayer();
+void followSelection();     // la lecture suit le shader selectionne
+void updatePlayButton();
 void saveQueueNow();         // file d'attente (shaders pas encore rendus) dans queue.txt
 void updateForced();        // reglages imposes par le shader selectionne (// cle=valeur)
 void updateEstimate();      // taille estimee du fichier, sous le preset

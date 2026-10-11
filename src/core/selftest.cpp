@@ -5,6 +5,7 @@
 #include "formats.h"
 #include "gl.h"
 #include "locate.h"
+#include "player.h"
 #include "i18n.h"
 #include "process.h"
 #include "render.h"
@@ -237,6 +238,57 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         if (!problem.empty()) fails++;
     }
 
+    // Apercu en temps reel : le lecteur envoie des images, suit un saut dans le temps et s'arrete proprement
+    {
+        total++;
+        std::atomic<int> frames{0};
+        std::atomic<double> lastT{-1.0};
+        Settings st = base("h264", "mp4", 8);
+        st.duration = 4.0;
+        std::wstring problem;
+        {
+            PreviewPlayer player;
+            player.start(shader, exeDir, st, 0.0, [&](int w, int h, std::vector<uint8_t>&& px, double t) {
+                if (w > 0 && h > 0 && px.size() == (size_t)w * h * 4) {
+                    frames++;
+                    lastT = t;
+                }
+            }, [] { return true; }, [](const std::wstring&) {});
+            for (int i = 0; i < 100 && frames < 3; i++) platform::sleepMs(50);
+            const int before = frames;
+            player.seek(3.0);
+            for (int i = 0; i < 60 && lastT < 2.9; i++) platform::sleepMs(25);
+            player.setPlaying(false);
+            platform::sleepMs(150);
+            const int paused = frames;
+            platform::sleepMs(250);
+            if (before < 3) problem = TXF("selftest.fmt_bad", W("no frame").c_str());
+            else if (lastT < 2.9) problem = TXF("selftest.fmt_bad", W("seek").c_str());
+            else if (frames > paused + 1) problem = TXF("selftest.fmt_bad", W("pause").c_str());
+        }  // le destructeur arrete le thread
+        if (problem.empty()) {  // rechargement automatique : le fichier change pendant la lecture, la couleur change aussi
+            const std::wstring live = outDir + platform::pathSeparator() + L"live.glsl";
+            auto write = [&](const char* body) {
+                if (FILE* f = platform::openFile(live, "wb")) {
+                    fputs(body, f);
+                    fclose(f);
+                }
+            };
+            write("void mainImage(out vec4 o, in vec2 p){ o = vec4(1.0, 0.0, 0.0, 1.0); }\n");
+            std::atomic<int> lastRed{-1}, logs{0};
+            PreviewPlayer p2;
+            p2.start(live, exeDir, st, 0.0, [&](int w, int h, std::vector<uint8_t>&& px, double) {
+                if (w > 0 && h > 0) lastRed = px[2];  // BGRA : rouge au 3e octet du premier pixel
+            }, [] { return true; }, [&](const std::wstring&) { logs++; });
+            for (int i = 0; i < 100 && lastRed < 0; i++) platform::sleepMs(25);
+            const int first = lastRed;
+            write("void mainImage(out vec4 o, in vec2 p){ o = vec4(0.0, 0.0, 1.0, 1.0); }\n");
+            for (int i = 0; i < 120 && lastRed > 128; i++) platform::sleepMs(25);
+            if (first < 200 || lastRed > 50 || logs < 1) problem = TXF("selftest.fmt_bad", W("reload").c_str());
+        }
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_player") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
     // Variantes : le rendu de base puis un rendu par variante (taille et nom propres)
     if (formatAvailable(ffmpeg, "h264", "gif")) {
         total++;

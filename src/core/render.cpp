@@ -51,7 +51,7 @@ static void writerThread(FrameQueue* q) {
 // ---------------------------------------------------------------------------
 //  Texte du shader : UTF-16 -> UTF-8, fins de ligne normalisees
 // ---------------------------------------------------------------------------
-static void normalizeShaderText(std::string& code, const Hooks& H) {
+void normalizeShaderText(std::string& code, const Hooks& H) {
     const size_t n = code.size();
     bool le = n >= 2 && (uint8_t)code[0] == 0xFF && (uint8_t)code[1] == 0xFE;
     bool be = n >= 2 && (uint8_t)code[0] == 0xFE && (uint8_t)code[1] == 0xFF;
