@@ -43,6 +43,7 @@
   "ini.endaction": "après un lot réussi : none, folder (montrer le dernier fichier) ou sleep (veille)",
   "log.variant": "Variante « %ls » (%d sur %d)",
   "ini.variant": "rendu supplémentaire du même shader : nom:clé=valeur|clé=valeur (ex. 720p:width=1280|height=720|crf=23) ; une ligne par variante",
+  "ini.gpu": "carte graphique sur un PC à deux GPU (Linux) : default, high (la puissante) ou low (l'intégrée) ; demande un redémarrage",
   "error.disk_full": "Espace disque insuffisant sur %ls : il faut environ %.0f Mo, %.0f Mo libres.",
   "log.render_summary": "  %dx%d  %g fps  %g s  (%lld images)  %ls  preset %ls  %ls",
   "log.motion_blur": "Flou de mouvement : %d sous-images par image (obturateur %g)",

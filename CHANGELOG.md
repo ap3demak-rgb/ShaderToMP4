@@ -24,6 +24,7 @@ Format: one section per version, newest first. The section of a tagged version i
 - Accessibility: discreet and accent text now reach a 4.5:1 contrast (WCAG AA); the repository check verifies it and that both interfaces share the same palette.
 - Variants: `// variant=720p:width=1280|height=720` (or `--variant=`) renders the same shader again with other settings in one go.
 - macOS: the render progress is shown in the Dock icon.
+- Linux: `gpu=high|low` (config.ini or `--gpu=`) picks the discrete or integrated GPU on two-GPU PCs.
 - `--watch=folder`: renders every shader dropped in a folder (explicit, off by default).
 - `--diagnostic` (system, graphics card, OpenGL, ffmpeg and encoders, no personal data) and `--benchmark` (frames per second by resolution and encoder).
 

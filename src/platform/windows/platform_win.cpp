@@ -119,6 +119,8 @@ void revealInFolder(const std::wstring& filePath) {
 
 void sleepMs(int ms) { Sleep((DWORD)ms); }
 
+void applyGpuPreference(const std::string&) {}  // le programme exporte NvOptimusEnablement / AmdPowerXpress ; rien d'autre sans toucher au registre
+
 DateTime localTime() {
     SYSTEMTIME t;
     GetLocalTime(&t);

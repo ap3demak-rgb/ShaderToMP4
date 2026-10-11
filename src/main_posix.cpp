@@ -73,6 +73,12 @@ int main(int argc, char** argv) {
 #endif
         else files.push_back(W(a));
     }
+    {  // carte graphique choisie dans config.ini (gpu=high|low), avant tout contexte OpenGL
+        std::string cfg;
+        Settings pref;
+        if (readFile(exeDir + L"config.ini", cfg)) parseLines(pref, cfg, false);
+        platform::applyGpuPreference(pref.gpu);
+    }
     if (version || help) {
         fputs((help ? helpText() : versionText()).c_str(), stdout);
         return 0;
