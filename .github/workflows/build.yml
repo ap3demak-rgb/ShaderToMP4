@@ -182,6 +182,13 @@ jobs:
           cd dist
           sha256sum *.zip *.tar.gz > SHA256SUMS.txt
           cd ..
+          # guards: the tag must be the program version, and both changelogs must have a section for it
+          version="${GITHUB_REF_NAME#v}"
+          appver="$(sed -n 's/^#define APP_VER_STR "\(.*\)"/\1/p' src/app_info.h)"
+          test "$appver" = "$version" || { echo "Tag v$version does not match APP_VER_STR $appver in src/app_info.h"; exit 1; }
+          for f in CHANGELOG.md CHANGELOG.fr.md; do
+            grep -q "^## $version" "$f" || { echo "$f has no section for $version"; exit 1; }
+          done
           cat .github/release-notes.md .github/release-notes.fr.md > notes.md
           # the changelog section of this version (## <version> ...) is added to the notes
           version="${GITHUB_REF_NAME#v}"
