@@ -257,7 +257,7 @@ ShaderToMP4 --render --progress=json --container=webm --codec=vp9 --width=1280 -
 <details>
 <summary><b>Languages</b></summary>
 
-All interface texts come from `lang/en.json` and `lang/fr.json`, embedded in the executable. The language follows the system by default, can be switched with the globe button, and is remembered in `window.ini`. To add or fix a language without rebuilding, put a `lang/<code>.json` file next to the executable (keys missing from it fall back to English); the globe button then cycles through every available language.
+All interface texts come from `lang/en.json` and `lang/fr.json`, embedded in the executable, and from the other files of the `lang` folder shipped next to it: German (`de`), Spanish (`es`), Italian (`it`) and Portuguese (`pt`). These four translations are recent and have not been reviewed by native speakers: corrections are welcome. The language follows the system by default (when a file exists for it), can be switched with the globe button, and is remembered in `window.ini`. To add or fix a language without rebuilding, put a `lang/<code>.json` file next to the executable (keys missing from it fall back to English); the globe button then cycles through every available language.
 
 </details>
 

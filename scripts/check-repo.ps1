@@ -85,6 +85,18 @@ foreach ($k in $enKeys) {
   $b = ([regex]::Matches($fr.$k, "%[0-9$]*[.0-9]*(ll|l)?[dsfgux]")).Count
   if ($a -ne $b) { Fail "nombre de marques de format different pour la cle $k" }
 }
+# Langues supplementaires (lang/<code>.json) : seulement des cles connues, memes marques de format ; une cle absente
+# retombe sur l'anglais (la parite complete n'est exigee que pour en et fr)
+foreach ($lf in Get-ChildItem lang -Filter *.json) {
+  if ($lf.BaseName -eq "en" -or $lf.BaseName -eq "fr") { continue }
+  $ol = [System.IO.File]::ReadAllText($lf.FullName, $enc) | ConvertFrom-Json
+  foreach ($k in @($ol.PSObject.Properties.Name)) {
+    if ($enKeys -notcontains $k) { Fail "cle inconnue dans $($lf.Name) : $k"; continue }
+    $a = ([regex]::Matches($en.$k, "%[0-9$]*[.0-9]*(ll|l)?[dsfgux]")).Count
+    $b = ([regex]::Matches($ol.$k, "%[0-9$]*[.0-9]*(ll|l)?[dsfgux]")).Count
+    if ($a -ne $b) { Fail "nombre de marques de format different pour la cle $k dans $($lf.Name)" }
+  }
+}
 $srcFiles = Get-ChildItem src -Recurse -Include *.cpp, *.h
 $used = @{}
 foreach ($f in $srcFiles) {

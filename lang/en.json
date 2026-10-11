@@ -101,6 +101,7 @@
   "selftest.fmt_texture": "texture file decoded by ffmpeg",
   "selftest.fmt_buffers": "buffers: chunked render identical to a single render",
   "selftest.fmt_locate": "GLSL error located as file:line",
+  "selftest.languages": "interface languages load",
   "selftest.fmt_naming": "output name: template, numbering, skip",
   "selftest.summary": "%d test(s), %d failure(s)",
   "selftest.title": "self-test",

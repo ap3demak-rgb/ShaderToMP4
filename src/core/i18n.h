@@ -13,7 +13,7 @@ namespace i18n {
 bool init(const std::wstring& exeDir, const std::string& code);
 bool setLanguage(const std::string& code);  // change de langue à chaud ; false si le code est inconnu
 std::string language();                     // code actuellement utilisé
-std::string systemLanguage();               // "fr" si Windows est en français, sinon "en"
+std::string systemLanguage();               // langue du système si un fichier de langue existe (en, fr, lang/<code>.json), sinon "en"
 std::vector<std::string> available();       // codes disponibles : en, fr + lang/*.json
 
 // Texte pour une clé (ex. "ui.btn.start"). Clé absente partout : renvoie la clé entre crochets et la mémorise.

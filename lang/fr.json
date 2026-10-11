@@ -101,6 +101,7 @@
   "selftest.fmt_texture": "texture lue par fichier (ffmpeg)",
   "selftest.fmt_buffers": "tampons : rendu par parties identique à un rendu simple",
   "selftest.fmt_locate": "erreur GLSL localisée « fichier:ligne »",
+  "selftest.languages": "langues de l'interface chargées",
   "selftest.fmt_naming": "nom de sortie : modèle, numérotation, saut",
   "selftest.summary": "%d test(s), %d échec(s)",
   "selftest.title": "auto-test",

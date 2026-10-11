@@ -20,6 +20,7 @@ Format: one section per version, newest first. The section of a tagged version i
 - GLSL compile errors are written `file:line: message`; double-clicking such a line in the log opens the file at that line.
 - The queue survives closing the program: shaders still to render are restored from `queue.txt` at the next start.
 - End of batch: the taskbar / Dock button flashes, and an optional action (`endaction`: show the folder, or sleep after 15 s) can be set in `config.ini` (also with `--render`).
+- Interface languages: German, Spanish, Italian and Portuguese (`lang/*.json` shipped next to the program; not yet reviewed by native speakers), chosen from the system language when available.
 - `--watch=folder`: renders every shader dropped in a folder (explicit, off by default).
 - `--diagnostic` (system, graphics card, OpenGL, ffmpeg and encoders, no personal data) and `--benchmark` (frames per second by resolution and encoder).
 
