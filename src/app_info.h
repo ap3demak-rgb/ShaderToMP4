@@ -7,9 +7,9 @@
 
 #define APP_NAME_STR "ShaderToMP4"
 #define APP_VER_MAJOR 1
-#define APP_VER_MINOR 5
-#define APP_VER_PATCH 1
-#define APP_VER_STR "1.5.1"
+#define APP_VER_MINOR 6
+#define APP_VER_PATCH 0
+#define APP_VER_STR "1.6.0"
 #define APP_COPYRIGHT_YEAR "2026"
 #define APP_COPYRIGHT_OWNER "Patrick JAILLET"
 #define APP_LICENSE_ID "GPL-3.0-or-later"
