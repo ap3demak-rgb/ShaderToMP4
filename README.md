@@ -129,6 +129,7 @@ The [`examples`](examples) folder contains four shaders ready to convert: plasma
 | **Cancel** | `Esc` | Stop the render; finished parts are kept |
 | **PNG image** | | Render a single image at the “Start” time and open it |
 | **Preview** and slider | `Ctrl+P` | Show a frame of the shader at a chosen time, without ffmpeg |
+| **Play** / **Stop** | | Play the shader in real time at preview size (up to 640 px), loop over the range, jump with the slider; the preview reloads by itself when the shader or one of its pass files changes on disk |
 | **Remove** | `Del` (in the list) | Remove the selected shaders |
 | **Folder** | | Open the folder of the selected shader's video |
 | **Profile / Save** | | Load or save all settings in an `.ini` file |

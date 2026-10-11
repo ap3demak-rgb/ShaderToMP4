@@ -240,13 +240,15 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
 
     // Apercu en temps reel : le lecteur envoie des images, suit un saut dans le temps et s'arrete proprement
     {
+        const bool threads = platform::prepareOffThreadContexts();
         total++;
         std::atomic<int> frames{0};
         std::atomic<double> lastT{-1.0};
         Settings st = base("h264", "mp4", 8);
         st.duration = 4.0;
         std::wstring problem;
-        {
+        if (!threads) problem = TXF("selftest.fmt_bad", W("thread context").c_str());
+        else {
             PreviewPlayer player;
             player.start(shader, exeDir, st, 0.0, [&](int w, int h, std::vector<uint8_t>&& px, double t) {
                 if (w > 0 && h > 0 && px.size() == (size_t)w * h * 4) {
@@ -266,7 +268,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             else if (lastT < 2.9) problem = TXF("selftest.fmt_bad", W("seek").c_str());
             else if (frames > paused + 1) problem = TXF("selftest.fmt_bad", W("pause").c_str());
         }  // le destructeur arrete le thread
-        if (problem.empty()) {  // rechargement automatique : le fichier change pendant la lecture, la couleur change aussi
+        if (threads && problem.empty()) {  // rechargement automatique : le fichier change pendant la lecture, la couleur change aussi
             const std::wstring live = outDir + platform::pathSeparator() + L"live.glsl";
             auto write = [&](const char* body) {
                 if (FILE* f = platform::openFile(live, "wb")) {
@@ -286,6 +288,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             for (int i = 0; i < 120 && lastRed > 128; i++) platform::sleepMs(25);
             if (first < 200 || lastRed > 50 || logs < 1) problem = TXF("selftest.fmt_bad", W("reload").c_str());
         }
+        platform::releaseOffThreadContexts();
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_player") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
         if (!problem.empty()) fails++;
     }

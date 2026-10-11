@@ -25,6 +25,7 @@ Format: one section per version, newest first. The section of a tagged version i
 - Variants: `// variant=720p:width=1280|height=720` (or `--variant=`) renders the same shader again with other settings in one go.
 - macOS: the render progress is shown in the Dock icon.
 - Linux: `gpu=high|low` (config.ini or `--gpu=`) picks the discrete or integrated GPU on two-GPU PCs.
+- Real-time preview: a Play button plays the shader at preview size, loops, follows the slider and reloads when the shader file changes on disk.
 - `--watch=folder`: renders every shader dropped in a folder (explicit, off by default).
 - `--diagnostic` (system, graphics card, OpenGL, ffmpeg and encoders, no personal data) and `--benchmark` (frames per second by resolution and encoder).
 

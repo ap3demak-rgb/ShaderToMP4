@@ -82,6 +82,11 @@ bool sha256File(const std::wstring& path, std::string& hexLower);
 // Contexte OpenGL 3.3 core caché, rendu courant dans le thread appelant. À détruire dans le même thread.
 // ctx reçoit un identifiant opaque (nul si échec).
 bool createGLContext(void*& ctx, std::wstring& err);
+// Contextes OpenGL crees dans d'autres threads que le principal (auto-test de l'apercu en temps reel) : Windows le permet
+// toujours ; sous Linux / macOS GLFW exige une fenetre cachee creee par le thread principal. A appeler depuis ce thread,
+// release apres l'arret des threads concernes. Renvoie false si impossible.
+bool prepareOffThreadContexts();
+void releaseOffThreadContexts();
 void destroyGLContext(void*& ctx);
 void* glProc(const char* name);  // adresse d'une fonction OpenGL (contexte courant requis)
 
