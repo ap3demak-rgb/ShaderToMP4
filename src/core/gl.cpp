@@ -70,6 +70,9 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         "uniform sampler2D iChannel3;\n"
         "uniform vec3  iChannelResolution[4];\n"
         "uniform float iChannelTime[4];\n"
+        "#define texture2D texture\n"  // noms GLSL ES 1.00, encore tres repandus sur Shadertoy
+        "#define texture2DLod textureLod\n"
+        "#define texture3D texture\n"
         "out vec4 st_outColor;\n"
         "#line 1\n" +
         userCode +

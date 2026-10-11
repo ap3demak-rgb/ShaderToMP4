@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Patrick JAILLET
+
+#include "compat.h"
+#include "i18n.h"
+#include "util.h"
+
+namespace {
+
+// Code sans commentaires (// et /* */), meme longueur de lignes : les mots cites en commentaire ne comptent pas
+std::string stripComments(const std::string& c) {
+    std::string out = c;
+    for (size_t i = 0; i < out.size();) {
+        if (out[i] == '/' && i + 1 < out.size() && out[i + 1] == '/') {
+            while (i < out.size() && out[i] != '\n') out[i++] = ' ';
+        } else if (out[i] == '/' && i + 1 < out.size() && out[i + 1] == '*') {
+            out[i] = out[i + 1] = ' ';
+            i += 2;
+            while (i < out.size() && !(out[i] == '*' && i + 1 < out.size() && out[i + 1] == '/')) {
+                if (out[i] != '\n') out[i] = ' ';
+                i++;
+            }
+            if (i < out.size()) out[i++] = ' ';
+            if (i < out.size()) out[i++] = ' ';
+        } else {
+            i++;
+        }
+    }
+    return out;
+}
+
+bool isWordChar(char c) { return isalnum((unsigned char)c) || c == '_'; }
+
+bool usesWord(const std::string& code, const std::string& word) {
+    for (size_t p = code.find(word); p != std::string::npos; p = code.find(word, p + 1)) {
+        const bool before = p == 0 || !isWordChar(code[p - 1]);
+        const bool after = p + word.size() >= code.size() || !isWordChar(code[p + word.size()]);
+        if (before && after) return true;
+    }
+    return false;
+}
+
+}  // namespace
+
+std::string adaptShaderCode(const std::string& code, std::vector<std::wstring>& notes) {
+    std::string out;
+    out.reserve(code.size());
+    size_t pos = 0;
+    bool version = false, extension = false;
+    while (pos <= code.size()) {
+        size_t e = code.find('\n', pos);
+        if (e == std::string::npos) e = code.size();
+        const std::string line = code.substr(pos, e - pos);
+        const std::string t = trim(line);
+        if (t.compare(0, 8, "#version") == 0) {
+            version = true;
+        } else if (t.compare(0, 10, "#extension") == 0) {
+            extension = true;
+        } else {
+            out += line;
+        }
+        if (e < code.size()) out += '\n';
+        pos = e + 1;
+    }
+    if (version) notes.push_back(TX("log.compat_version"));
+    if (extension) notes.push_back(TX("log.compat_extension"));
+    return out;
+}
+
+void checkCompatibility(const std::string& allCode, const Settings& s, std::vector<std::wstring>& notes) {
+    const std::string c = stripComments(allCode);
+    if (usesWord(c, "mainVR") && !usesWord(c, "mainImage")) notes.push_back(TX("log.compat_vr"));
+    if (usesWord(c, "mainSound")) notes.push_back(TX("log.compat_sound"));
+    if (usesWord(c, "samplerCube")) notes.push_back(TX("log.compat_cubemap"));
+    if (usesWord(c, "sampler3D")) notes.push_back(TX("log.compat_volume"));
+    if (usesWord(c, "iMouse") && !s.mouseSet) notes.push_back(TX("log.compat_mouse"));
+    if (usesWord(c, "iDate") && s.date.empty()) notes.push_back(TX("log.compat_date"));
+    if (usesWord(c, "iChannelTime")) notes.push_back(TX("log.compat_channel_time"));
+}

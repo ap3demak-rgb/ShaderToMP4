@@ -3,6 +3,7 @@
 
 #include "render.h"
 #include "channels.h"
+#include "compat.h"
 #include "encoder.h"
 #include "passes.h"
 #include "formats.h"
@@ -95,6 +96,8 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     std::string code;
     if (!readFile(shaderPath, code)) { err = TX("error.read_file"); return Result::Failed; }
     normalizeShaderText(code, H);
+    std::vector<std::wstring> notes;  // adaptations et avertissements de compatibilite, journalises avant le rendu
+    code = adaptShaderCode(code, notes);
     if (code.find("mainImage") == std::string::npos) {
         err = TX("error.no_main_image");
         return Result::Failed;
@@ -188,8 +191,13 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
     bp.discover(shaderPath, [&](const std::wstring& p, std::string& out) {
         if (!readFile(p, out)) return false;
         normalizeShaderText(out, H);
+        out = adaptShaderCode(out, notes);
         return true;
     }, H);
+    if (!preview) {
+        checkCompatibility(code + "\n" + bp.allCode(), s, notes);
+        for (const auto& n : notes) H.log(L"  " + n);
+    }
     GLuint prog = buildProgram(bp.withCommon(code), err);
     if (!prog) return Result::Failed;
 
