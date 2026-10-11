@@ -412,6 +412,27 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
         }
         destroyGLContext(gl);
     }
+    {  // chaque langue disponible se charge et ses textes a marques de format s'affichent
+        const std::string previous = i18n::language();
+        std::wstring langs, problem;
+        for (const auto& code : i18n::available()) {
+            if (!i18n::setLanguage(code)) {
+                problem += W(code) + L" ";
+                continue;
+            }
+            const std::wstring a = TX("ui.btn.start"), b = TXF("status.progress", 1LL, 2LL, 3, L"4", L"5");
+            if (a.empty() || a[0] == L'[' || b.empty() || b[0] == L'[') problem += W(code) + L" ";
+            langs += W(code) + L" ";
+        }
+        i18n::setLanguage(previous);
+        total++;
+        if (problem.empty()) {
+            report += L"PASS    " + TX("selftest.languages") + L": " + langs + L"\r\n";
+        } else {
+            fails++;
+            report += L"FAIL    " + TX("selftest.languages") + L": " + problem + L"\r\n";
+        }
+    }
     report += L"\r\n" + TXF("selftest.summary", total, fails) + L"\r\n";
     if (FILE* f = platform::openFile(dir + L"report.txt", "wb")) {
         std::string u = U8(report);

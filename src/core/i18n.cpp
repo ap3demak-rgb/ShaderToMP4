@@ -177,7 +177,13 @@ std::wstring vformat(const std::wstring& fmt, va_list a) {
 
 }  // namespace
 
-std::string systemLanguage() { return platform::systemLanguage() == "fr" ? "fr" : "en"; }
+// Langue du systeme si elle existe (embarquee ou fichier lang/<code>.json), sinon l'anglais
+std::string systemLanguage() {
+    const std::string sys = platform::systemLanguage();
+    for (const auto& c : available())
+        if (c == sys) return sys;
+    return "en";
+}
 
 bool init(const std::wstring& exeDir, const std::string& code) {
     {
