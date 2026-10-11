@@ -92,8 +92,11 @@ static void normalizeShaderText(std::string& code, const Hooks& H) {
 // ---------------------------------------------------------------------------
 //  Conversion d'un fichier shader -> video / image / apercu
 // ---------------------------------------------------------------------------
-Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base,
-                          const Hooks& H, std::wstring& err) {
+using Forced = std::vector<std::pair<std::string, std::string>>;  // reglages imposes a une variante
+
+// Un rendu (une variante si `forced` est donne : ses reglages priment sur ceux du shader).
+static Result convertOne(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H,
+                         std::wstring& err, const Forced* forced) {
     std::string code;
     if (!readFile(shaderPath, code)) { err = TX("error.read_file"); return Result::Failed; }
     normalizeShaderText(code, H);
@@ -106,6 +109,8 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
 
     Settings s = base;
     parseLines(s, code, true);
+    if (forced)
+        for (const auto& kv : *forced) applySetting(s, kv.first, kv.second);
     for (int i = 0; i < 4; i++)  // canal lu par le shader mais sans texture : il lit du noir
         if (s.channel[i].empty() && code.find("iChannel" + std::to_string(i)) != std::string::npos)
             H.log(L"  " + TXF("log.warn_ichannel", i, i));
@@ -690,6 +695,67 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
             H.log(L"  " + TXF("log.measure_gpu_bound", 100.0 * waitSec / loopSec));
         H.log(L"  " + TXF("log.ok_output", out.c_str()));
         if (H.output) H.output(out);
+    }
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+//  Variantes : le rendu de base, puis un rendu par variante (autre taille, cadence, codec...)
+// ---------------------------------------------------------------------------
+// « 720p:width=1280|height=720 » -> nom + reglages ; le nom entre dans le nom du fichier de sortie
+static bool parseVariant(const std::string& spec, std::string& name, Forced& out) {
+    const size_t colon = spec.find(':');
+    name = trim(colon == std::string::npos ? spec : spec.substr(0, colon));
+    for (auto& c : name)
+        if (!isalnum((unsigned char)c) && c != '-' && c != '_') c = '_';
+    if (name.empty()) return false;
+    size_t pos = colon == std::string::npos ? spec.size() : colon + 1;
+    while (pos < spec.size()) {
+        size_t e = spec.find('|', pos);
+        if (e == std::string::npos) e = spec.size();
+        const std::string item = spec.substr(pos, e - pos);
+        pos = e + 1;
+        const size_t eq = item.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string key = lower(trim(item.substr(0, eq)));
+        if (isSettingKey(key) && key != "variant") out.push_back({key, trim(item.substr(eq + 1))});
+    }
+    return true;
+}
+
+Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H,
+                   std::wstring& err) {
+    if (H.snapshot || H.previewFrame) return convertOne(shaderPath, exeDir, base, H, err, nullptr);
+    std::string code;
+    Settings probe = base;
+    if (readFile(shaderPath, code)) {
+        Hooks quiet;
+        quiet.log = [](const std::wstring&) {};
+        normalizeShaderText(code, quiet);
+        parseLines(probe, code, true);
+    }
+    if (probe.variants.empty()) return convertOne(shaderPath, exeDir, base, H, err, nullptr);
+
+    Result result = convertOne(shaderPath, exeDir, base, H, err, nullptr);  // rendu de base
+    if (result == Result::Cancelled) return result;
+    int index = 0;
+    for (const auto& spec : probe.variants) {
+        std::string name;
+        Forced forced;
+        index++;
+        if (!parseVariant(spec, name, forced)) continue;
+        bool hasName = false;
+        for (const auto& kv : forced)
+            if (kv.first == "name") hasName = true;
+        if (!hasName) forced.push_back({"name", (probe.name.empty() ? std::string("{shader}") : U8(probe.name)) + "_" + name});
+        H.log(L"  " + TXF("log.variant", W(name).c_str(), index, (int)probe.variants.size()));
+        std::wstring e;
+        const Result r = convertOne(shaderPath, exeDir, base, H, e, &forced);
+        if (r == Result::Cancelled) return r;
+        if (r == Result::Failed) {
+            err = e;
+            result = Result::Failed;
+        }
     }
     return result;
 }

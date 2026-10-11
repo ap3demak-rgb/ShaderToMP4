@@ -21,7 +21,7 @@ bool sameSettings(const Settings& a, const Settings& b) {
            a.bitrate == b.bitrate && a.color == b.color && a.blur == b.blur && a.shutter == b.shutter &&
            a.loop == b.loop && a.audio == b.audio && a.fadein == b.fadein && a.fadeout == b.fadeout &&
            sameChannels(a, b) && a.mouseSet == b.mouseSet && a.mouseX == b.mouseX && a.mouseY == b.mouseY &&
-           a.mouseDown == b.mouseDown && a.date == b.date && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
+           a.mouseDown == b.mouseDown && a.date == b.date && a.variants == b.variants && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
            a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.metadata == b.metadata;
 }
 
@@ -39,7 +39,11 @@ static std::string withoutIniComment(const std::string& raw) {
 
 static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn) {
     std::string k = lower(trim(kIn)), v = trim(vIn);
-    if (k == "outdir" || k == "audio" || k == "name" || (k.size() == 9 && k.compare(0, 8, "ichannel") == 0)) v = withoutIniComment(vIn);
+    if (k == "outdir" || k == "audio" || k == "name" || k == "variant" || (k.size() == 9 && k.compare(0, 8, "ichannel") == 0)) v = withoutIniComment(vIn);
+    if (k == "variant") {  // « nom:cle=valeur|cle=valeur » : une ligne par variante
+        if (!v.empty()) s.variants.push_back(v);
+        return;
+    }
     if (k == "outdir") { s.outdir = W(v); return; }  // chemin complet (peut contenir des espaces)
     if (k == "audio") { s.audio = W(v); return; }
     if (k.size() == 9 && k.compare(0, 8, "ichannel") == 0 && k[8] >= '0' && k[8] <= '3') {  // chemin complet
@@ -110,7 +114,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
 bool isSettingKey(const std::string& key) {
     static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
                                         "blur", "shutter", "loop", "fadein", "fadeout", "pbo", "chunk", "encoder", "color", "container",
-                                        "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "date", "endaction"};
+                                        "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "date", "endaction", "variant"};
     for (const char* k : kKeys)
         if (key == k) return true;
     // ichannel0 a ichannel3, avec .filter .wrap .vflip
@@ -180,7 +184,7 @@ void writeIni(const std::wstring& path, const Settings& s) {
         fputs(l.c_str(), f);
     };
     fputs(("; " + i18n::tr8("ini.header1") + "\r\n; " + i18n::tr8("ini.header2") + "\r\n").c_str(), f);
-    fputs(("; name: " + i18n::tr8("ini.name") + "\r\n; iChannel0-3: " + i18n::tr8("ini.ichannel") + "\r\n").c_str(), f);
+    fputs(("; name: " + i18n::tr8("ini.name") + "\r\n; iChannel0-3: " + i18n::tr8("ini.ichannel") + "\r\n; variant: " + i18n::tr8("ini.variant") + "\r\n").c_str(), f);
     put("width", std::to_string(s.width));
     put("height", std::to_string(s.height));
     put("fps", num(s.fps));
@@ -215,6 +219,7 @@ void writeIni(const std::wstring& path, const Settings& s) {
     }
     if (s.mouseSet) put("mouse", num(s.mouseX) + "," + num(s.mouseY) + (s.mouseDown ? ",down" : ""), "ini.mouse");
     if (!s.date.empty()) put("date", s.date, "ini.date");
+    for (const auto& v : s.variants) put("variant", v);
     put("endaction", s.endaction, "ini.endaction");
     put("chunk", num(s.chunk), "ini.chunk");
     put("metadata", s.metadata ? "1" : "0", "ini.metadata");

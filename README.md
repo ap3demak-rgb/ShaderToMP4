@@ -174,6 +174,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 | Fade in / out | `fadein`, `fadeout` | seconds, picture and sound |
 | Output | `outdir` | output folder (empty = next to the shader) |
 | (shader comments) | `iChannel0`…`iChannel3`, `mouse`, `date` | textures, fixed mouse and date (see “Shadertoy compatibility”) |
+| (shader comments, `--variant=`) | `variant` | extra renderings of the same shader, one line per variant: `// variant=720p:width=1280\|height=720\|crf=23`. The base render comes first, then each variant with its own settings; its name is added to the file name (`shader_720p.mp4`) unless the variant sets `name` |
 | (config.ini only) | `name`, `exists` | output file name template and what to do when it exists (see “Output formats”) |
 | (config.ini only) | `endaction` | after a successful batch: `none` (default), `folder` (show the last file in the file manager) or `sleep` (the computer sleeps after 15 s; closing the program cancels it). At the end of a batch the taskbar / Dock button always flashes |
 | (config.ini only) | `chunk` | render in parts of N seconds (30 by default, 0 = never) |

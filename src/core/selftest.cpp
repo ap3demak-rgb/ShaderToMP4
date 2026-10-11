@@ -237,6 +237,29 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         if (!problem.empty()) fails++;
     }
 
+    // Variantes : le rendu de base puis un rendu par variante (taille et nom propres)
+    if (formatAvailable(ffmpeg, "h264", "gif")) {
+        total++;
+        const std::wstring vshader = outDir + platform::pathSeparator() + L"withvariant.glsl";
+        const std::string vsrc = "// variant=small:width=32|height=32\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(p / iResolution.xy, 0.5, 1.0); }\n";
+        if (FILE* f = platform::openFile(vshader, "wb")) {
+            fwrite(vsrc.data(), 1, vsrc.size(), f);
+            fclose(f);
+        }
+        Settings st = base("h264", "gif", 8);
+        st.name = L"";  // modele par defaut : {shader}
+        std::wstring e, problem;
+        Hooks H;
+        H.log = [](const std::wstring&) {};
+        const bool ok = convertFile(vshader, exeDir, st, H, e) == Result::Ok;
+        const std::wstring baseOut = outDir + platform::pathSeparator() + L"withvariant.gif";
+        const std::wstring varOut = outDir + platform::pathSeparator() + L"withvariant_small.gif";
+        if (!ok || !fileExists(baseOut) || !fileExists(varOut)) problem = TXF("selftest.fmt_bad", W("variant files").c_str());
+        else if (probeInfo(ffmpeg, baseOut).find(" 64x64") == std::string::npos || probeInfo(ffmpeg, varOut).find(" 32x32") == std::string::npos)
+            problem = TXF("selftest.fmt_bad", W("variant size").c_str());
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_variants") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
     // Erreurs GLSL localisees « fichier:ligne: » et reconnues par le journal cliquable
     {
         total++;
