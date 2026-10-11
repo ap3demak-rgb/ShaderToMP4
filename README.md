@@ -36,7 +36,9 @@ One portable program for **Windows, Linux and macOS**, **no installer**, with a 
 | | |
 |---|---|
 | **Exact timing** | Each frame is rendered at time `n / fps`, then piped straight to ffmpeg: no intermediate file. |
-| **Maximum quality** | Up to 16384 pixels wide, ×4 supersampling, motion blur (×4, ×8, ×16), correct BT.709 colour conversion, lossless x264 / x265 if you want it. |
+| **Maximum quality** | Up to 16384 pixels wide, ×4 supersampling, motion blur (×4, ×8, ×16), correct BT.709 colour conversion, 10-bit output, lossless x264 / x265 if you want it. |
+| **Many formats** | MP4, MOV, MKV, WebM (H.264, H.265, VP9, AV1), ProRes and DNxHR for editing, animated GIF and WebP, PNG / TIFF / EXR image sequences. |
+| **Shadertoy features** | Textures (`iChannel`), multi-pass shaders (Buffer A–D, Common), fixed mouse and date, WebGL 2 style GLSL, and a compatibility report before each render. |
 | **Fast** | Rendering and encoding run in parallel, asynchronous GPU read-back, optional hardware encoding (NVENC, AMF, QuickSync, VAAPI, VideoToolbox). |
 | **Reliable** | Long renders are made in parts: if anything fails, you resume exactly where you stopped. |
 | **Practical** | Built-in preview, presets (YouTube, 4K, vertical 9:16), audio with fades, perfect loop, queue of several shaders, pause and cancel. |
