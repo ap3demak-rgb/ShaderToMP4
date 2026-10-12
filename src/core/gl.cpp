@@ -164,10 +164,11 @@ GLuint buildPresentProgram(std::wstring& err, bool alpha) {
     const std::string fs = std::string(
         "#version 330 core\n"
         "uniform sampler2D st_tex;\n"
+        "uniform float st_scale;\n"
         "out vec4 st_o;\n") +
-        (alpha ? "void main(){ vec4 t = texelFetch(st_tex, ivec2(gl_FragCoord.xy), 0);"  // couleurs prémultipliées accumulées -> alpha droit
+        (alpha ? "void main(){ vec4 t = texelFetch(st_tex, ivec2(gl_FragCoord.xy), 0) * st_scale;"  // couleurs prémultipliées accumulées -> alpha droit
                  " st_o = t.a > 1e-5 ? vec4(t.rgb / t.a, t.a) : vec4(0.0); }\n"
-               : "void main(){ st_o = vec4(texelFetch(st_tex, ivec2(gl_FragCoord.xy), 0).rgb, 1.0); }\n");
+               : "void main(){ st_o = vec4(texelFetch(st_tex, ivec2(gl_FragCoord.xy), 0).rgb * st_scale, 1.0); }\n");
     GLuint v = compileShader(ogl::K_VERTEX_SHADER, vs, err);
     if (!v) return 0;
     GLuint f = compileShader(ogl::K_FRAGMENT_SHADER, fs, err);

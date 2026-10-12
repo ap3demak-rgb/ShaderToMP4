@@ -23,6 +23,9 @@ struct OutputFields {
     int endAction = 0;           // 0 rien, 1 montrer le dossier, 2 veille
     bool metadata = true;
     std::wstring variants;       // variantes separees par « ; » : nom:cle=valeur|cle=valeur
+    // Temps et boucle : boucle sans couture (0 aucune, 1 fondu, 2 aller-retour), duree du fondu, courbe de temps, vitesse, echantillons de l'image fixe
+    int loopMode = 0;
+    std::wstring loopFade, timemap, speed, samples;
 };
 
 constexpr int kScaleFilterCount = 5;

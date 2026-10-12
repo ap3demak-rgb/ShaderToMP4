@@ -7,6 +7,7 @@
 #include "core/gl.h"
 #include "core/outputopts.h"
 #include "core/params.h"
+#include "core/looptools.h"
 #include "core/render.h"
 #include "core/util.h"
 #include "ui_controls.h"
@@ -36,7 +37,7 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
     H.log = postLog;
     H.cancel = &g.cancel;
     H.pause = &g.pause;
-    H.snapshot = g.snapshotRun && g.imageKind != 2;  // la planche-contact n'est pas une image fixe pour le moteur
+    H.snapshot = g.snapshotRun && g.imageKind <= 1;  // la planche-contact n'est pas une image fixe pour le moteur ; les kinds 3 et 4 ont leur propre chemin
     if (g.snapshotRun && g.imageKind == 1) H.thumbTime = -2;  // vignette : milieu de la plage
     if (g.snapshotRun && g.imageKind == 2) {
         H.sheetCols = g.sheetCols;
@@ -67,7 +68,21 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
         std::wstring e;
         Settings run = settingsForFile(g.runBase, g.exeDir, jobs[i].second);  // reglages generaux + ceux de ce shader
         if (g.snapshotRun && g.snapshotAt >= 0) run.start = g.snapshotAt;  // image PNG au temps de l'apercu
-        Result r = convertFile(jobs[i].second, g.exeDir, run, H, e);
+        Result r = Result::Ok;
+        if (g.snapshotRun && g.imageKind == 3) {  // vignette intelligente : les trois images les plus riches
+            std::vector<std::wstring> made;
+            r = renderSmartThumbnails(jobs[i].second, g.exeDir, run, H, made, e) ? Result::Ok : g.cancel ? Result::Cancelled : Result::Failed;
+        } else if (g.snapshotRun && g.imageKind == 4) {  // recherche de la periode du shader, sans rendu
+            LoopFound lf;
+            if (findLoop(jobs[i].second, g.exeDir, run, 0, H, lf, e)) {
+                postLog(L"  " + describeLoop(lf));
+                if (lf.found && !lf.isStatic) PostMessageW(g.wnd, WM_APP_LOOP, 0, (LPARAM) new double(lf.period));
+            } else {
+                r = g.cancel ? Result::Cancelled : Result::Failed;
+            }
+        } else {
+            r = convertFile(jobs[i].second, g.exeDir, run, H, e);
+        }
         if (r == Result::Failed) postLog(L"  " + TXF("log.error", e.c_str()));
         else if (r == Result::Cancelled) postLog(L"  " + TX("log.cancelled"));
         PostMessageW(g.wnd, WM_APP_FILE, (WPARAM)idx,
@@ -83,6 +98,7 @@ void showImageMenu() {
     AppendMenuW(m, MF_STRING, 1, TX("ui.menu.png").c_str());
     AppendMenuW(m, MF_STRING, 3, TX("ui.menu.png_now").c_str());
     AppendMenuW(m, MF_STRING, 2, TX("ui.menu.thumb").c_str());
+    AppendMenuW(m, MF_STRING, 4, TX("ui.menu.thumb_smart").c_str());
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     for (int i = 0; i < kSheetGridCount; i++)
         AppendMenuW(m, MF_STRING, (UINT_PTR)(10 + i), TXF("ui.menu.sheet", kSheetGrids[i][0], kSheetGrids[i][1]).c_str());
@@ -93,6 +109,7 @@ void showImageMenu() {
     if (cmd == 1) startJobs(true, 0);
     else if (cmd == 2) startJobs(true, 1);
     else if (cmd == 3) startJobs(true, 0, 0, 0, true);
+    else if (cmd == 4) startJobs(true, 3);
     else if (cmd >= 10 && cmd < 10 + kSheetGridCount) startJobs(true, 2, kSheetGrids[cmd - 10][0], kSheetGrids[cmd - 10][1]);
 }
 
@@ -168,9 +185,9 @@ void startJobs(bool snapshot, int imageKind, int cols, int rows, bool atPreview,
     g.sheetRows = rows;
     g.previewRun = false;
     if (snapshot) {
-        g.snapshotPath = outputPath(jobs[0].second, cur.outdir, imageKind == 1 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : L".png");
+        g.snapshotPath = imageKind == 4 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : L".png");
     }
-    setStatus(TX(snapshot ? "status.rendering_image" : "status.rendering"));
+    setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot ? "status.rendering_image" : "status.rendering"));
     g.worker = std::thread(runJobs, std::move(jobs));
 }
 

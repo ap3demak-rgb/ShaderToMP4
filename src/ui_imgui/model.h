@@ -50,6 +50,9 @@ struct Fields {
     char name[256] = "", chunk[16] = "30", pbo[8] = "3", shutter[16] = "0,5", variants[512] = "";
     int exists = 0, endAction = 0;  // exists : 0 ecraser, 1 numeroter, 2 ignorer ; endAction : 0 rien, 1 dossier, 2 veille
     bool metadata = true;
+    // Temps et boucle : boucle sans couture (0 aucune, 1 fondu, 2 aller-retour), fondu, courbe de temps, vitesse, echantillons de l'image fixe
+    int loopMode = 0;
+    char loopFade[16] = "1", timemap[256] = "", speed[16] = "", samples[16] = "";
 };
 
 struct LogLine {
@@ -104,7 +107,7 @@ public:
     void saveQueue() const;  // shaders pas encore rendus : queue.txt, retrouves a la reouverture
 
     // --- Actions ---
-    void startJobs(bool snapshot, int imageKind = 0, int cols = 0, int rows = 0, bool atPreview = false, bool selectedOnly = false, int batch = 0);  // snapshot : une image (0 PNG, 1 vignette, 2 planche cols x rows)
+    void startJobs(bool snapshot, int imageKind = 0, int cols = 0, int rows = 0, bool atPreview = false, bool selectedOnly = false, int batch = 0);  // snapshot : une image (0 PNG, 1 vignette, 2 planche cols x rows, 3 vignette intelligente, 4 recherche de boucle)
     void runPreview();
     void togglePause();
     // Apercu en temps reel (lecture) : demarre / arrete, suit le curseur et le shader selectionne
@@ -144,7 +147,7 @@ public:
 
 private:
     struct Event {
-        enum Kind { Log, Progress, File, Done, Preview, Download, DownloadDone } kind;
+        enum Kind { Log, Progress, File, Done, Preview, Download, DownloadDone, Loop } kind;  // Loop : speed = periode trouvee
         int idx = 0, w = 0, h = 0;
         long long n = 0, total = 0;
         double speed = 0, remaining = 0;

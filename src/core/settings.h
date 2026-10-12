@@ -24,6 +24,10 @@ struct Settings {
     int blur = 1;                   // flou de mouvement : sous-images par image (1 = aucun)
     double shutter = 0.5;           // ouverture de l obturateur, en fraction de la duree d une image
     double loop = 0;                // periode du shader (s) : la duree devient un multiple entier ; 0 = libre
+    std::string loopMode = "none";  // none | crossfade (fondu temporel vers le debut) | pingpong (le temps monte puis redescend) : boucle sans couture
+    double loopFade = 1.0;          // duree du fondu de la boucle crossfade (s)
+    std::string timemap;            // courbe de temps « 0:0;4:2;8:10 » (video:shader, en secondes) ; "" = temps reel
+    double speed = 1.0;             // vitesse du temps du shader (0.25 = ralenti x4) ; combinee a la courbe
     std::wstring audio;             // fichier son a mixer ("" = aucun)
     double fadein = 0, fadeout = 0; // fondus entree / sortie (s), image et son
     std::string encoder = "cpu";    // cpu | auto | nvenc | amf | qsv (encodage materiel)
@@ -60,6 +64,7 @@ struct Settings {
     int warmup = 0;               // images simulees avant la premiere (tampons chauffes, iFrame decale de N) ; 0 = aucune
     double chunk = 30;             // rendu par parties de N secondes, reprenables (0 = jamais)
     std::string report = "off";    // rapport de rendu a cote de la video : off | json | text
+    int samples = 1;               // image fixe (PNG) : moyenne de N echantillons independants du meme instant (iFrame different), 1..100000
 };
 
 bool sameSettings(const Settings& a, const Settings& b);

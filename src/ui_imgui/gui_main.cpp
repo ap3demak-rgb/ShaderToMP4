@@ -311,6 +311,7 @@ void drawShaders(App& a, float height) {
             if (ImGui::Selectable(T("ui.menu.png").c_str())) m.startJobs(true, 0);
             if (ImGui::Selectable(T("ui.menu.png_now").c_str())) m.startJobs(true, 0, 0, 0, true);
             if (ImGui::Selectable(T("ui.menu.thumb").c_str())) m.startJobs(true, 1);
+            if (ImGui::Selectable(T("ui.menu.thumb_smart").c_str())) m.startJobs(true, 3);
             ImGui::Separator();
             for (int i = 0; i < kSheetGridCount; i++)
                 if (ImGui::Selectable(TXF8("ui.menu.sheet", kSheetGrids[i][0], kSheetGrids[i][1]).c_str())) m.startJobs(true, 2, kSheetGrids[i][0], kSheetGrids[i][1]);
@@ -687,6 +688,24 @@ void drawOutput(App& a) {
     ImGui::SetNextItemWidth(width);
     ImGui::InputText("##shutter", f.shutter, sizeof(f.shutter));
     note("ui.output.hint_engine");
+
+    section("ui.output.sec_time");
+    row("ui.output.loopmode");
+    comboList("##loopmode", &f.loopMode, {T("ui.loopmode.none"), T("ui.loopmode.crossfade"), T("ui.loopmode.pingpong")}, width);
+    row("ui.output.loopfade");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##loopfade", f.loopFade, sizeof(f.loopFade));
+    row("ui.output.timemap");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##timemap", f.timemap, sizeof(f.timemap));
+    row("ui.output.speed");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##speed", f.speed, sizeof(f.speed));
+    row("ui.output.samples");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##samples", f.samples, sizeof(f.samples));
+    note("ui.output.hint_time");
+    if (button("ui.output.findloop_btn", "eye", 0, !a.model.running() && !a.model.paths.empty(), 0, "ui.output.hint_time")) a.model.startJobs(true, 4);
 }
 
 // Reglage impose par le shader selectionne : le champ est grise (il montre la valeur du shader)

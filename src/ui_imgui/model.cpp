@@ -9,6 +9,7 @@
 #include "core/queue.h"
 #include "core/shadertoy_import.h"
 #include "core/gl.h"
+#include "core/looptools.h"
 #include "core/outputopts.h"
 #include "core/i18n.h"
 #include "core/postfx.h"
@@ -148,6 +149,11 @@ void Model::fromSettings(const Settings& real) {
     copyTo(f.pbo, sizeof(f.pbo), U8(o.pbo));
     copyTo(f.shutter, sizeof(f.shutter), U8(o.shutter));
     copyTo(f.variants, sizeof(f.variants), U8(o.variants));
+    f.loopMode = o.loopMode;
+    copyTo(f.loopFade, sizeof(f.loopFade), U8(o.loopFade));
+    copyTo(f.timemap, sizeof(f.timemap), U8(o.timemap));
+    copyTo(f.speed, sizeof(f.speed), U8(o.speed));
+    copyTo(f.samples, sizeof(f.samples), U8(o.samples));
     f.exists = o.exists;
     f.endAction = o.endAction;
     f.metadata = o.metadata;
@@ -224,6 +230,11 @@ bool Model::toSettings(Settings& s, std::wstring& err) const {
     o.pbo = W(f.pbo);
     o.shutter = W(f.shutter);
     o.variants = W(f.variants);
+    o.loopMode = f.loopMode;
+    o.loopFade = W(f.loopFade);
+    o.timemap = W(f.timemap);
+    o.speed = W(f.speed);
+    o.samples = W(f.samples);
     o.exists = f.exists;
     o.endAction = f.endAction;
     o.metadata = f.metadata;
@@ -574,7 +585,7 @@ void Model::runJobsThread(std::vector<std::pair<int, std::wstring>> jobs) {
     H.log = postLog;
     H.cancel = &cancel_;
     H.pause = &pause_;
-    H.snapshot = snapshotRun_ && imageKind_ != 2;  // la planche-contact n'est pas une image fixe pour le moteur
+    H.snapshot = snapshotRun_ && imageKind_ <= 1;  // la planche-contact n'est pas une image fixe pour le moteur ; les kinds 3 et 4 ont leur propre chemin
     if (snapshotRun_ && imageKind_ == 1) H.thumbTime = -2;  // vignette : milieu de la plage
     if (snapshotRun_ && imageKind_ == 2) {
         H.sheetCols = sheetCols_;
@@ -617,7 +628,26 @@ void Model::runJobsThread(std::vector<std::pair<int, std::wstring>> jobs) {
         std::wstring e;
         Settings run = settingsForFile(runSettings_, exeDir, jobs[i].second);  // reglages generaux + ceux de ce shader
         if (snapshotRun_ && runStart_ >= 0) run.start = runStart_;
-        const Result r = convertFile(jobs[i].second, exeDir, run, H, e);
+        Result r = Result::Ok;
+        if (snapshotRun_ && imageKind_ == 3) {  // vignette intelligente : les trois images les plus riches
+            std::vector<std::wstring> made;
+            r = renderSmartThumbnails(jobs[i].second, exeDir, run, H, made, e) ? Result::Ok : cancel_ ? Result::Cancelled : Result::Failed;
+        } else if (snapshotRun_ && imageKind_ == 4) {  // recherche de la periode du shader, sans rendu
+            LoopFound lf;
+            if (findLoop(jobs[i].second, exeDir, run, 0, H, lf, e)) {
+                postLog(L"  " + describeLoop(lf));
+                if (lf.found && !lf.isStatic) {
+                    Event ev;
+                    ev.kind = Event::Loop;
+                    ev.speed = lf.period;
+                    post(std::move(ev));
+                }
+            } else {
+                r = cancel_ ? Result::Cancelled : Result::Failed;
+            }
+        } else {
+            r = convertFile(jobs[i].second, exeDir, run, H, e);
+        }
         if (r == Result::Failed) postLog(L"  " + TXF("log.error", e.c_str()));
         else if (r == Result::Cancelled) postLog(L"  " + TX("log.cancelled"));
         postFile(idx, r == Result::Ok ? ST_DONE : r == Result::Cancelled ? ST_CANCELLED : ST_FAILED);
@@ -705,8 +735,8 @@ void Model::startJobs(bool snapshot, int imageKind, int cols, int rows, bool atP
     previewRun = false;
     progress = 0;
     progressFailed = false;
-    if (snapshot) snapshotPath_ = outputPath(jobs[0].second, cur.outdir, imageKind == 1 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : L".png");
-    setStatus(TX(snapshot ? "status.rendering_image" : "status.rendering"));
+    if (snapshot) snapshotPath_ = imageKind == 4 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : L".png");
+    setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot ? "status.rendering_image" : "status.rendering"));
     worker_ = std::thread(&Model::runJobsThread, this, std::move(jobs));
 }
 
@@ -855,6 +885,9 @@ void Model::pump() {
                 prevH = e.h;
                 prevFresh = true;
                 break;
+            case Event::Loop:  // periode trouvee : elle devient la periode du reglage « Boucle » (la duree en sera un multiple entier)
+                if (!isForced("loop")) copyTo(f.loop, sizeof(f.loop), U8(i18n::num(std::round(e.speed * 1000.0) / 1000.0)));
+                break;
             case Event::Download:
                 progress = (float)e.idx / 100.0f;
                 setStatus(e.text);
@@ -896,7 +929,7 @@ void Model::pump() {
                 attention = true;
                 if (!fails && !cancelled && !snapshotRun_ && !paths.empty())  // action de fin facultative (config.ini : endaction)
                     performEndAction(base.endaction, outputFile(paths.back(), base, false), [this](const std::wstring& m) { appendLog(m); }, false);
-                if (snapshotRun_ && !fails && !cancelled && platform::fileExists(snapshotPath_)) platform::openWithDefault(snapshotPath_);
+                if (snapshotRun_ && !fails && !cancelled && !snapshotPath_.empty() && platform::fileExists(snapshotPath_)) platform::openWithDefault(snapshotPath_);
                 snapshotRun_ = false;
                 appendLog(L"");
                 break;

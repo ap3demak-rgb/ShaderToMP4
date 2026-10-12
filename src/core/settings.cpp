@@ -20,11 +20,11 @@ bool sameSettings(const Settings& a, const Settings& b) {
            a.start == b.start && a.crf == b.crf && a.preset == b.preset && a.codec == b.codec &&
            a.container == b.container && a.ss == b.ss && a.outdir == b.outdir &&
            a.bitrate == b.bitrate && a.color == b.color && a.blur == b.blur && a.shutter == b.shutter &&
-           a.loop == b.loop && a.audio == b.audio && a.fadein == b.fadein && a.fadeout == b.fadeout &&
+           a.loop == b.loop && a.loopMode == b.loopMode && a.loopFade == b.loopFade && a.timemap == b.timemap && a.speed == b.speed && a.audio == b.audio && a.fadein == b.fadein && a.fadeout == b.fadeout &&
            sameChannels(a, b) && formatMouseKeys(a.mouseKeys) == formatMouseKeys(b.mouseKeys) && formatKeyPresses(a.keys) == formatKeyPresses(b.keys) && a.date == b.date && a.variants == b.variants && a.gpu == b.gpu && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
            a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.paramSpecs == b.paramSpecs && a.post == b.post && a.lut == b.lut && a.alpha == b.alpha && a.hdr == b.hdr && a.hdrPeak == b.hdrPeak &&
            a.hdrFall == b.hdrFall && a.hdrWhite == b.hdrWhite && a.interp == b.interp && a.scale == b.scale && a.scaleFilter == b.scaleFilter &&
-           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report;
+           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report && a.samples == b.samples;
 }
 
 // Valeur complete d'une cle qui garde ses espaces (chemin, modele de nom) : le commentaire `      ; texte` que writeIni peut
@@ -71,6 +71,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else parseKeyPresses(v, s.keys);
         return;
     }
+    if (k == "timemap") { s.timemap = lower(v) == "off" ? "" : v; return; }  // « 0:0;4:2 » : sans espace dans un commentaire de shader
     if (k == "title") { s.title = W(v); return; }    // texte incruste (peut contenir des espaces)
     if (k == "credit") { s.credit = W(v); return; }
     if (k == "lut") { s.lut = lower(v) == "off" ? L"" : W(v); return; }  // chemin du fichier .cube (peut contenir des espaces)
@@ -98,6 +99,9 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "blur") s.blur = std::stoi(v);
         else if (k == "shutter") s.shutter = std::stod(v);
         else if (k == "loop") s.loop = std::stod(v);
+        else if (k == "loopmode") s.loopMode = (lower(v) == "crossfade" || lower(v) == "pingpong") ? lower(v) : "none";
+        else if (k == "loopfade") s.loopFade = std::max(0.05, std::min(600.0, std::stod(v)));
+        else if (k == "speed") s.speed = std::stod(v) == 0 ? 1.0 : std::max(-100.0, std::min(100.0, std::stod(v)));
         else if (k == "fadein") s.fadein = std::stod(v);
         else if (k == "fadeout") s.fadeout = std::stod(v);
         else if (k == "pbo") s.pbo = std::stoi(v);
@@ -152,6 +156,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "endaction") s.endaction = (lower(v) == "folder" || lower(v) == "sleep") ? lower(v) : "none";
         else if (k == "date") s.date = lower(v) == "off" ? "" : v;
         else if (k == "chunk") s.chunk = std::stod(v);
+        else if (k == "samples") s.samples = std::max(1, std::min(100000, std::stoi(v)));
         else if (k == "report") s.report = lower(v) == "json" ? "json" : (lower(v) == "text" || lower(v) == "txt") ? "text" : "off";
         else if (k == "encoder") {
             std::string c = lower(v);
@@ -173,7 +178,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
 
 bool isSettingKey(const std::string& key) {
     static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
-                                        "blur", "shutter", "loop", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
+                                        "blur", "shutter", "loop", "loopmode", "loopfade", "timemap", "speed", "samples", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
                                         "report", "scale", "scalefilter", "loudnorm", "title", "credit", "titledur", "chunk", "encoder", "color", "container",
                                         "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "key", "date", "endaction", "variant", "gpu"};
     for (const char* k : kKeys)
@@ -280,6 +285,12 @@ void writeIni(const std::wstring& path, const Settings& s) {
     put("blur", std::to_string(s.blur), "ini.blur");
     put("shutter", num(s.shutter), "ini.shutter");
     put("loop", num(s.loop), "ini.loop");
+    if (s.loopMode != "none") {
+        put("loopmode", s.loopMode, "ini.loopmode");
+        put("loopfade", num(s.loopFade), "ini.loopfade");
+    }
+    if (!s.timemap.empty()) put("timemap", s.timemap);  // pas de commentaire : la valeur garde sa forme exacte
+    if (s.speed != 1.0) put("speed", num(s.speed), "ini.speed");
     put("audio", U8(s.audio));
     put("fadein", num(s.fadein), "ini.fadein");
     put("fadeout", num(s.fadeout), "ini.fadeout");
@@ -309,6 +320,7 @@ void writeIni(const std::wstring& path, const Settings& s) {
     put("endaction", s.endaction, "ini.endaction");
     put("chunk", num(s.chunk), "ini.chunk");
     if (s.report != "off") put("report", s.report, "ini.report");
+    if (s.samples > 1) put("samples", std::to_string(s.samples), "ini.samples");
     put("warmup", std::to_string(s.warmup), "ini.warmup");
     // sortie : transparence, HDR, interpolation, mise a l'echelle, son, texte incruste (seulement ce qui est regle)
     if (s.alpha) put("alpha", "1");
