@@ -65,7 +65,9 @@ class ShaderProbe {
 public:
     ShaderProbe();
     ~ShaderProbe();
-    bool open(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& s, int maxSide, std::wstring& err);
+    // floatTarget : la cible est RGBA32F et frameAtF() rend les valeurs brutes du shader (NaN, infinis et valeurs au-dela de 1 comprises)
+    bool open(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& s, int maxSide, std::wstring& err, bool floatTarget = false);
+    bool frameAtF(double t, std::vector<float>& rgba);  // comme frameAt, en virgule flottante (sonde ouverte avec floatTarget)
     // Image au temps t du shader : width() x height() pixels RGBA, première ligne en bas (ordre OpenGL)
     bool frameAt(double t, std::vector<uint8_t>& rgba);
     int width() const;

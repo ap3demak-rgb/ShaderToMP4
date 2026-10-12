@@ -6,7 +6,9 @@
 #include "gl.h"
 #include "locate.h"
 #include "montage.h"
+#include "compare.h"
 #include "looptools.h"
+#include "quality.h"
 #include "timemap.h"
 #include "vr.h"
 #include "batches.h"
@@ -1746,6 +1748,157 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                         if (at(32, 32, 0) < 250 || at(32, 32, 1) > 5 || at(60, 32, 0) < 250 || at(1, 1, 0) > 3 || at(62, 62, 0) > 3) problem = bad("dome mask");
                     }
                     check("selftest.fmt_domeflat", problem);
+                }
+            }
+            // --- Controle qualite, comparaison, images de reference, estimation (phase 18) ---------------------------------------------------------------------
+            {
+                Hooks quiet;
+                quiet.log = [](const std::wstring&) {};
+                auto find = [](const CheckReport& r, const char* kind) {
+                    for (const CheckIssue& i : r.issues)
+                        if (i.kind == kind) return &i;
+                    return (const CheckIssue*)nullptr;
+                };
+                Settings cs = base("h264", "png", 8);
+                cs.fps = 30;
+                cs.duration = 3;
+                cs.width = 128;
+                cs.height = 72;
+                {  // flashs, flashs rouges, valeurs invalides (lignes, carte), images noires, scintillement, aliasing, rapports
+                    std::wstring problem;
+                    const std::wstring flashing = put(L"p18_flash.glsl", "void mainImage(out vec4 o, in vec2 p){ float k = step(0.5, fract(iTime * 5.0)); o = vec4(vec3(k), 1.0); }\n");
+                    const std::wstring gentle = put(L"p18_gentle.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(vec3(0.5 + 0.4 * sin(iTime * 3.0)), 1.0); }\n");
+                    const std::wstring redFlash = put(L"p18_red.glsl", "void mainImage(out vec4 o, in vec2 p){ float k = step(0.5, fract(iTime * 4.0)); o = vec4(k, 0.0, 0.0, 1.0) + vec4(0.0, 0.2, 0.2, 0.0) * (1.0 - k); }\n");
+                    const std::wstring broken = put(L"p18_nan.glsl", "void mainImage(out vec4 o, in vec2 p){\n    vec2 u = p / iResolution.xy;\n    float v = sqrt(u.x - 0.5);\n    o = vec4(v, u.y, 0.3, 1.0);\n}\n");
+                    const std::wstring dark = put(L"p18_black.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(0.0, 0.0, 0.0, 1.0); }\n");
+                    const std::wstring noisy = put(L"p18_noise.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(vec3(fract(sin(dot(p, vec2(12.9898, 78.233)) + iTime * 1000.0) * 43758.5453)), 1.0); }\n");
+                    const std::wstring fine = put(L"p18_fine.glsl", "void mainImage(out vec4 o, in vec2 p){ float k = mod(floor(p.x) + floor(p.y), 2.0); o = vec4(vec3(k), 1.0); }\n");
+                    std::wstring e;
+                    CheckReport r;
+                    CheckOptions all;
+                    if (!runChecks(flashing, exeDir, cs, all, quiet, r, e) || !find(r, "flash") || r.maxFlashes < 4) problem = bad("flash " + std::to_string(r.maxFlashes) + " " + U8(e));
+                    else if (!runChecks(gentle, exeDir, cs, all, quiet, r, e) || find(r, "flash") || find(r, "red_flash")) problem = bad("gentle shader flagged");
+                    else if (!runChecks(redFlash, exeDir, cs, all, quiet, r, e) || !find(r, "red_flash")) problem = bad("red flash missed");
+                    else if (!runChecks(broken, exeDir, cs, all, quiet, r, e) || !find(r, "nan") || r.suspectLines.empty() || r.mapFile.empty() || !fileExists(r.mapFile)) problem = bad("nan " + std::to_string(r.issues.size()));
+                    else if (std::none_of(r.suspectLines.begin(), r.suspectLines.end(), [](const std::wstring& l) { return l.find(L"3") != std::wstring::npos; })) problem = bad("suspect line");  // la racine carree est a la ligne 3
+                    else if (!runChecks(dark, exeDir, cs, all, quiet, r, e) || !find(r, "black") || find(r, "black")->severity < 1) problem = bad("black frames");
+                    else if (!runChecks(noisy, exeDir, cs, all, quiet, r, e) || !find(r, "flicker")) problem = bad("flicker");
+                    else if (!runChecks(fine, exeDir, cs, all, quiet, r, e) || !find(r, "aliasing")) problem = bad("aliasing");
+                    else {  // portabilite : demi-precision de l'horloge (shader qui lit iTime, duree au-dela de 17 s), rapports ecrits
+                        Settings longRun = cs;
+                        longRun.duration = 30;
+                        if (!runChecks(gentle, exeDir, longRun, all, quiet, r, e) || !find(r, "mediump") || find(r, "mediump")->severity != 0) problem = bad("mediump note");
+                        else {
+                            runChecks(redFlash, exeDir, cs, all, quiet, r, e);
+                            const std::wstring stem = outDir + sep + L"p18_report";
+                            std::string js, tx;
+                            if (!writeCheckReport(r, stem) || !readFile(stem + L".check.json", js) || !readFile(stem + L".check.txt", tx) || js.find("\"red_flash\"") == std::string::npos || tx.empty())
+                                problem = bad("report files");
+                        }
+                    }
+                    check("selftest.fmt_check", problem);
+                }
+                // avertissement avant le rendu : le journal le dit, le rendu a lieu
+                if (formatAvailable(ffmpeg, "h264", "png")) {
+                    std::wstring problem;
+                    const std::wstring flashing = put(L"p18_flash.glsl", "void mainImage(out vec4 o, in vec2 p){ float k = step(0.5, fract(iTime * 5.0)); o = vec4(vec3(k), 1.0); }\n");
+                    Settings st = seqSettings(1);
+                    st.precheck = true;
+                    std::wstring e;
+                    std::string logText;
+                    if (!renderOne(flashing, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else if (logText.find("! ") == std::string::npos) problem = bad("no warning in the log");
+                    else if (!platform::dirExists(outputFile(flashing, st, false).substr(0, outputFile(flashing, st, false).find_last_of(L"\\/")))) problem = bad("no output");
+                    check("selftest.fmt_precheck", problem);
+                }
+                {  // comparaison : identiques, petit ecart trouve, image de difference, video, tailles differentes
+                    std::wstring problem;
+                    const std::string code = "void mainImage(out vec4 o, in vec2 p){ vec2 u = p / iResolution.xy; o = vec4(u.x, u.y, 0.5 + 0.5 * sin(iTime), 1.0); }\n";
+                    const std::wstring a = put(L"p18_cmp_a.glsl", code), b = put(L"p18_cmp_b.glsl", code);
+                    const std::wstring c = put(L"p18_cmp_c.glsl", "void mainImage(out vec4 o, in vec2 p){ vec2 u = p / iResolution.xy; o = vec4(u.x, u.y, 0.5 + 0.5 * sin(iTime) + 0.02, 1.0); }\n");
+                    const std::wstring wide = put(L"p18_cmp_w.glsl", "// width=200\n" + code);
+                    Settings sp = base("h264", "png", 8);
+                    sp.width = 160;
+                    sp.height = 90;
+                    sp.duration = 4;
+                    CompareOptions co;
+                    CompareResult cr;
+                    std::wstring e;
+                    if (!compareShaders(a, b, exeDir, sp, co, quiet, cr, e) || !cr.identical || cr.different || cr.frames != 12) problem = bad("identical " + U8(e));
+                    else if (!compareShaders(a, c, exeDir, sp, co, quiet, cr, e) || cr.identical || !cr.different || cr.maxAbs < 3 || cr.maxAbs > 8 || cr.diffFile.empty() || !fileExists(cr.diffFile))
+                        problem = bad("small change " + std::to_string(cr.maxAbs));
+                    else {
+                        CompareOptions loose = co;
+                        loose.tolerance = 10;
+                        if (!compareShaders(a, c, exeDir, sp, loose, quiet, cr, e) || cr.different) problem = bad("tolerance");
+                    }
+                    if (problem.empty() && formatAvailable(ffmpeg, "h264", "mp4")) {  // video cote a cote : 1 s, deux fois la largeur
+                        CompareOptions v = co;
+                        v.video = "sbs";
+                        v.videoSeconds = 1;
+                        if (!compareShaders(a, c, exeDir, sp, v, quiet, cr, e) || cr.videoFile.empty()) problem = bad("video " + U8(e));
+                        else {
+                            const std::string info = probeInfo(ffmpeg, cr.videoFile);
+                            const double d = probeDuration(info);
+                            if (info.find("320x90") == std::string::npos || d < 0.9 || d > 1.2) problem = bad("video size or duration " + std::to_string(d));
+                        }
+                    }
+                    if (problem.empty() && (compareShaders(a, wide, exeDir, sp, co, quiet, cr, e) || e.empty())) problem = bad("size mismatch accepted");
+                    check("selftest.fmt_compare", problem);
+                }
+                {  // images de reference : enregistrees, verifiees, un changement est vu, une reference absente est signalee
+                    std::wstring problem;
+                    const std::wstring g = put(L"p18_gold.glsl", "void mainImage(out vec4 o, in vec2 p){ vec2 u = p / iResolution.xy; o = vec4(u.x, u.y, 0.5 + 0.5 * sin(iTime), 1.0); }\n");
+                    Settings sp = base("h264", "png", 8);
+                    sp.width = 160;
+                    sp.height = 90;
+                    sp.duration = 4;
+                    sp.outdir = outDir + sep + L"golden_case";
+                    platform::makeDir(sp.outdir);
+                    GoldenResult gr;
+                    std::wstring e;
+                    if (!goldenRecord(g, exeDir, sp, 5, quiet, gr, e) || !fileExists(gr.dir + L"/golden.txt") || !fileExists(gr.dir + L"/frame_4.png")) problem = bad("record " + U8(e));
+                    else if (!goldenVerify(g, exeDir, sp, 1.0, quiet, gr, e) || !gr.ok || gr.frames != 5) problem = bad("verify " + U8(e) + " " + std::to_string(gr.worstMean));
+                    else {
+                        put(L"p18_gold.glsl", "void mainImage(out vec4 o, in vec2 p){ vec2 u = p / iResolution.xy; o = vec4(u.x, u.y, 0.5 + 0.5 * sin(iTime) + 0.05, 1.0); }\n");
+                        if (!goldenVerify(g, exeDir, sp, 1.0, quiet, gr, e) || gr.ok || gr.worstMean < 3) problem = bad("change not seen " + std::to_string(gr.worstMean));
+                        else if (goldenVerify(put(L"p18_nogold.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(1.0); }\n"), exeDir, sp, 1.0, quiet, gr, e) || e.empty()) problem = bad("missing reference accepted");
+                    }
+                    check("selftest.fmt_golden", problem);
+                }
+                {  // estimation : bornes autour de la vitesse mesuree, alerte de lenteur avec propositions, mesure reelle sur un petit rendu
+                    std::wstring problem;
+                    Settings big = base("h264", "mp4", 8);
+                    big.width = 1920;
+                    big.height = 1080;
+                    big.fps = 60;
+                    big.ss = 3;
+                    big.blur = 4;
+                    Estimate est;
+                    est.frames = 600;
+                    est.videoSeconds = 10;
+                    const double slowSpeeds[3] = {0.2, 0.25, 0.3};
+                    estimateFromSpeeds(big, slowSpeeds, 3, est);
+                    if (!est.slow || est.suggestions.size() != 3 || !(est.secLow < est.secMid && est.secMid < est.secHigh) || std::fabs(est.secMid - 600 / 0.25) > 600) problem = bad("slow alert");
+                    else {
+                        const double fastSpeeds[3] = {500, 600, 700};
+                        Estimate quick;
+                        quick.frames = 600;
+                        quick.videoSeconds = 10;
+                        estimateFromSpeeds(big, fastSpeeds, 3, quick);
+                        if (quick.slow || !quick.suggestions.empty()) problem = bad("false alert");
+                    }
+                    if (problem.empty() && formatAvailable(ffmpeg, "h264", "mp4")) {
+                        const std::wstring circle = put(L"p18_est.glsl", "void mainImage(out vec4 o, in vec2 p){ vec2 u = p / iResolution.xy - 0.5; o = vec4(vec3(smoothstep(0.3, 0.29, length(u))), 1.0); }\n");
+                        Settings sp = base("h264", "mp4", 8);
+                        sp.duration = 20;
+                        sp.fps = 10;
+                        std::wstring e;
+                        if (!estimateRender(circle, exeDir, sp, quiet, est, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                        else if (est.frames != 200 || est.fpsMean <= 0 || est.secLow > est.secMid || est.secMid > est.secHigh || std::fabs(est.secMid - 200.0 / est.fpsMean) > 0.01) problem = bad("estimate bounds");
+                        else if (platform::dirExists(exeDir + L"estimate_tmp")) problem = bad("temporary folder left");
+                    }
+                    check("selftest.fmt_estimate", problem);
                 }
             }
         }

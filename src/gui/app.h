@@ -31,7 +31,8 @@ enum {
     WM_APP_DL,                // telechargement de ffmpeg : wParam = pourcentage, lParam = std::wstring* (message)
     WM_APP_DLDONE,            // fin du telechargement : wParam = 1 si ok, lParam = std::wstring* (erreur)
     WM_APP_MEDIA,             // images, sons ou videos deposes sur la fenetre : lParam = std::vector<std::wstring>* (a liberer)
-    WM_APP_LOOP               // periode trouvee par la recherche de boucle : lParam = double* (a liberer)
+    WM_APP_LOOP,              // periode trouvee par la recherche de boucle : lParam = double* (a liberer)
+    WM_APP_COMPARE            // les deux images « avant / apres edition » : lParam = CompareData* (a liberer)
 };
 constexpr int kPrevSteps = 10000;  // graduations du curseur d'apercu (de Debut a Debut + Duree)
 enum FileStatus { ST_PENDING, ST_RUNNING, ST_DONE, ST_FAILED, ST_CANCELLED };
@@ -40,6 +41,11 @@ struct PreviewData {
     int w, h;
     std::vector<uint8_t> bgra;  // haut en bas
     double t = -1;              // temps du shader si l'image vient du lecteur, sinon -1
+};
+
+struct CompareData {
+    int w, h;
+    std::vector<uint8_t> before, after;  // BGRA, haut en bas
 };
 
 struct ProgressInfo {
@@ -88,9 +94,18 @@ struct App {
     FpsMeter playMeter;         // cadence reelle de l'apercu en lecture
     double snapshotAt = -1;     // image PNG au temps de l'apercu : temps du shader (secondes), -1 = au temps de debut
     bool snapshotRun = false;  // le lot en cours est une image (PNG, vignette ou planche-contact) (UI uniquement)
-    int imageKind = 0;         // 0 image PNG au temps de début, 1 vignette de couverture, 2 planche-contact, 3 vignette intelligente, 4 recherche de boucle, 5 faces de cubemap
+    int imageKind = 0;         // 0 image PNG au temps de début, 1 vignette de couverture, 2 planche-contact, 3 vignette intelligente, 4 recherche de boucle, 5 faces de cubemap, 6 carte du cout, 7 controle qualite, 8 estimation du temps, 9 comparaison avant / apres edition
     int sheetCols = 0, sheetRows = 0;
     std::wstring snapshotPath;
+    // Comparaison de deux versions du shader (editeur) : textes envoyes au thread de rendu, puis rideau a glisser dans l'apercu
+    std::string cmpBeforeText, cmpAfterText;
+    struct Curtain {
+        bool on = false;
+        int w = 0, h = 0;
+        std::vector<uint8_t> before, after;
+        double x = 0.5;  // position du rideau (0 a 1) : avant a gauche, apres a droite
+        bool dragging = false;
+    } curtain;
     std::wstring exeDir;
     Settings base;
     std::vector<Override> forced;  // reglages imposes par le shader selectionne : affiches grises a la place de ceux de la fenetre

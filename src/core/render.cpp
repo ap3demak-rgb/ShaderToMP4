@@ -23,6 +23,7 @@
 #include "soundpass.h"
 #include "timemap.h"
 #include "looptools.h"
+#include "quality.h"
 #include "util.h"
 #include "app_info.h"
 #include "platform/platform.h"
@@ -388,6 +389,30 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         }
     }
 
+    if (videoMode && s.precheck && !H.cancelled()) {  // controle rapide avant le rendu : flashs et valeurs invalides, avertissements seulement
+        Hooks Hc = H;
+        Hc.progress = nullptr;
+        Hc.previewFrame = nullptr;
+        Hc.output = nullptr;
+        CheckOptions co;
+        co.alias = false;
+        co.portability = false;
+        co.flicker = false;
+        co.maxSamples = 600;
+        CheckReport cr;
+        std::wstring ce;
+        if (runChecks(shaderPath, exeDir, s, co, Hc, cr, ce)) {
+            for (const CheckIssue& i : cr.issues) H.log(L"  " + std::wstring(i.severity >= 1 ? L"! " : L"- ") + i.text);
+            std::wstring stem = outputFile(shaderPath, s, false);  // rapport a cote de la video : <nom>.check.json et .check.txt
+            const size_t dot = stem.find_last_of(L'.');
+            if (dot != std::wstring::npos && dot > stem.find_last_of(L"\\/") + 1) stem = stem.substr(0, dot);
+            if (!s.outdir.empty()) platform::makeDir(s.outdir);
+            writeCheckReport(cr, stem);
+            if (cr.issues.empty()) H.log(L"  " + TXF("log.check.none_short", cr.samples));
+        } else {
+            H.log(L"  " + TXF("log.check.failed", ce.c_str()));
+        }
+    }
     // --- Shader + FBO + PBO ---------------------------------------------------
     int vrMode = 0;  // mainVR : 360 equirectangulaire mono (1), stereo haut / bas (2), cote a cote (3), anaglyphe (4), fulldome (5), face de cubemap (6)
     if (H.cubeFace >= 0 && H.snapshot && !preview) {  // une face de cubemap : exige mainVR

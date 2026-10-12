@@ -9,7 +9,9 @@
 #include "core/queue.h"
 #include "core/shadertoy_import.h"
 #include "core/gl.h"
+#include "core/compare.h"
 #include "core/looptools.h"
+#include "core/quality.h"
 #include "core/outputopts.h"
 #include "core/i18n.h"
 #include "core/postfx.h"
@@ -154,6 +156,7 @@ void Model::fromSettings(const Settings& real) {
     copyTo(f.loopFade, sizeof(f.loopFade), U8(o.loopFade));
     copyTo(f.timemap, sizeof(f.timemap), U8(o.timemap));
     copyTo(f.speed, sizeof(f.speed), U8(o.speed));
+    f.precheck = o.precheck;
     f.stillFormat = o.stillFormat;
     f.audioFollow = o.audioFollow;
     copyTo(f.samples, sizeof(f.samples), U8(o.samples));
@@ -239,6 +242,7 @@ bool Model::toSettings(Settings& s, std::wstring& err) const {
     o.loopFade = W(f.loopFade);
     o.timemap = W(f.timemap);
     o.speed = W(f.speed);
+    o.precheck = f.precheck;
     o.stillFormat = f.stillFormat;
     o.audioFollow = f.audioFollow;
     o.samples = W(f.samples);
@@ -652,6 +656,49 @@ void Model::runJobsThread(std::vector<std::pair<int, std::wstring>> jobs) {
             r = renderSmartThumbnails(jobs[i].second, exeDir, run, H, made, e) ? Result::Ok : cancel_ ? Result::Cancelled : Result::Failed;
             if (r == Result::Ok)  // les trois propositions s'ouvrent ensemble : on choisit en les voyant
                 for (const std::wstring& f : made) platform::openWithDefault(f);
+        } else if (snapshotRun_ && imageKind_ == 7) {  // controle qualite : flashs, valeurs invalides, scintillement, aliasing, precision
+            CheckReport cr;
+            Hooks Hc = H;
+            Hc.previewFrame = [this](int w, int h, std::vector<uint8_t>&& px) {
+                Event ev;
+                ev.kind = Event::Preview;
+                ev.w = w;
+                ev.h = h;
+                ev.px = std::move(px);
+                post(std::move(ev));
+            };
+            if (runChecks(jobs[i].second, exeDir, run, CheckOptions(), Hc, cr, e)) {
+                const std::string text = checkReportText(cr);
+                size_t pos = 0;
+                while (pos < text.size()) {
+                    size_t nl = text.find('\n', pos);
+                    if (nl == std::string::npos) nl = text.size();
+                    if (nl > pos) postLog(L"  " + W(text.substr(pos, nl - pos)));
+                    pos = nl + 1;
+                }
+                if (writeCheckReport(cr, outputPath(jobs[i].second, run.outdir, L""))) postLog(L"  " + TXF("log.report_written", (outputPath(jobs[i].second, run.outdir, L"") + L".check.txt").c_str()));
+            } else {
+                r = cancel_ ? Result::Cancelled : Result::Failed;
+            }
+        } else if (snapshotRun_ && imageKind_ == 8) {  // estimation du temps de rendu
+            Estimate est;
+            if (estimateRender(jobs[i].second, exeDir, run, H, est, e)) {
+                const std::wstring text = describeEstimate(est);
+                size_t pos = 0;
+                while (pos < text.size()) {
+                    size_t nl = text.find(L'\n', pos);
+                    if (nl == std::wstring::npos) nl = text.size();
+                    if (nl > pos) postLog(L"  " + text.substr(pos, nl - pos));
+                    pos = nl + 1;
+                }
+            } else {
+                r = cancel_ ? Result::Cancelled : Result::Failed;
+            }
+        } else if (snapshotRun_ && imageKind_ == 9) {  // version avant / apres edition : une image de chaque
+            Event ev;
+            ev.kind = Event::Compare;
+            if (::compareVersions(jobs[i].second, cmpBefore_, cmpAfter_, exeDir, run, run.start, ev.px, ev.px2, ev.w, ev.h, e)) post(std::move(ev));
+            else r = Result::Failed;
         } else if (snapshotRun_ && imageKind_ == 6) {  // carte de chaleur du cout GPU par zone
             HeatStats hs;
             std::wstring heatFile;
@@ -696,6 +743,32 @@ void Model::runJobsThread(std::vector<std::pair<int, std::wstring>> jobs) {
     }
     destroyGLContext(gl);
     postDone();
+}
+
+void Model::composeCurtain() {
+    if (!curtain.on || curtain.w <= 0 || curtain.h <= 0) return;
+    prevPixels.resize(curtain.before.size());
+    const int cut = std::max(0, std::min(curtain.w - 1, (int)(curtain.x * curtain.w)));
+    for (int y = 0; y < curtain.h; y++)
+        for (int x = 0; x < curtain.w; x++) {
+            const size_t i = ((size_t)y * curtain.w + x) * 4;
+            const std::vector<uint8_t>& src = x < cut ? curtain.before : curtain.after;
+            prevPixels[i] = src[i];
+            prevPixels[i + 1] = src[i + 1];
+            prevPixels[i + 2] = src[i + 2];
+            prevPixels[i + 3] = 255;
+            if (x == cut) prevPixels[i] = prevPixels[i + 1] = prevPixels[i + 2] = 255;  // le trait du rideau
+        }
+    prevW = curtain.w;
+    prevH = curtain.h;
+    prevFresh = true;
+}
+
+void Model::compareVersions(const std::string& before, const std::string& after) {
+    if (running()) return;
+    cmpBefore_ = before;
+    cmpAfter_ = after;
+    startJobs(true, 9, 0, 0, true);
 }
 
 bool Model::ffmpegMissing() const { return !ffmpegPresent(exeDir); }
@@ -777,8 +850,8 @@ void Model::startJobs(bool snapshot, int imageKind, int cols, int rows, bool atP
     previewRun = false;
     progress = 0;
     progressFailed = false;
-    if (snapshot) snapshotPath_ = imageKind == 3 || imageKind == 4 || imageKind == 5 || imageKind == 6 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
-    setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot ? "status.rendering_image" : "status.rendering"));
+    if (snapshot) snapshotPath_ = imageKind == 3 || imageKind == 4 || imageKind == 5 || imageKind == 6 || imageKind >= 7 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
+    setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot && imageKind == 7 ? "status.checking" : snapshot && imageKind == 8 ? "status.estimating" : snapshot && imageKind == 9 ? "status.comparing" : snapshot ? "status.rendering_image" : "status.rendering"));
     worker_ = std::thread(&Model::runJobsThread, this, std::move(jobs));
 }
 
@@ -926,10 +999,21 @@ void Model::pump() {
                     playMeter.tick();
                     if (player_ && player_->running()) f.previewPos = (float)std::min(1.0, std::max(0.0, (e.speed - playStart_) / playDur_));
                 }
+                curtain.on = false;  // une autre image remplace la comparaison
                 prevPixels = std::move(e.px);
                 prevW = e.w;
                 prevH = e.h;
                 prevFresh = true;
+                break;
+            case Event::Compare:
+                curtain.on = true;
+                curtain.w = e.w;
+                curtain.h = e.h;
+                curtain.before = std::move(e.px);
+                curtain.after = std::move(e.px2);
+                curtain.x = 0.5f;
+                composeCurtain();
+                setStatus(TX("status.compare_curtain"));
                 break;
             case Event::Loop:  // periode trouvee : elle devient la periode du reglage « Boucle » (la duree en sera un multiple entier)
                 if (!isForced("loop")) copyTo(f.loop, sizeof(f.loop), U8(i18n::num(std::round(e.speed * 1000.0) / 1000.0)));

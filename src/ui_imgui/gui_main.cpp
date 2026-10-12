@@ -316,6 +316,9 @@ void drawShaders(App& a, float height) {
             if (ImGui::Selectable(T("ui.menu.cubefaces").c_str())) m.startJobs(true, 5);
             if (ImGui::Selectable(T("ui.menu.heatmap").c_str())) m.startJobs(true, 6);
             ImGui::Separator();
+            if (ImGui::Selectable(T("ui.menu.check").c_str())) m.startJobs(true, 7);
+            if (ImGui::Selectable(T("ui.menu.estimate").c_str())) m.startJobs(true, 8);
+            ImGui::Separator();
             for (int i = 0; i < kSheetGridCount; i++)
                 if (ImGui::Selectable(TXF8("ui.menu.sheet", kSheetGrids[i][0], kSheetGrids[i][1]).c_str())) m.startJobs(true, 2, kSheetGrids[i][0], kSheetGrids[i][1]);
             ImGui::EndPopup();
@@ -342,6 +345,15 @@ void drawPreview(App& a, float height) {
             const ImVec2 sz(m.prevW * sc, m.prevH * sc);
             const ImVec2 q(p.x + (box.x - sz.x) * 0.5f, p.y + (box.y - sz.y) * 0.5f);
             dl->AddImageRounded((ImTextureID)(intptr_t)a.previewTex, q, ImVec2(q.x + sz.x, q.y + sz.y), ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, S(4));
+            if (m.curtain.on) {  // rideau de la comparaison avant / apres : glisser dans l'image
+                ImGui::SetCursorScreenPos(q);
+                ImGui::InvisibleButton("##curtain", sz);
+                if (ImGui::IsItemActive()) {
+                    m.curtain.x = std::max(0.0f, std::min(1.0f, (ImGui::GetIO().MousePos.x - q.x) / sz.x));
+                    m.composeCurtain();
+                }
+                ImGui::SetCursorScreenPos(p);
+            }
         } else {
             const std::string t1 = T("ui.preview.none"), t2 = T("ui.preview.hint");
             dl->AddText(ImVec2(p.x + (box.x - ImGui::CalcTextSize(t1.c_str()).x) * 0.5f, p.y + box.y * 0.5f - ImGui::GetTextLineHeight()), col(pal::MUTED), t1.c_str());
@@ -687,6 +699,9 @@ void drawOutput(App& a) {
     row("ui.output.pbo");
     ImGui::SetNextItemWidth(width);
     ImGui::InputText("##pbo", f.pbo, sizeof(f.pbo));
+    row("ui.output.precheck");
+    int pc = f.precheck ? 1 : 0;
+    if (comboList("##precheck", &pc, offOn, width)) f.precheck = pc == 1;
     row("ui.output.shutter");
     ImGui::SetNextItemWidth(width);
     ImGui::InputText("##shutter", f.shutter, sizeof(f.shutter));

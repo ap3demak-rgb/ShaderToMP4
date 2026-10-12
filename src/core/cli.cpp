@@ -9,7 +9,9 @@
 #include "formats.h"
 #include "gl.h"
 #include "i18n.h"
+#include "compare.h"
 #include "looptools.h"
+#include "quality.h"
 #include "process.h"
 #include "vr.h"
 #include "render.h"
@@ -53,7 +55,7 @@ std::string num(double v) {
 
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
-    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
+    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_check", "cli.render.opt_compare", "cli.render.opt_golden", "cli.render.opt_dryrun", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
                           "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
@@ -68,6 +70,14 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
     std::vector<std::wstring> files;
     std::string progress = "none";  // none | text | json
     bool snapshot = false;
+    bool checkMode = false;      // --check[=flash,nan,...] : controle qualite sans rendu
+    std::string checkList;
+    bool compareMode = false;    // --compare a.glsl b.glsl : ecart entre deux shaders
+    std::string compareVideo;    // --compare-video=sbs|curtain|diff
+    double tolerance = -1;       // --tolerance=N : ecart maximal admis (0 a 255), -1 = valeur par defaut de chaque mode
+    int goldenMode = 0;          // --golden=record (1) | verify (2) : images de reference
+    bool dryRun = false;         // --dry-run : estimation du temps de rendu, rien n'est ecrit
+    bool checkWarned = false, diffFound = false;
     double thumbTime = -1;       // --thumb[=secondes] : vignette de couverture
     int sheetCols = 0, sheetRows = 0;  // --sheet=CxR : planche-contact
     bool bestThumb = false;      // --png=best / --thumb=best : vignette intelligente (les trois images les plus riches)
@@ -98,6 +108,25 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         if (key == "png") {
             snapshot = true;
             bestThumb = lower(val) == "best";
+        } else if (key == "check") {
+            checkMode = true;
+            checkList = val;
+            CheckOptions probeOpt;
+            if (!parseCheckList(val, probeOpt)) return fail(TXF("cli.unknown_option", W(arg).c_str()));
+        } else if (key == "compare") {
+            compareMode = true;
+        } else if (key == "compare-video") {
+            compareVideo = lower(val);
+            if (compareVideo != "sbs" && compareVideo != "curtain" && compareVideo != "diff") return fail(TXF("cli.unknown_option", W(arg).c_str()));
+        } else if (key == "tolerance") {
+            tolerance = atof(val.c_str());
+        } else if (key == "golden") {
+            const std::string g = lower(val);
+            if (g == "record" || g == "enregistrer") goldenMode = 1;
+            else if (g == "verify" || g == "verifier" || g == "vérifier") goldenMode = 2;
+            else return fail(TXF("cli.unknown_option", W(arg).c_str()));
+        } else if (key == "dry-run") {
+            dryRun = true;
         } else if (key == "heatmap") {
             heatmap = true;
             if (!val.empty()) {
@@ -198,7 +227,36 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         return kExitNoGL;
     }
     const bool json = progress == "json";
+    if (compareMode) {  // --compare a.glsl b.glsl : pas de rendu
+        if (files.size() != 2) {
+            destroyGLContext(gl);
+            return fail(TX("cli.compare_two"));
+        }
+        CompareOptions co;
+        if (tolerance >= 0) co.tolerance = tolerance;
+        co.video = compareVideo;
+        Hooks Hc;
+        Hc.log = [&](const std::wstring& s) { out(U8(s) + "\n", false); };
+        CompareResult cr;
+        std::wstring ce;
+        const bool done = compareShaders(files[0], files[1], exeDir, base, co, Hc, cr, ce);
+        destroyGLContext(gl);
+        if (!done) {
+            out(U8(TXF("log.error", ce.c_str())) + "\n", true);
+            return kExitRenderFailed;
+        }
+        if (json) {
+            out("{\"event\":\"compare\",\"frames\":" + std::to_string(cr.frames) + ",\"mean\":" + num(cr.meanAbs) + ",\"max\":" + num(cr.maxAbs) + ",\"psnr\":" + num(cr.psnr) +
+                    ",\"identical\":" + (cr.identical ? "true" : "false") + ",\"different\":" + (cr.different ? "true" : "false") + "}\n", false);
+        } else {
+            out(U8(describeCompare(cr)) + "\n", false);
+            if (!cr.diffFile.empty()) out(U8(TXF("log.compare.diff_file", cr.diffFile.c_str())) + "\n", false);
+            if (!cr.videoFile.empty()) out(U8(TXF("log.compare.video_file", cr.videoFile.c_str())) + "\n", false);
+        }
+        return cr.different ? kExitDiff : kExitOk;
+    }
     int ok = 0, failed = 0, index = 0, lastDecile = -1;
+    double queueLow = 0, queueMid = 0, queueHigh = 0;  // --dry-run : la file entiere
     std::wstring lastOutput;
     auto renderOne = [&](const std::wstring& f, size_t count, const Settings& cfg) -> bool {
         index++;
@@ -229,6 +287,69 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
                             std::to_string(count) + "}\n", false);
         else out(U8(f) + "\n", false);
         std::wstring e;
+        if (checkMode) {  // controle qualite sans rendu
+            CheckOptions co;
+            parseCheckList(checkList, co);
+            CheckReport cr;
+            if (!runChecks(f, exeDir, cfg, co, H, cr, e)) {
+                failed++;
+                if (json) out("{\"event\":\"error\",\"file\":" + jsonString(U8(f)) + ",\"message\":" + jsonString(U8(e)) + "}\n", false);
+                else out(U8(TXF("log.error", e.c_str())) + "\n", true);
+                return false;
+            }
+            writeCheckReport(cr, outputPath(f, cfg.outdir, L""));
+            if (cr.warnings() > 0) checkWarned = true;
+            if (json) {
+                std::string kinds;
+                for (const CheckIssue& i : cr.issues) kinds += (kinds.empty() ? "" : ",") + jsonString(i.kind);
+                out("{\"event\":\"check\",\"file\":" + jsonString(U8(f)) + ",\"warnings\":" + std::to_string(cr.warnings()) + ",\"issues\":[" + kinds + "]}\n", false);
+            } else {
+                out(checkReportText(cr), false);
+            }
+            ok++;
+            return true;
+        }
+        if (goldenMode) {  // images de reference de ses propres shaders
+            GoldenResult gr;
+            bool done;
+            if (goldenMode == 1) {
+                done = goldenRecord(f, exeDir, cfg, 5, H, gr, e);
+                if (done) out(U8(L"  " + TXF("log.golden.recorded", gr.frames, gr.dir.c_str())) + "\n", false);
+            } else {
+                done = goldenVerify(f, exeDir, cfg, tolerance >= 0 ? tolerance : 1.0, H, gr, e);
+                if (done) {
+                    if (gr.ok) out(U8(L"  " + TXF("log.golden.ok", gr.frames, W(num(gr.worstMean)).c_str())) + "\n", false);
+                    else {
+                        diffFound = true;
+                        out(U8(L"  " + TXF("log.golden.differs", gr.worstIndex + 1, gr.worstTime, W(num(gr.worstMean)).c_str(), tolerance >= 0 ? tolerance : 1.0)) + "\n", false);
+                    }
+                }
+            }
+            if (!done) {
+                failed++;
+                if (json) out("{\"event\":\"error\",\"file\":" + jsonString(U8(f)) + ",\"message\":" + jsonString(U8(e)) + "}\n", false);
+                else out(U8(TXF("log.error", e.c_str())) + "\n", true);
+                return false;
+            }
+            ok++;
+            return true;
+        }
+        if (dryRun) {  // estimation du temps de rendu
+            Estimate est;
+            if (!estimateRender(f, exeDir, cfg, H, est, e)) {
+                failed++;
+                if (json) out("{\"event\":\"error\",\"file\":" + jsonString(U8(f)) + ",\"message\":" + jsonString(U8(e)) + "}\n", false);
+                else out(U8(TXF("log.error", e.c_str())) + "\n", true);
+                return false;
+            }
+            queueLow += est.secLow;
+            queueMid += est.secMid;
+            queueHigh += est.secHigh;
+            if (json) out("{\"event\":\"estimate\",\"file\":" + jsonString(U8(f)) + ",\"seconds\":" + num(est.secMid) + ",\"low\":" + num(est.secLow) + ",\"high\":" + num(est.secHigh) + ",\"fps\":" + num(est.fpsMean) + ",\"slow\":" + (est.slow ? "true" : "false") + "}\n", false);
+            else out(U8(L"  " + describeEstimate(est)) + "\n", false);
+            ok++;
+            return true;
+        }
         if (findLoopMode) {  // pas de rendu : la periode du shader
             LoopFound lf;
             if (!findLoop(f, exeDir, cfg, findLoopMax, H, lf, e)) {
@@ -395,11 +516,15 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
             if (watchCount == 0 || rendered < watchCount) platform::sleepMs(1000);
         }
     }
-    if (!failed && watchDir.empty() && !files.empty())  // action de fin facultative (endaction=folder|sleep)
+    if (dryRun && files.size() > 1) {
+        if (json) out("{\"event\":\"estimate_total\",\"seconds\":" + num(queueMid) + ",\"low\":" + num(queueLow) + ",\"high\":" + num(queueHigh) + "}\n", false);
+        else out(U8(TXF("log.estimate.total", formatDuration(queueMid).c_str(), formatDuration(queueLow).c_str(), formatDuration(queueHigh).c_str())) + "\n", false);
+    }
+    if (!failed && watchDir.empty() && !files.empty() && !checkMode && !goldenMode && !dryRun)  // action de fin facultative (endaction=folder|sleep)
         performEndAction(base.endaction, lastOutput, [&](const std::wstring& m) { out(U8(m) + "\n", false); }, true);
     destroyGLContext(gl);
     if (json) out("{\"event\":\"end\",\"ok\":" + std::to_string(ok) + ",\"failed\":" + std::to_string(failed) + "}\n", false);
-    return failed ? kExitRenderFailed : kExitOk;
+    return failed ? kExitRenderFailed : checkWarned ? kExitCheckWarn : diffFound ? kExitDiff : kExitOk;
 }
 
 // ---------------------------------------------------------------------------

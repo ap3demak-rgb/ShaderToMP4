@@ -138,6 +138,18 @@ bool findLoop(const std::wstring& shaderPath, const std::wstring& exeDir, const 
     return true;
 }
 
+bool writePngRgb(const std::wstring& ffmpeg, const std::vector<uint8_t>& rgb, int w, int h, const std::wstring& path) {
+    const std::wstring cmd = L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -y -f rawvideo -pix_fmt rgb24 -video_size " + std::to_wstring(w) + L"x" + std::to_wstring(h) +
+                             L" -i - -frames:v 1 \"" + path + L"\"";
+    auto proc = platform::Process::start(platform::splitCommand(cmd), true, true);
+    if (!proc) return false;
+    const bool wrote = proc->writeStdin(rgb.data(), rgb.size());
+    proc->closeStdin();
+    char drain[1024];
+    while (proc->readOutput(drain, sizeof(drain)) > 0) {}
+    return wrote && proc->wait() == 0;
+}
+
 std::wstring describeLoop(const LoopFound& lf) {
     if (lf.isStatic) return TX("log.loop_static");
     if (lf.found) return TXF(lf.quality == 2 ? "log.loop_found" : "log.loop_found_approx", lf.period, lf.distance, lf.period, lf.period);

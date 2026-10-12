@@ -24,7 +24,7 @@ bool sameSettings(const Settings& a, const Settings& b) {
            sameChannels(a, b) && formatMouseKeys(a.mouseKeys) == formatMouseKeys(b.mouseKeys) && formatKeyPresses(a.keys) == formatKeyPresses(b.keys) && a.date == b.date && a.variants == b.variants && a.gpu == b.gpu && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
            a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.paramSpecs == b.paramSpecs && a.post == b.post && a.lut == b.lut && a.alpha == b.alpha && a.hdr == b.hdr && a.hdrPeak == b.hdrPeak &&
            a.hdrFall == b.hdrFall && a.hdrWhite == b.hdrWhite && a.interp == b.interp && a.scale == b.scale && a.scaleFilter == b.scaleFilter &&
-           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report && a.samples == b.samples && a.stillFormat == b.stillFormat && a.tile == b.tile && a.dpi == b.dpi;
+           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report && a.samples == b.samples && a.precheck == b.precheck && a.stillFormat == b.stillFormat && a.tile == b.tile && a.dpi == b.dpi;
 }
 
 // Valeur complete d'une cle qui garde ses espaces (chemin, modele de nom) : le commentaire `      ; texte` que writeIni peut
@@ -158,6 +158,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "date") s.date = lower(v) == "off" ? "" : v;
         else if (k == "chunk") s.chunk = std::stod(v);
         else if (k == "samples") s.samples = std::max(1, std::min(100000, std::stoi(v)));
+        else if (k == "precheck") s.precheck = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
         else if (k == "stillformat") s.stillFormat = (lower(v) == "tiff" || lower(v) == "tif") ? "tiff" : "png";
         else if (k == "tile") s.tile = std::stoi(v) <= 0 ? 0 : std::max(64, std::min(16384, std::stoi(v)));
         else if (k == "printdpi") s.dpi = std::max(0, std::min(10000, std::stoi(v)));
@@ -182,7 +183,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
 
 bool isSettingKey(const std::string& key) {
     static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
-                                        "blur", "shutter", "loop", "loopmode", "loopfade", "timemap", "speed", "audiofollow", "samples", "stillformat", "tile", "printdpi", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
+                                        "blur", "shutter", "loop", "loopmode", "loopfade", "timemap", "speed", "audiofollow", "samples", "precheck", "stillformat", "tile", "printdpi", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
                                         "report", "scale", "scalefilter", "loudnorm", "title", "credit", "titledur", "chunk", "encoder", "color", "container",
                                         "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "key", "date", "endaction", "variant", "gpu"};
     for (const char* k : kKeys)
@@ -326,6 +327,7 @@ void writeIni(const std::wstring& path, const Settings& s) {
     put("chunk", num(s.chunk), "ini.chunk");
     if (s.report != "off") put("report", s.report, "ini.report");
     if (s.samples > 1) put("samples", std::to_string(s.samples), "ini.samples");
+    if (s.precheck) put("precheck", "1", "ini.precheck");
     if (s.stillFormat != "png") put("stillformat", s.stillFormat, "ini.stillformat");
     if (s.tile > 0) put("tile", std::to_string(s.tile), "ini.tile");
     if (s.dpi > 0) put("printdpi", std::to_string(s.dpi), "ini.dpi");

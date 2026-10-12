@@ -299,6 +299,77 @@ void paintMain(HWND hw) {
     EndPaint(hw, &ps);
 }
 
+// Image d'apercu : un DIB 32 bits (haut en bas) devient l'image affichee
+static void setPreviewBitmap(int w, int h, const uint8_t* bgra, size_t bytes) {
+    BITMAPINFO bi{};
+    bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+    bi.bmiHeader.biWidth = w;
+    bi.bmiHeader.biHeight = -h;  // haut en bas
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    HBITMAP b = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!b || !bits) return;
+    memcpy(bits, bgra, bytes);
+    if (g.prevBmp) DeleteObject(g.prevBmp);
+    g.prevBmp = b;
+    g.prevW = w;
+    g.prevH = h;
+    InvalidateRect(g.preview, nullptr, FALSE);
+}
+
+// Rideau : l'image d'avant a gauche du trait, celle d'apres a droite
+static void composeCurtain() {
+    auto& c = g.curtain;
+    if (!c.on || c.w <= 0 || c.h <= 0) return;
+    std::vector<uint8_t> out(c.before.size());
+    const int cut = std::max(0, std::min(c.w - 1, (int)(c.x * c.w)));
+    for (int y = 0; y < c.h; y++)
+        for (int x = 0; x < c.w; x++) {
+            const size_t i = ((size_t)y * c.w + x) * 4;
+            const std::vector<uint8_t>& src = x < cut ? c.before : c.after;
+            out[i] = src[i];
+            out[i + 1] = src[i + 1];
+            out[i + 2] = src[i + 2];
+            out[i + 3] = 255;
+            if (x == cut) out[i] = out[i + 1] = out[i + 2] = 255;  // le trait du rideau
+        }
+    setPreviewBitmap(c.w, c.h, out.data(), out.size());
+}
+
+// Souris sur l'apercu : tant que la comparaison est affichee, glisser deplace le rideau
+static LRESULT CALLBACK curtainProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    auto place = [&](int mx) {
+        RECT r;
+        GetClientRect(h, &r);
+        const int cw = r.right - r.left, ch = r.bottom - r.top, in = S(4);
+        const double sc = std::min((double)(cw - 2 * in) / std::max(1, g.prevW), (double)(ch - 2 * in) / std::max(1, g.prevH));
+        const int dw = std::max(1, (int)(g.prevW * sc)), left = (cw - dw) / 2;
+        g.curtain.x = std::max(0.0, std::min(1.0, (double)(mx - left) / dw));
+        composeCurtain();
+    };
+    if (g.curtain.on) {
+        if (msg == WM_NCHITTEST) return HTCLIENT;
+        if (msg == WM_LBUTTONDOWN) {
+            g.curtain.dragging = true;
+            SetCapture(h);
+            place((int)(short)LOWORD(lp));
+            return 0;
+        }
+        if (msg == WM_MOUSEMOVE && g.curtain.dragging) {
+            place((int)(short)LOWORD(lp));
+            return 0;
+        }
+        if (msg == WM_LBUTTONUP && g.curtain.dragging) {
+            g.curtain.dragging = false;
+            ReleaseCapture();
+            return 0;
+        }
+    }
+    return DefSubclassProc(h, msg, wp, lp);
+}
+
 void drawPreview(const DRAWITEMSTRUCT* d) {
     RECT r = d->rcItem;
     int cw = r.right - r.left, ch = r.bottom - r.top;
@@ -512,6 +583,7 @@ void createControls(HWND hw) {
     for (int i = 0; i < 5; i++) g.chips[i] = button(chips[i].key, chips[i].id, chips[i].icon, BtnStyle::Chip, CARD);
 
     g.preview = mk(hw, L"STATIC", L"", SS_OWNERDRAW, ID_PREVIEW);
+    SetWindowSubclass(g.preview, curtainProc, 1, 0);
     g.trkPrev = mk(hw, L"STSlider", L"", WS_TABSTOP, ID_PREVTRK);
     SendMessageW(g.trkPrev, TBM_SETRANGE, TRUE, MAKELPARAM(0, kPrevSteps));
     g.lblPrev = mk(hw, L"STATIC", L"", SS_LEFT | SS_NOPREFIX, 0);
@@ -850,24 +922,22 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                     }
                 }
             }
-            BITMAPINFO bi{};
-            bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
-            bi.bmiHeader.biWidth = p->w;
-            bi.bmiHeader.biHeight = -p->h;  // haut en bas
-            bi.bmiHeader.biPlanes = 1;
-            bi.bmiHeader.biBitCount = 32;
-            bi.bmiHeader.biCompression = BI_RGB;
-            void* bits = nullptr;
-            HBITMAP b = CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
-            if (b && bits) {
-                memcpy(bits, p->bgra.data(), p->bgra.size());
-                if (g.prevBmp) DeleteObject(g.prevBmp);
-                g.prevBmp = b;
-                g.prevW = p->w;
-                g.prevH = p->h;
-                InvalidateRect(g.preview, nullptr, FALSE);
-            }
+            g.curtain.on = false;  // une autre image remplace la comparaison
+            setPreviewBitmap(p->w, p->h, p->bgra.data(), p->bgra.size());
             delete p;
+            return 0;
+        }
+        case WM_APP_COMPARE: {  // avant / apres edition : le rideau est au milieu, on le glisse dans l'apercu
+            CompareData* cd = (CompareData*)lp;
+            g.curtain.on = true;
+            g.curtain.w = cd->w;
+            g.curtain.h = cd->h;
+            g.curtain.before = std::move(cd->before);
+            g.curtain.after = std::move(cd->after);
+            g.curtain.x = 0.5;
+            composeCurtain();
+            setStatus(TX("status.compare_curtain"));
+            delete cd;
             return 0;
         }
         case WM_SIZE:

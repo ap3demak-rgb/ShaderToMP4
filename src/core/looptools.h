@@ -33,6 +33,9 @@ struct LoopFound {
 bool findLoop(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& s, double maxPeriod, const Hooks& H, LoopFound& out,
               std::wstring& err);
 
+// Ecrit une image RGB (premiere ligne en haut, 3 octets par pixel) en PNG par ffmpeg. Faux si ffmpeg echoue.
+bool writePngRgb(const std::wstring& ffmpeg, const std::vector<uint8_t>& rgb, int w, int h, const std::wstring& path);
+
 // Phrase localisee qui resume le resultat (periode trouvee et reglages a utiliser, image fixe, ou aucune boucle)
 std::wstring describeLoop(const LoopFound& lf);
 

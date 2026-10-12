@@ -23,7 +23,7 @@ namespace {
 enum {
     ID_OD_CLOSE = 900, ID_OD_ALPHA, ID_OD_HDR, ID_OD_PEAK, ID_OD_FALL, ID_OD_WHITE, ID_OD_SCALE, ID_OD_FILTER, ID_OD_INTERP, ID_OD_LOUD,
     ID_OD_TITLE, ID_OD_CREDIT, ID_OD_TITLEDUR, ID_OD_NEXT, ID_OD_NAME, ID_OD_EXISTS, ID_OD_META, ID_OD_ENDACT, ID_OD_CHUNK, ID_OD_PBO, ID_OD_SHUTTER, ID_OD_VARIANTS,
-    ID_OD_LOOPMODE, ID_OD_LOOPFADE, ID_OD_TIMEMAP, ID_OD_SPEED, ID_OD_SAMPLES, ID_OD_TILE, ID_OD_DPI, ID_OD_FINDLOOP, ID_OD_TIME, ID_OD_CURVE, ID_OD_AUDIOF, ID_OD_STILLF
+    ID_OD_LOOPMODE, ID_OD_LOOPFADE, ID_OD_TIMEMAP, ID_OD_SPEED, ID_OD_SAMPLES, ID_OD_TILE, ID_OD_DPI, ID_OD_FINDLOOP, ID_OD_TIME, ID_OD_CURVE, ID_OD_AUDIOF, ID_OD_STILLF, ID_OD_PRECHECK
 };
 
 struct Dlg {
@@ -31,7 +31,7 @@ struct Dlg {
     HWND alpha = nullptr, hdr = nullptr, peak = nullptr, fall = nullptr, white = nullptr, scale = nullptr, filter = nullptr, interp = nullptr,
          loud = nullptr, title = nullptr, credit = nullptr, titleDur = nullptr;
     HWND name = nullptr, exists = nullptr, meta = nullptr, endAct = nullptr, chunk = nullptr, pbo = nullptr, shutter = nullptr, variants = nullptr;
-    HWND loopMode = nullptr, loopFade = nullptr, timemap = nullptr, speed = nullptr, samples = nullptr, tile = nullptr, dpiEdit = nullptr, audioF = nullptr, curve = nullptr, stillF = nullptr;
+    HWND loopMode = nullptr, loopFade = nullptr, timemap = nullptr, speed = nullptr, samples = nullptr, tile = nullptr, dpiEdit = nullptr, audioF = nullptr, curve = nullptr, stillF = nullptr, precheck = nullptr;
     std::vector<HWND> headers;  // titres de section (en couleur d'accentuation)
     UINT dpi = 96;
     int page = 0;   // 0 sortie, 1 avance, 2 temps et boucle
@@ -119,6 +119,7 @@ OutputFields readFields() {
         f.pbo = txt(D.pbo);
         f.shutter = txt(D.shutter);
         f.variants = txt(D.variants);
+        f.precheck = SendMessageW(D.precheck, CB_GETCURSEL, 0, 0) == 1;
     } else {
         f.loopMode = std::max(0, (int)SendMessageW(D.loopMode, CB_GETCURSEL, 0, 0));
         f.audioFollow = SendMessageW(D.audioF, CB_GETCURSEL, 0, 0) == 1;
@@ -413,6 +414,8 @@ int runPage(HWND parent, int page) {
         D.pbo = edit(ID_OD_PBO, f.pbo, rf, 270, 118);
         label(TX("ui.output.shutter"), lx, 302, 130);
         D.shutter = edit(ID_OD_SHUTTER, f.shutter, fx, 302, 150);
+        label(TX("ui.output.precheck"), rx, 302, 130);
+        D.precheck = combo(ID_OD_PRECHECK, offOn, f.precheck ? 1 : 0, rf, 302, 118);
         hint(TX("ui.output.hint_engine"), 338, 50);
     }
 
@@ -426,7 +429,8 @@ int runPage(HWND parent, int page) {
     } else if (page == 1) {
         const struct { HWND c; const char* key; } names[] = {
             {D.name, "ui.output.name"}, {D.exists, "ui.output.exists"}, {D.meta, "ui.output.metadata"}, {D.endAct, "ui.output.endaction"},
-            {D.chunk, "ui.output.chunk"}, {D.pbo, "ui.output.pbo"}, {D.shutter, "ui.output.shutter"}, {D.variants, "ui.output.variants"}};
+            {D.chunk, "ui.output.chunk"}, {D.pbo, "ui.output.pbo"}, {D.shutter, "ui.output.shutter"}, {D.variants, "ui.output.variants"},
+            {D.precheck, "ui.output.precheck"}};
         for (const auto& n : names) setAccessibleName(n.c, n.key);
     } else {
         const struct { HWND c; const char* key; } names[] = {
