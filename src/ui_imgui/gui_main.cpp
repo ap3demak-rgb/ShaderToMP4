@@ -725,6 +725,8 @@ void drawOutput(App& a) {
     row("ui.output.samples");
     ImGui::SetNextItemWidth(width);
     ImGui::InputText("##samples", f.samples, sizeof(f.samples));
+    row("ui.output.stillformat");
+    comboList("##stillformat", &f.stillFormat, {"PNG", "TIFF"}, width);
     row("ui.output.tile");
     ImGui::SetNextItemWidth(width);
     ImGui::InputText("##tile", f.tile, sizeof(f.tile));

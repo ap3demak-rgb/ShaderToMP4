@@ -16,6 +16,10 @@ class BufferPasses {
 public:
     // Cherche les fichiers des passes. read : lit et normalise un fichier de shader.
     void discover(const std::wstring& shaderPath, const std::function<bool(const std::wstring&, std::string&)>& read, const Hooks& H);
+    // Mesure du temps GPU de chaque passe (A a D, puis Cubemap A) : quand timePasses est vrai, step() vide le GPU avant et apres chaque passe et
+    // ajoute la duree (ms) a passMs ; a remettre a zero par l'appelant
+    bool timePasses = false;
+    double passMs[5] = {0, 0, 0, 0, 0};
     bool any() const { return used_[0] || used_[1] || used_[2] || used_[3] || cubeUsed_; }
     // Declarations GLSL des parametres (uniforms personnalises) ajoutees a chaque programme compile par build().
     void setPreamble(const std::string& preamble) { preamble_ = preamble; }

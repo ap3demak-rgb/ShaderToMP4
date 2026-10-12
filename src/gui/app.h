@@ -45,6 +45,7 @@ struct PreviewData {
 struct ProgressInfo {
     long long n, total;
     double speed, remaining;
+    double gpuImage = 0, gpuBuffers = 0, gpuPost = 0;  // temps GPU moyens par image (ms), 0 = pas encore mesures
 };
 
 struct App {

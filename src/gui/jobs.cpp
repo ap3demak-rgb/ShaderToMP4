@@ -18,6 +18,9 @@ static void postLog(const std::wstring& s) {
     PostMessageW(g.wnd, WM_APP_LOG, 0, (LPARAM) new std::wstring(s));
 }
 
+// Temps GPU moyens par image (image, tampons, post-traitement) mesures pendant le rendu, montres dans la barre d'etat
+static std::atomic<double> gGpu[3];
+
 // Thread de rendu : cree son propre contexte OpenGL, traite le lot, le detruit.
 static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
     GLContext gl;
@@ -63,8 +66,14 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
         }
         PostMessageW(g.wnd, WM_APP_FILE, (WPARAM)idx, ST_RUNNING);
         postLog(wfmt(L"[%d/%d] ", (int)i + 1, (int)jobs.size()) + jobs[i].second);
+        gGpu[0] = gGpu[1] = gGpu[2] = 0;
+        H.gpuTimes = [](double image, double buffers, double post) {
+            gGpu[0] = image;
+            gGpu[1] = buffers;
+            gGpu[2] = post;
+        };
         H.progress = [idx](long long n, long long total, double speed, double remaining) {
-            PostMessageW(g.wnd, WM_APP_PROGRESS, (WPARAM)idx, (LPARAM) new ProgressInfo{n, total, speed, remaining});
+            PostMessageW(g.wnd, WM_APP_PROGRESS, (WPARAM)idx, (LPARAM) new ProgressInfo{n, total, speed, remaining, gGpu[0].load(), gGpu[1].load(), gGpu[2].load()});
         };
         std::wstring e;
         Settings run = settingsForFile(g.runBase, g.exeDir, jobs[i].second);  // reglages generaux + ceux de ce shader
@@ -78,7 +87,9 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
         } else if (g.snapshotRun && g.imageKind == 6) {  // carte de chaleur du cout GPU par zone
             HeatStats hs;
             std::wstring heatFile;
-            if (renderHeatmap(jobs[i].second, g.exeDir, run, 16, 9, -1, H, hs, heatFile, e)) {
+            Hooks Hh = H;  // la carte s'affiche dans l'apercu
+            Hh.previewFrame = [](int w, int h, std::vector<uint8_t>&& px) { PostMessageW(g.wnd, WM_APP_PREVIEW, 0, (LPARAM) new PreviewData{w, h, std::move(px)}); };
+            if (renderHeatmap(jobs[i].second, g.exeDir, run, 16, 9, -1, Hh, hs, heatFile, e)) {
                 postLog(L"  " + describeHeat(hs));
             } else {
                 r = g.cancel ? Result::Cancelled : Result::Failed;
@@ -205,7 +216,7 @@ void startJobs(bool snapshot, int imageKind, int cols, int rows, bool atPreview,
     g.sheetRows = rows;
     g.previewRun = false;
     if (snapshot) {
-        g.snapshotPath = imageKind == 3 || imageKind == 4 || imageKind == 5 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
+        g.snapshotPath = imageKind == 3 || imageKind == 4 || imageKind == 5 || imageKind == 6 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
     }
     setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot ? "status.rendering_image" : "status.rendering"));
     g.worker = std::thread(runJobs, std::move(jobs));

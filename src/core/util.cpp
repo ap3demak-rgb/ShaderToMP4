@@ -92,6 +92,49 @@ std::wstring wfmt(const wchar_t* f, ...) {
     return b;
 }
 
+static uint32_t crc32Bytes(const uint8_t* p, size_t n) {
+    static uint32_t table[256];
+    static bool ready = false;
+    if (!ready) {
+        for (uint32_t i = 0; i < 256; i++) {
+            uint32_t c = i;
+            for (int k = 0; k < 8; k++) c = (c & 1) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+            table[i] = c;
+        }
+        ready = true;
+    }
+    uint32_t c = 0xFFFFFFFFu;
+    for (size_t i = 0; i < n; i++) c = table[(c ^ p[i]) & 0xFF] ^ (c >> 8);
+    return c ^ 0xFFFFFFFFu;
+}
+
+bool pngTagSrgb(const std::wstring& path) {
+    uint64_t size = 0;
+    if (!platform::fileSize(path, size) || size < 45 || size > 1500ull * 1024 * 1024) return false;
+    std::string b;
+    if (!readFile(path, b)) return false;
+    static const unsigned char sig[8] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+    if (b.size() < 45 || memcmp(b.data(), sig, 8) != 0 || b.compare(12, 4, "IHDR") != 0) return false;
+    // blocs presents avant les donnees : sRGB deja la, ou iCCP (profil integre) -> rien a faire
+    size_t pos = 8;
+    while (pos + 12 <= b.size()) {
+        const uint32_t len = (uint32_t)(uint8_t)b[pos] << 24 | (uint32_t)(uint8_t)b[pos + 1] << 16 | (uint32_t)(uint8_t)b[pos + 2] << 8 | (uint8_t)b[pos + 3];
+        const std::string type = b.substr(pos + 4, 4);
+        if (type == "sRGB" || type == "iCCP") return true;
+        if (type == "IDAT") break;
+        pos += 12 + (size_t)len;
+    }
+    const size_t after = 8 + 25;  // signature + bloc IHDR (13 octets de donnees)
+    unsigned char chunk[13] = {0, 0, 0, 1, 's', 'R', 'G', 'B', 0, 0, 0, 0, 0};
+    const uint32_t crc = crc32Bytes(chunk + 4, 5);
+    chunk[9] = (unsigned char)(crc >> 24);
+    chunk[10] = (unsigned char)(crc >> 16);
+    chunk[11] = (unsigned char)(crc >> 8);
+    chunk[12] = (unsigned char)crc;
+    b.insert(after, (const char*)chunk, sizeof(chunk));
+    return writeFileAtomic(path, b);
+}
+
 bool writeFileAtomic(const std::wstring& path, const std::string& bytes) {
     const std::wstring tmp = path + L".tmp";
     FILE* f = platform::openFile(tmp, "wb");

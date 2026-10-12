@@ -233,6 +233,16 @@ bool renderHeatmap(const std::wstring& shaderPath, const std::wstring& exeDir, c
         err = TX("error.ffmpeg_failed");
         return false;
     }
+    if (H.previewFrame) {  // la carte remplace l'image de l'apercu
+        std::vector<uint8_t> bgra((size_t)w * h * 4);
+        for (size_t i = 0; i < (size_t)w * h; i++) {
+            bgra[i * 4] = out[i * 3 + 2];
+            bgra[i * 4 + 1] = out[i * 3 + 1];
+            bgra[i * 4 + 2] = out[i * 3];
+            bgra[i * 4 + 3] = 255;
+        }
+        H.previewFrame(w, h, std::move(bgra));
+    }
     if (H.output) H.output(outFile);
     return true;
 }

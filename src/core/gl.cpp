@@ -52,6 +52,9 @@ static GLuint compileShader(GLenum type, const std::string& src, std::wstring& e
 // rayon 1 = horizon, noir au-dela), 6 une face de cubemap (st_face 0 a 5 = +x -x +y -y +z -z, image a l'endroit vue de l'interieur).
 // Oeil gauche : cote -1 (haut ou gauche de l'image) ; le decalage de l'origine suit la direction du regard.
 static std::string vrMainSource(int mode, const std::string& finalColor) {
+    if (mode == 7)  // fulldome d'un shader mainImage : image carree, noire hors du cercle
+        return "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); vec2 fc = gl_FragCoord.xy + st_offset; vec2 q = fc / iResolution.xy * 2.0 - 1.0;"
+               " if (length(q) <= 1.0) mainImage(c, fc); " + finalColor + " }\n";
     std::string m = "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); vec2 fc = gl_FragCoord.xy + st_offset; float side = 0.0; vec3 o = vec3(0.0); vec3 d = vec3(0.0, 0.0, -1.0); bool inside = true;";
     if (mode == 2) m += " if (fc.y >= iResolution.y) { fc.y -= iResolution.y; side = -1.0; } else side = 1.0;";
     else if (mode == 3) m += " if (fc.x >= iResolution.x) { fc.x -= iResolution.x; side = 1.0; } else side = -1.0;";
