@@ -232,6 +232,18 @@ DateTime localTime() {
     return {lt.tm_year + 1900, lt.tm_mon + 1, lt.tm_mday, lt.tm_hour, lt.tm_min, lt.tm_sec};
 }
 
+std::wstring systemFontFile() {
+    static const char* const kCandidates[] = {
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf", "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf", "/System/Library/Fonts/Helvetica.ttc",
+        "/System/Library/Fonts/Supplemental/Arial.ttf", "/Library/Fonts/Arial.ttf"};
+    for (const char* p : kCandidates)
+        if (fileExists(W(p))) return W(p);
+    return L"";
+}
+
 void showMessage(const std::wstring& title, const std::wstring& text, MessageKind) {
     fprintf(stderr, "%s\n%s\n", U8(title).c_str(), U8(text).c_str());
 }

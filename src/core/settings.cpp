@@ -22,7 +22,9 @@ bool sameSettings(const Settings& a, const Settings& b) {
            a.bitrate == b.bitrate && a.color == b.color && a.blur == b.blur && a.shutter == b.shutter &&
            a.loop == b.loop && a.audio == b.audio && a.fadein == b.fadein && a.fadeout == b.fadeout &&
            sameChannels(a, b) && formatMouseKeys(a.mouseKeys) == formatMouseKeys(b.mouseKeys) && formatKeyPresses(a.keys) == formatKeyPresses(b.keys) && a.date == b.date && a.variants == b.variants && a.gpu == b.gpu && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
-           a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.paramSpecs == b.paramSpecs && a.post == b.post && a.lut == b.lut && a.metadata == b.metadata;
+           a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.paramSpecs == b.paramSpecs && a.post == b.post && a.lut == b.lut && a.alpha == b.alpha && a.hdr == b.hdr && a.hdrPeak == b.hdrPeak &&
+           a.hdrFall == b.hdrFall && a.hdrWhite == b.hdrWhite && a.interp == b.interp && a.scale == b.scale && a.scaleFilter == b.scaleFilter &&
+           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata;
 }
 
 // Valeur complete d'une cle qui garde ses espaces (chemin, modele de nom) : le commentaire `      ; texte` que writeIni peut
@@ -51,7 +53,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         }
     }
     std::string k = lower(trim(kIn)), v = trim(vIn);
-    if (k == "outdir" || k == "audio" || k == "name" || k == "variant" || k == "mouse" || k == "key" || k == "lut" || (k.size() == 9 && k.compare(0, 8, "ichannel") == 0)) v = withoutIniComment(vIn);
+    if (k == "outdir" || k == "audio" || k == "name" || k == "variant" || k == "mouse" || k == "key" || k == "lut" || k == "title" || k == "credit" || (k.size() == 9 && k.compare(0, 8, "ichannel") == 0)) v = withoutIniComment(vIn);
     if (k == "variant") {  // « nom:cle=valeur|cle=valeur » : une ligne par variante
         if (!v.empty()) s.variants.push_back(v);
         return;
@@ -69,6 +71,8 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else parseKeyPresses(v, s.keys);
         return;
     }
+    if (k == "title") { s.title = W(v); return; }    // texte incruste (peut contenir des espaces)
+    if (k == "credit") { s.credit = W(v); return; }
     if (k == "lut") { s.lut = lower(v) == "off" ? L"" : W(v); return; }  // chemin du fichier .cube (peut contenir des espaces)
     if (k == "outdir") { s.outdir = W(v); return; }  // chemin complet (peut contenir des espaces)
     if (k == "audio") { s.audio = W(v); return; }
@@ -97,6 +101,22 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "fadein") s.fadein = std::stod(v);
         else if (k == "fadeout") s.fadeout = std::stod(v);
         else if (k == "pbo") s.pbo = std::stoi(v);
+        else if (k == "alpha") s.alpha = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
+        else if (k == "hdr") {
+            const std::string c = lower(v);
+            s.hdr = (c == "pq" || c == "hdr10") ? "pq" : c == "hlg" ? "hlg" : "off";
+        }
+        else if (k == "hdrpeak") s.hdrPeak = std::max(100, std::min(10000, std::stoi(v)));
+        else if (k == "hdrfall") s.hdrFall = std::max(10, std::min(10000, std::stoi(v)));
+        else if (k == "hdrwhite") s.hdrWhite = std::max(20, std::min(1000, std::stoi(v)));
+        else if (k == "interp") s.interp = lower(v) == "off" ? 0.0 : std::max(0.0, std::min(480.0, std::stod(v)));
+        else if (k == "scale") s.scale = lower(v) == "off" ? "" : lower(v);
+        else if (k == "scalefilter") {
+            const std::string c = lower(v);
+            s.scaleFilter = (c == "bicubic" || c == "bilinear" || c == "neighbor" || c == "area") ? c : c == "nearest" ? "neighbor" : "lanczos";
+        }
+        else if (k == "loudnorm") s.loudnorm = lower(v) == "off" ? 0.0 : std::max(-70.0, std::min(-5.0, std::stod(v)));
+        else if (k == "titledur") s.titleDur = std::max(0.5, std::min(60.0, std::stod(v)));
         else if (k == "post") s.post = lower(v) == "off" ? "" : lower(v);
         else if (k == "vr") s.vr = (lower(v) == "off" || lower(v) == "mono" || lower(v) == "stereo") ? lower(v) : "auto";
         else if (k == "vripd") s.vrIpd = std::max(0.0, std::min(10.0, std::stod(v)));
@@ -152,7 +172,8 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
 
 bool isSettingKey(const std::string& key) {
     static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
-                                        "blur", "shutter", "loop", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "chunk", "encoder", "color", "container",
+                                        "blur", "shutter", "loop", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
+                                        "scale", "scalefilter", "loudnorm", "title", "credit", "titledur", "chunk", "encoder", "color", "container",
                                         "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "key", "date", "endaction", "variant", "gpu"};
     for (const char* k : kKeys)
         if (key == k) return true;
@@ -183,7 +204,7 @@ std::wstring shaderOverridesOf(const std::wstring& shaderPath) {
         const std::string key = lower(trim(body.substr(0, eq)));
         if (!isSettingKey(key)) continue;
         std::string val = trim(body.substr(eq + 1));
-        if (key != "outdir" && key != "audio" && key != "name" && key != "mouse" && key != "key" && key != "lut" && key.compare(0, 8, "ichannel") != 0) val = val.substr(0, val.find_first_of(" \t"));
+        if (key != "outdir" && key != "audio" && key != "name" && key != "mouse" && key != "key" && key != "lut" && key != "title" && key != "credit" && key.compare(0, 8, "ichannel") != 0) val = val.substr(0, val.find_first_of(" \t"));
         if (val.empty()) continue;
         out += (out.empty() ? "" : ", ") + key + "=" + val;
     }
@@ -225,7 +246,7 @@ void writeIni(const std::wstring& path, const Settings& s) {
         fputs(l.c_str(), f);
     };
     fputs(("; " + i18n::tr8("ini.header1") + "\r\n; " + i18n::tr8("ini.header2") + "\r\n").c_str(), f);
-    fputs(("; name: " + i18n::tr8("ini.name") + "\r\n; iChannel0-3: " + i18n::tr8("ini.ichannel") + "\r\n; variant: " + i18n::tr8("ini.variant") + "\r\n; mouse: " + i18n::tr8("ini.mouse") + "\r\n; key: " + i18n::tr8("ini.key") + "\r\n; lut: " + i18n::tr8("ini.lut") + "\r\n").c_str(), f);
+    fputs(("; name: " + i18n::tr8("ini.name") + "\r\n; iChannel0-3: " + i18n::tr8("ini.ichannel") + "\r\n; variant: " + i18n::tr8("ini.variant") + "\r\n; mouse: " + i18n::tr8("ini.mouse") + "\r\n; key: " + i18n::tr8("ini.key") + "\r\n; lut: " + i18n::tr8("ini.lut") + "\r\n; alpha, hdr, interp, scale, loudnorm, title, credit: " + i18n::tr8("ini.output_more") + "\r\n").c_str(), f);
     put("width", std::to_string(s.width));
     put("height", std::to_string(s.height));
     put("fps", num(s.fps));
@@ -271,6 +292,23 @@ void writeIni(const std::wstring& path, const Settings& s) {
     put("endaction", s.endaction, "ini.endaction");
     put("chunk", num(s.chunk), "ini.chunk");
     put("warmup", std::to_string(s.warmup), "ini.warmup");
+    // sortie : transparence, HDR, interpolation, mise a l'echelle, son, texte incruste (seulement ce qui est regle)
+    if (s.alpha) put("alpha", "1");
+    if (s.hdr != "off") {
+        put("hdr", s.hdr);
+        put("hdrpeak", std::to_string(s.hdrPeak));
+        put("hdrfall", std::to_string(s.hdrFall));
+        put("hdrwhite", std::to_string(s.hdrWhite));
+    }
+    if (s.interp > 0) put("interp", num(s.interp));
+    if (!s.scale.empty()) {
+        put("scale", s.scale);
+        put("scalefilter", s.scaleFilter);
+    }
+    if (s.loudnorm != 0) put("loudnorm", num(s.loudnorm));
+    if (!s.title.empty()) put("title", U8(s.title));    // pas de commentaire : la valeur garde ses espaces
+    if (!s.credit.empty()) put("credit", U8(s.credit));
+    if (!s.title.empty() || !s.credit.empty()) put("titledur", num(s.titleDur));
     if (!s.post.empty()) put("post", s.post, "ini.post");
     if (!s.lut.empty()) put("lut", U8(s.lut));  // pas de commentaire : la valeur garde ses espaces
     put("vr", s.vr, "ini.vr");

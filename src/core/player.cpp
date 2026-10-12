@@ -11,6 +11,7 @@
 #include "locate.h"
 #include "params.h"
 #include "postfx.h"
+#include "previewconv.h"
 #include "vr.h"
 #include "passes.h"
 #include "render.h"
@@ -118,7 +119,7 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
         r.params.setAudio(findFfmpeg(exeDir), s.audio, audioErr);  // sans le son, le parametre garde sa valeur par defaut
     }
     r.bp.setPreamble(r.params.declarations());
-    r.prog = buildProgram(r.bp.withCommon(code), err, false, chTypes, false, false, r.vr, r.params.declarations());
+    r.prog = buildProgram(r.bp.withCommon(code), err, false, chTypes, false, false, r.vr, r.params.declarations(), s.alpha);
     if (!r.prog) {
         err = locateGlslErrors(err, shaderPath, 1 + (int)std::count(code.begin(), code.end(), '\n'), r.bp.commonPath());
         return false;
@@ -217,20 +218,9 @@ void renderAt(Rig& r, double t, bool send, const PreviewPlayer::FrameFn& onFrame
     }
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, r.fbo);
     if (!send) return;
-    std::vector<uint8_t> px((size_t)r.w * r.h * 4), out((size_t)r.w * r.h * 4);
+    std::vector<uint8_t> px((size_t)r.w * r.h * 4);
     glReadPixels(0, 0, r.w, r.h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-    const size_t row = (size_t)r.w * 4;
-    for (int y = 0; y < r.h; y++) {  // OpenGL est bas->haut ; RGBA -> BGRA
-        const uint8_t* src = &px[(size_t)(r.h - 1 - y) * row];
-        uint8_t* dst = &out[(size_t)y * row];
-        for (int x = 0; x < r.w; x++) {
-            dst[x * 4 + 0] = src[x * 4 + 2];
-            dst[x * 4 + 1] = src[x * 4 + 1];
-            dst[x * 4 + 2] = src[x * 4 + 0];
-            dst[x * 4 + 3] = 255;
-        }
-    }
-    onFrame(r.w, r.h, std::move(out), t);
+    onFrame(r.w, r.h, previewBgra(px.data(), r.w, r.h, r.s.alpha), t);  // transparence sur un damier
 }
 
 void playerMain(PreviewPlayer::Impl* I, std::wstring shaderPath, std::wstring exeDir, Settings base, double startTime,

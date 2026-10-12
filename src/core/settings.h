@@ -44,6 +44,17 @@ struct Settings {
     std::string date;              // iDate fixe "AAAA-MM-JJ[THH:MM[:SS]]" ("" = date reelle)
     std::string vr = "auto";        // auto | off | mono | stereo : shader mainVR rendu en 360 equirectangulaire (stereo = haut / bas)
     double vrIpd = 0.064;           // ecart des yeux du rendu stereo, dans l'unite du shader
+    bool alpha = false;             // transparence : fragColor.a est ecrit dans la sortie (ProRes 4444, VP9 WebM, PNG / TIFF / EXR, WebP)
+    std::string hdr = "off";        // off | pq (HDR10 : BT.2020, PQ) | hlg : sortie HDR 10 bits (H.265, AV1, VP9)
+    int hdrPeak = 1000;             // luminance maximale declaree (MaxCLL et volume d'affichage), en cd/m2
+    int hdrFall = 400;              // luminance moyenne maximale declaree (MaxFALL)
+    int hdrWhite = 203;             // cd/m2 d'un blanc de shader a 1.0 (blanc de reference de la BT.2408)
+    double interp = 0;              // interpolation d'images : cadence de sortie (0 = aucune), le rendu se fait a `fps`
+    std::string scale;              // mise a l'echelle de sortie : "" | "1920x1080" | "2" ou "2x" (facteur)
+    std::string scaleFilter = "lanczos";  // lanczos | bicubic | bilinear | neighbor | area
+    double loudnorm = 0;            // normalisation du son en LUFS (0 = aucune), ex. -16
+    std::wstring title, credit;     // texte incruste au debut de la video (titre au centre, credit en bas a gauche)
+    double titleDur = 3;            // duree de l'incrustation, en secondes
     std::string post;               // effets de post-traitement : « bloom:0.4,grain,vignette » (noms et quantites, voir postfx.h)
     std::wstring lut;               // LUT couleur .cube appliquee en dernier ("" = aucune)
     int warmup = 0;               // images simulees avant la premiere (tampons chauffes, iFrame decale de N) ; 0 = aucune

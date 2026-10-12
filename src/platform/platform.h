@@ -44,6 +44,8 @@ struct DateTime {
     int hour, minute, second;
 };
 DateTime localTime();
+// Police sans empattement du système (fichier .ttf / .ttc lisible), pour le texte incrusté dans la vidéo ; vide si aucune n'est trouvée.
+std::wstring systemFontFile();
 enum class MessageKind { Info, Warning, Error };
 void showMessage(const std::wstring& title, const std::wstring& text, MessageKind kind);  // boîte de message, ou stderr sans interface
 

@@ -11,8 +11,11 @@
 #include "i18n.h"
 #include "dateinput.h"
 #include "gl.h"
+#include "montage.h"
+#include "overlay.h"
 #include "params.h"
 #include "postfx.h"
+#include "previewconv.h"
 #include "vr.h"
 #include "process.h"
 #include "soundpass.h"
@@ -102,6 +105,10 @@ using Forced = std::vector<std::pair<std::string, std::string>>;  // reglages im
 // Un rendu (une variante si `forced` est donne : ses reglages priment sur ceux du shader).
 static Result convertOne(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H,
                          std::wstring& err, const Forced* forced) {
+    if (isMontageFile(shaderPath)) {  // un montage n'est pas un shader : ni apercu ni image fixe
+        err = TX("error.montage_preview");
+        return Result::Failed;
+    }
     std::string code;
     if (!readFile(shaderPath, code)) { err = TX("error.read_file"); return Result::Failed; }
     normalizeShaderText(code, H);
@@ -119,16 +126,49 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     for (int i = 0; i < 4; i++)  // canal lu par le shader mais sans texture : il lit du noir
         if (s.channel[i].empty() && code.find("iChannel" + std::to_string(i)) != std::string::npos)
             H.log(L"  " + TXF("log.warn_ichannel", i, i));
-    if (!sameSettings(s, base)) H.log(L"  " + TX("log.shader_overrides"));
+    if (!forced && !sameSettings(s, base)) H.log(L"  " + TX("log.shader_overrides"));
     s.width = std::max(16, s.width & ~1);
     s.height = std::max(16, s.height & ~1);
     if (s.fps <= 0) s.fps = 60;
     if (s.duration <= 0) s.duration = 10;
     s.crf = std::min(51, std::max(0, s.crf));
     const bool preview = (bool)H.previewFrame;
-    const bool videoMode = !preview && !H.snapshot;
+    const bool sheet = !preview && !H.snapshot && H.sheetCols > 0 && H.sheetRows > 0;  // planche-contact : N images tirees sur la duree
+    const bool thumb = !preview && H.snapshot && H.thumbTime != -1;                     // vignette : une image, 1280 pixels au plus
+    if (thumb) s.start = H.thumbTime == -2 ? s.start + s.duration / 2 : H.thumbTime;
+    const bool videoMode = !preview && !H.snapshot && !sheet;
     const OutKind kind = outKind(s.container);
     if (!videoMode || kind == OutKind::Gif || kind == OutKind::Webp) s.depth = 8;  // 10 bits : video et sequences seulement
+    if (!videoMode) s.hdr = "off";  // l'apercu et l'image fixe restent en SDR
+    if (videoMode && s.alpha && !alphaSupported(s.codec, s.container)) {  // transparence : refusee avant le rendu
+        err = TXF("error.alpha_unsupported", codecLabel(s.codec), W(s.container).c_str());
+        return Result::Failed;
+    }
+    if (videoMode && s.hdr != "off") {
+        if (!hdrSupported(s.codec, s.container)) {
+            err = TXF("error.hdr_unsupported", codecLabel(s.codec), W(s.container).c_str());
+            return Result::Failed;
+        }
+        if (s.alpha) {
+            err = TX("error.hdr_alpha");
+            return Result::Failed;
+        }
+        if (s.depth < 10) {  // le HDR demande 10 bits
+            s.depth = 10;
+            H.log(L"  " + TX("log.hdr_depth"));
+        }
+    }
+    if (videoMode && s.interp > 0) {
+        if (kind != OutKind::Video) {
+            H.log(L"  " + TX("log.interp_video_only"));
+            s.interp = 0;
+        } else if (s.alpha) {  // minterpolate ne traite pas l'alpha
+            err = TX("error.interp_alpha");
+            return Result::Failed;
+        } else if (s.depth >= 10) {
+            H.log(L"  " + TX("log.interp_8bit"));
+        }
+    }
     const bool deep = s.depth >= 10;
     const size_t bpc = deep ? 2 : 1;  // octets par composante lue sur le GPU
     const int B = std::min(64, std::max(1, s.blur));  // sous-images par image (flou de mouvement)
@@ -138,9 +178,14 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     // s'arrete juste avant le retour au point de depart)
     double duration = s.duration;
     if (s.loop > 0) duration = s.loop * std::max(1.0, std::floor(s.duration / s.loop + 0.5));
-    const long long N = videoMode ? std::max(1LL, std::llround(duration * s.fps)) : 1;
+    const long long N = videoMode ? std::max(1LL, std::llround(duration * s.fps)) : sheet ? (long long)H.sheetCols * H.sheetRows : 1;
     const double totalSec = N / s.fps;
     const int W_ = s.width, H_ = s.height;
+    int OW = W_, OH = H_;  // taille de sortie : celle du rendu, ou celle de la mise a l'echelle (scale=)
+    if (videoMode && !outputSize(s, OW, OH)) {
+        err = TXF("error.scale_invalid", W(s.scale).c_str());
+        return Result::Failed;
+    }
     const int SS = preview ? 1 : std::min(4, std::max(1, s.ss));  // supersampling : reduit par ffmpeg
     const int RW = W_ * SS, RH = H_ * SS;
     const size_t frameBytes = (size_t)RW * RH * 4 * bpc;
@@ -153,12 +198,12 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         err = TXF("error.codec_container", codecLabel(s.codec), W(s.container).c_str());
         return Result::Failed;
     }
-    if (videoMode && kind == OutKind::Video && isDnxhr(s.codec) && (s.width < 256 || s.height < 120)) {
+    if (videoMode && kind == OutKind::Video && isDnxhr(s.codec) && (OW < 256 || OH < 120)) {
         err = TX("error.dnxhr_size");
         return Result::Failed;
     }
     if (!preview && !s.outdir.empty()) platform::makeDir(s.outdir);  // sans effet si deja present
-    const std::wstring ext = H.snapshot ? L".png" : L"." + W(s.container);
+    const std::wstring ext = thumb ? L"_thumb.png" : H.snapshot ? L".png" : sheet ? L"_sheet.png" : L"." + W(s.container);
     bool skipExisting = false;
     const std::wstring out = !videoMode ? outputPath(shaderPath, s.outdir, ext) : outputFile(shaderPath, s, true, &skipExisting);
     if (skipExisting) {
@@ -184,15 +229,20 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
                 return Result::Failed;
             }
         }
-        H.log(TXF("log.render_summary", W_, H_, s.fps, totalSec, N,
+        H.log(TXF("log.render_summary", OW, OH, s.interp > 0 ? s.interp : s.fps, totalSec, N,
                    s.bitrate > 0 ? wfmt(L"%d kb/s", s.bitrate).c_str() : wfmt(L"crf %d", s.crf).c_str(),
                    W(s.preset).c_str(), kind == OutKind::Video ? codecLabel(s.codec) : containerAt(containerIndex(s.container)).label));
         if (deep) H.log(L"  " + TX("log.depth10"));
         if (kind == OutKind::Gif && s.fps > 30) H.log(L"  " + TXF("log.gif_fps", s.fps));
-        if (kind == OutKind::Gif && (double)W_ * H_ * N * 3 > 2.0e9) {
-            err = TXF("error.gif_too_big", W_, H_, (long long)N);
+        if (kind == OutKind::Gif && (double)OW * OH * N * 3 > 2.0e9) {
+            err = TXF("error.gif_too_big", OW, OH, (long long)N);
             return Result::Failed;
         }
+        if (OW != W_ || OH != H_) H.log(L"  " + TXF("log.scale_output", W_, H_, OW, OH, W(s.scaleFilter).c_str()));
+        if (s.interp > 0) H.log(L"  " + TXF("log.interp", s.fps, s.interp));
+        if (s.alpha) H.log(L"  " + TX("log.alpha_on"));
+        if (s.hdr != "off") H.log(L"  " + TXF("log.hdr_on", s.hdr == "pq" ? L"HDR10 (PQ, BT.2020)" : L"HLG (BT.2020)", s.hdrWhite));
+        if (s.loudnorm != 0) H.log(L"  " + TXF("log.loudnorm", s.loudnorm));
         if (B > 1) H.log(L"  " + TXF("log.motion_blur", B, s.shutter));
         if (s.loop > 0) H.log(L"  " + TXF("log.perfect_loop", s.loop, duration));
     }
@@ -235,7 +285,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     }
     std::string chTypes[4];
     channelTypes(s, chTypes);
-    GLuint prog = buildProgram(bp.withCommon(code), err, false, chTypes, false, false, vrMode, params.declarations());
+    GLuint prog = buildProgram(bp.withCommon(code), err, false, chTypes, false, false, vrMode, params.declarations(), s.alpha);
     if (!prog) {  // erreurs « fichier:ligne: message », cliquables dans le journal
         err = locateGlslErrors(err, shaderPath, 1 + (int)std::count(code.begin(), code.end(), '\n'), bp.commonPath());
         return Result::Failed;
@@ -285,7 +335,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     }
 
     if (B > 1) {  // accumulation flottante pour le flou de mouvement
-        present = buildPresentProgram(err);
+        present = buildPresentProgram(err, s.alpha);
         if (!present) { cleanupGL(); return Result::Failed; }
         glGenTextures(1, &accTex);
         glBindTexture(GL_TEXTURE_2D, accTex);
@@ -416,8 +466,10 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE);
             ogl::Uniform1f(uWeight, weight / B);
+            ogl::Uniform1i(ogl::GetUniformLocation(prog, "st_premul"), s.alpha ? 1 : 0);  // alpha : somme de couleurs prémultipliées
             for (int k = 0; k < B; k++) drawAt(t + (double)k / B * s.shutter / s.fps, n);
             glDisable(GL_BLEND);
+            ogl::Uniform1i(ogl::GetUniformLocation(prog, "st_premul"), 0);
             ogl::Uniform1f(uWeight, 1.0f);
             ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, imgFbo);
             ogl::UseProgram(present);
@@ -443,19 +495,9 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
             advanceBuffers(pf);
         }
         renderFrame(pf, pt, 1.0f);
-        std::vector<uint8_t> px(frameBytes), flipped(frameBytes);
+        std::vector<uint8_t> px(frameBytes);
         glReadPixels(0, 0, RW, RH, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-        const size_t row = (size_t)RW * 4;
-        for (int y = 0; y < RH; y++) {  // OpenGL est bas->haut ; RGBA -> BGRA
-            const uint8_t* src = &px[(size_t)(RH - 1 - y) * row];
-            uint8_t* dst = &flipped[(size_t)y * row];
-            for (int x = 0; x < RW; x++) {
-                dst[x * 4 + 0] = src[x * 4 + 2];
-                dst[x * 4 + 1] = src[x * 4 + 1];
-                dst[x * 4 + 2] = src[x * 4 + 0];
-                dst[x * 4 + 3] = 255;
-            }
-        }
+        std::vector<uint8_t> flipped = previewBgra(px.data(), RW, RH, s.alpha);  // haut en bas, BGRA ; transparence sur un damier
         cleanupGL();
         H.previewFrame(RW, RH, std::move(flipped));
         return Result::Ok;
@@ -474,15 +516,23 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         cleanupGL();
         return Result::Failed;
     }
+    if (videoMode) {  // texte incruste : drawtext et une police doivent exister (verifie avant le premier rendu)
+        std::wstring unused;
+        if (!overlayFilter(s, 0, OW, OH, ffmpeg, unused, err)) {
+            cleanupGL();
+            return Result::Failed;
+        }
+    }
     const std::string enc = videoMode && kind == OutKind::Video ? resolveEncoder(s, ffmpeg, H) : "cpu";
 
     const std::wstring fpsStr = wfmt(L"%g", s.fps);
-    const std::wstring ssFilter =
-        SS > 1 ? L"scale=" + std::to_wstring(W_) + L":" + std::to_wstring(H_) + L":flags=area," : L"";
+    // reduction du supersampling (area), puis mise a l'echelle de sortie (scale= : filtre au choix) ; les deux finissent par une virgule
+    const std::wstring ssFilter = (SS > 1 ? L"scale=" + std::to_wstring(W_) + L":" + std::to_wstring(H_) + L":flags=area," : L"") +
+                                  (videoMode ? outScaleFilter(s, W_, H_, OW, OH) : L"");
     const std::wstring head = L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -y" +
         std::wstring(deep ? L" -f rawvideo -pix_fmt rgba64le -video_size " : L" -f rawvideo -pix_fmt rgba -video_size ") + std::to_wstring(RW) + L"x" + std::to_wstring(RH) +
         L" -framerate " + fpsStr + L" -i -";
-    const ColorSpec cs = colorSpec(s.color);
+    const ColorSpec cs = colorSpecFor(s);
     const double fi = videoMode ? std::max(0.0, std::min(s.fadein, totalSec)) : 0.0;
     const double fo = videoMode ? std::max(0.0, std::min(s.fadeout, totalSec)) : 0.0;
     // Fondus d'image : appliques dans le shader (facteur par image), donc exacts meme par parties
@@ -523,7 +573,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
             hasAudio = true;
         }
     }
-    std::wstring audioFilter;  // fondus du son
+    std::wstring audioFilter = loudnormFilter(s);  // normalisation du son (LUFS), puis fondus
     if (fi > 0) audioFilter += wfmt(L"afade=t=in:st=0:d=%g,", fi);
     if (fo > 0) audioFilter += wfmt(L"afade=t=out:st=%g:d=%g,", totalSec - fo, fo);
     audioFilter += L"apad";  // son plus court que la video : complete par du silence
@@ -535,7 +585,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         std::wstring title = shaderPath.substr(shaderPath.find_last_of(L"\\/") + 1);
         if (size_t dot = title.find_last_of(L'.'); dot != std::wstring::npos && dot > 0) title.erase(dot);
         title.erase(std::remove(title.begin(), title.end(), L'"'), title.end());
-        metaArgs = L" -metadata \"title=" + title + L"\" -metadata \"comment=" + wfmt(L"%dx%d, %g fps, ", W_, H_, s.fps) +
+        metaArgs = L" -metadata \"title=" + title + L"\" -metadata \"comment=" + wfmt(L"%dx%d, %g fps, ", OW, OH, s.interp > 0 ? s.interp : s.fps) +
                    APP_NAME_WSTR + L" " + APP_VER_WSTR + L"\"";
     }
 
@@ -547,15 +597,25 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     auto encodeRange = [&](long long n0, long long n1, const std::wstring& dest, bool muxAudio, long long doneBefore,
                            std::wstring& e) -> Result {
         std::wstring cmd;
-        if (H.snapshot) {  // image RGB pleine plage, sans conversion YUV
-            cmd = head + L" -vf \"vflip," + ssFilter + L"format=rgb24\" -frames:v 1 -pix_fmt rgb24 \"" + dest + L"\"";
+        if (sheet) {  // planche-contact : les N images sont assemblees en grille par le filtre tile (vignettes de 1920 pixels de large au total au plus)
+            const int tw = std::max(160, std::min(W_, 1920 / H.sheetCols)) & ~1;
+            cmd = head + L" -vf \"vflip," + ssFilter + wfmt(L"scale=%d:-2:flags=area,tile=%dx%d:padding=4:margin=4:color=0x202020,format=rgb24\"", tw, H.sheetCols, H.sheetRows) +
+                  L" -frames:v 1 -pix_fmt rgb24 \"" + dest + L"\"";
+        } else if (H.snapshot) {  // image RGB pleine plage, sans conversion YUV
+            const std::wstring thumbScale = thumb ? L"scale='min(1280,iw)':-2:flags=area," : L"";
+            cmd = head + L" -vf \"vflip," + ssFilter + thumbScale + (s.alpha ? L"format=rgba\" -frames:v 1 -pix_fmt rgba \"" : L"format=rgb24\" -frames:v 1 -pix_fmt rgb24 \"") + dest + L"\"";
         } else if (kind != OutKind::Video) {  // image animee ou sequence : RGB pleine plage, pas de YUV
-            cmd = head + L" -vf \"vflip," + ssFilter + imageFilterTail(s) + L"\"" + imageEncoderArgs(s) + L" \"" + dest + L"\"";
+            std::wstring text;  // texte incruste (le temps de la video : une image par 1/fps)
+            std::wstring oe;
+            overlayFilter(s, (double)n0 / s.fps, OW, OH, ffmpeg, text, oe);
+            cmd = head + L" -vf \"vflip," + ssFilter + text + imageFilterTail(s) + L"\"" + imageEncoderArgs(s) + L" \"" + dest + L"\"";
         } else {
+            std::wstring text, oe;
+            overlayFilter(s, (double)n0 / s.fps, OW, OH, ffmpeg, text, oe);  // la partie commence a n0 / fps dans la video
             cmd = head;
             if (muxAudio) cmd += audioArgs;
-            cmd += L" -vf \"vflip," + ssFilter + L"scale=in_range=full:out_range=" + cs.range +
-                   L":out_color_matrix=" + cs.matrix + L":flags=accurate_rnd+full_chroma_int," + outFormat(s, enc) + L"\"";
+            cmd += L" -vf \"vflip," + ssFilter + text + L"scale=in_range=full:out_range=" + cs.range +
+                   L":out_color_matrix=" + cs.matrix + L":flags=accurate_rnd+full_chroma_int," + interpFilter(s) + outFormat(s, enc) + L"\"";
             if (muxAudio) cmd += L" -map 0:v -map 1:a" + audioCodecArgs(s.container) + L" -af \"" + audioFilter + L"\" -shortest";
             cmd += encoderArgs(s, enc) + outPixFmtArg(s, enc) + L" " + cs.tags + containerArgs(s.container) + metaArgs + L" \"" + dest + L"\"";
         }
@@ -636,8 +696,12 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
                 tLast += d;
             }
             if (H.cancelled()) { aborted = true; break; }
-            const long long n = n0 + k;
-            const double t = s.start + (double)n / s.fps;  // temps exact
+            long long n = n0 + k;
+            double t = s.start + (double)n / s.fps;  // temps exact
+            if (sheet) {  // vignette k : au milieu du k-ieme intervalle de la plage rendue ; n = l'image de ce temps (les tampons y sont rejoues)
+                t = s.start + ((double)n + 0.5) * duration / (double)N;
+                n = std::llround((t - s.start) * s.fps);
+            }
             advanceBuffers(n);
             renderFrame(n, t, videoMode ? fadeAt(n) : 1.0f);
 
@@ -705,6 +769,10 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
                     readFile(absolute ? s.lut : shaderDir + s.lut, lutBytes);
                 }
                 sigSrc += "|post:" + s.post + "|" + fnvHex(bp.postCode()) + "|" + fnvHex(lutBytes);
+                // sortie : tout ce qui change les images ou l'encodage d'une partie
+                sigSrc += "|out:" + std::to_string(s.alpha) + s.hdr + std::to_string(s.hdrPeak) + "," + std::to_string(s.hdrFall) + "," +
+                          std::to_string(s.hdrWhite) + "|" + std::to_string(s.interp) + "|" + std::to_string(OW) + "x" + std::to_string(OH) + s.scaleFilter +
+                          "|" + U8(s.title) + "|" + U8(s.credit) + "|" + std::to_string(s.titleDur);
             }
         }
         const std::string sig = fnvHex(sigSrc);
@@ -819,9 +887,15 @@ static bool parseVariant(const std::string& spec, std::string& name, Forced& out
     return true;
 }
 
+Result convertFileForced(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H, std::wstring& err,
+                         const std::vector<std::pair<std::string, std::string>>& forced) {
+    return convertOne(shaderPath, exeDir, base, H, err, &forced);
+}
+
 Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H,
                    std::wstring& err) {
-    if (H.snapshot || H.previewFrame) return convertOne(shaderPath, exeDir, base, H, err, nullptr);
+    if (isMontageFile(shaderPath) && !H.snapshot && !H.previewFrame) return convertMontage(shaderPath, exeDir, base, H, err);
+    if (H.snapshot || H.previewFrame || (H.sheetCols > 0 && H.sheetRows > 0)) return convertOne(shaderPath, exeDir, base, H, err, nullptr);
     std::string code;
     Settings probe = base;
     if (readFile(shaderPath, code)) {

@@ -5,6 +5,8 @@
 #include "formats.h"
 #include "gl.h"
 #include "locate.h"
+#include "montage.h"
+#include "overlay.h"
 #include "params.h"
 #include "passes.h"
 #include "player.h"
@@ -448,6 +450,378 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         }
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_postdeep") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
         if (!problem.empty()) fails++;
+    }
+    // --- Sortie : transparence, HDR, mise a l'echelle, interpolation, normalisation du son, texte incruste ---------------------------
+    {
+        const std::wstring sep(1, platform::pathSeparator());
+        auto put = [&](const std::wstring& name, const std::string& body) {
+            const std::wstring path = outDir + sep + name;
+            if (FILE* f = platform::openFile(path, "wb")) {
+                fwrite(body.data(), 1, body.size(), f);
+                fclose(f);
+            }
+            return path;
+        };
+        auto check = [&](const char* key, const std::wstring& problem) {
+            total++;
+            report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX(key) + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+            if (!problem.empty()) fails++;
+        };
+        auto bad = [&](const std::string& what) { return TXF("selftest.fmt_bad", W(what).c_str()); };
+        auto renderOne = [&](const std::wstring& shader, const Settings& st, std::wstring& e, std::string& logText) {
+            Hooks H;
+            H.log = [&](const std::wstring& l) { logText += U8(l) + "\n"; };
+            return convertFile(shader, exeDir, st, H, e) == Result::Ok;
+        };
+        // premiere image decodee par ffmpeg (pre : options d'entree) au format de pixel pix
+        auto decodeRaw = [&](const std::wstring& file, const wchar_t* pix, const std::wstring& pre) {
+            const std::wstring raw = outDir + sep + L"dec.raw";
+            platform::removeFile(raw);
+            runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y " + pre + L" -i \"" + file + L"\" -frames:v 1 -f rawvideo -pix_fmt " + pix +
+                           L" \"" + raw + L"\"",
+                       nullptr);
+            std::string bytes;
+            readFile(raw, bytes);
+            return bytes;
+        };
+        const std::string alphaSrc = "// alpha=1\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(1.0, 0.5, 0.0, p.x / iResolution.x); }\n";
+        const std::wstring alphaShader = put(L"alpha_ramp.glsl", alphaSrc);
+
+        // transparence : la rampe d'alpha et la couleur a alpha droit sortent intactes en PNG, ProRes 4444 et VP9
+        for (const char* kind : {"png", "prores", "vp9"}) {
+            const bool png = std::string(kind) == "png", pro = std::string(kind) == "prores";
+            if (!formatAvailable(ffmpeg, pro ? "prores_4444" : png ? "h264" : "vp9", png ? "png" : pro ? "mov" : "webm")) continue;
+            Settings st = base(pro ? "prores_4444" : png ? "h264" : "vp9", png ? "png" : pro ? "mov" : "webm", png ? 8 : pro ? 10 : 8);
+            std::wstring e, problem;
+            std::string logText;
+            if (!renderOne(alphaShader, st, e, logText)) {
+                problem = e.empty() ? TX("selftest.render_failed") : e;
+            } else {
+                const std::wstring first = outputFile(alphaShader, st, false);
+                const std::wstring file = png ? sequencePattern(first) : first;
+                const std::string px = decodeRaw(file, L"rgba", std::wstring(png ? L"" : (!pro ? L"-c:v libvpx-vp9" : L"")));
+                if (px.size() < 64 * 64 * 4) problem = bad(std::string(kind) + " no frame");
+                else {
+                    const size_t i = (32 * 64 + 32) * 4;  // alpha = (32.5 / 64) * 255 = 129
+                    const int a = (uint8_t)px[i + 3], r = (uint8_t)px[i], g = (uint8_t)px[i + 1];
+                    const int tol = png ? 3 : 10;
+                    if (std::abs(a - 129) > tol) problem = bad(std::string(kind) + " alpha " + std::to_string(a));
+                    else if (png && (r < 253 || std::abs(g - 128) > 3)) problem = bad("straight color " + std::to_string(r) + "," + std::to_string(g));
+                }
+            }
+            check(png ? "selftest.fmt_alpha_png" : pro ? "selftest.fmt_alpha_prores" : "selftest.fmt_alpha_vp9", problem);
+        }
+        // transparence avec supersampling x2 et flou de mouvement x4 : alpha 0.5 constant, couleur d'origine (comptabilisation premultipliee)
+        if (formatAvailable(ffmpeg, "h264", "png")) {
+            const std::wstring flat = put(L"alpha_flat.glsl", "// alpha=1\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(0.2, 0.4, 0.6, 0.5); }\n");
+            Settings st = base("h264", "png", 8);
+            st.ss = 2;
+            st.blur = 4;
+            std::wstring e, problem;
+            std::string logText;
+            if (!renderOne(flat, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                const std::string px = decodeRaw(sequencePattern(outputFile(flat, st, false)), L"rgba", L"");
+                if (px.size() < 4) problem = bad("no frame");
+                else {
+                    const int r = (uint8_t)px[0], g = (uint8_t)px[1], b = (uint8_t)px[2], a = (uint8_t)px[3];
+                    if (std::abs(r - 51) > 3 || std::abs(g - 102) > 3 || std::abs(b - 153) > 3 || std::abs(a - 128) > 3)
+                        problem = bad("rgba " + std::to_string(r) + "," + std::to_string(g) + "," + std::to_string(b) + "," + std::to_string(a));
+                }
+            }
+            check("selftest.fmt_alpha_blur", problem);
+        }
+        // combinaisons refusees avant le rendu, avec un message
+        {
+            struct Case {
+                const char* codec;
+                const char* container;
+                const char* extra;  // reglages ajoutes (cle=valeur)
+                const char* what;
+            };
+            const Case cases[] = {{"h264", "mp4", "alpha=1", "alpha / H.264"},   {"prores_422", "mov", "alpha=1", "alpha / ProRes 422"},
+                                  {"h265", "mp4", "hdr=pq|alpha=1", "hdr + alpha"}, {"h264", "mp4", "hdr=pq", "hdr / H.264"},
+                                  {"vp9", "webm", "alpha=1|interp=20", "interp + alpha"}, {"h264", "mp4", "scale=banane", "scale invalide"}};
+            std::wstring problem;
+            for (const Case& c : cases) {
+                Settings st = base(c.codec, c.container, 8);
+                std::string rest = c.extra;
+                while (!rest.empty()) {
+                    const size_t bar = rest.find('|');
+                    const std::string kv = rest.substr(0, bar);
+                    const size_t eq = kv.find('=');
+                    applySetting(st, kv.substr(0, eq), kv.substr(eq + 1));
+                    rest = bar == std::string::npos ? "" : rest.substr(bar + 1);
+                }
+                std::wstring e;
+                std::string logText;
+                if (renderOne(renderShader, st, e, logText) || e.empty()) {
+                    problem = bad(std::string("accepted: ") + c.what);
+                    break;
+                }
+            }
+            check("selftest.fmt_out_refused", problem);
+        }
+        // HDR10 et HLG : etiquettes BT.2020, 10 bits, valeur du gris 0.5 apres sRGB -> lineaire -> PQ / HLG, luminances declarees
+        if (formatAvailable(ffmpeg, "h265", "mp4")) {
+            const std::wstring grey = put(L"hdr_grey.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(0.5, 0.5, 0.5, 1.0); }\n");
+            auto lin = [](double c) { return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4); };
+            auto pq = [](double L) {
+                const double p = std::pow(L, 0.1593017578125);
+                return std::pow((0.8359375 + 18.8515625 * p) / (1.0 + 18.6875 * p), 78.84375);
+            };
+            for (const char* mode : {"pq", "hlg"}) {
+                Settings st = base("h265", "mp4", 10);
+                st.hdr = mode;
+                std::wstring e, problem;
+                std::string logText;
+                if (!renderOne(grey, st, e, logText)) {
+                    problem = e.empty() ? TX("selftest.render_failed") : e;
+                } else {
+                    const std::wstring out = outputFile(grey, st, false);
+                    const std::string info = probeInfo(ffmpeg, out);
+                    const std::string px = decodeRaw(out, L"yuv420p10le", L"");
+                    double v;
+                    if (std::string(mode) == "pq") v = pq(lin(0.5) * 203.0 / 10000.0);
+                    else {
+                        const double E = lin(0.5) * 0.265;
+                        v = E <= 1.0 / 12.0 ? std::sqrt(3.0 * E) : 0.17883277 * std::log(12.0 * E - 0.28466892) + 0.55991073;
+                    }
+                    const double want = 64.0 + 876.0 * v;
+                    const size_t i = (32 * 64 + 32) * 2;
+                    const double got = px.size() > i + 1 ? (uint8_t)px[i] + 256.0 * (uint8_t)px[i + 1] : -1;
+                    const char* trc = std::string(mode) == "pq" ? "smpte2084" : "arib-std-b67";
+                    if (info.find("yuv420p10le") == std::string::npos || info.find("bt2020nc") == std::string::npos || info.find(trc) == std::string::npos)
+                        problem = bad("tags: " + info.substr(info.find("Video:") == std::string::npos ? 0 : info.find("Video:"), 120));
+                    else if (std::fabs(got - want) > 6.0) problem = bad("luma " + std::to_string(got) + " != " + std::to_string(want));
+                    else if (std::string(mode) == "pq") {  // luminances declarees : MaxCLL / MaxFALL lues par le decodeur
+                        std::string si;
+                        runProcess(L"\"" + ffmpeg + L"\" -hide_banner -nostdin -i \"" + out + L"\" -vf showinfo -frames:v 1 -f null -",
+                                   [&](const std::wstring& l) { si += U8(l) + "\n"; });
+                        if (lower(si).find("maxcll=1000") == std::string::npos) problem = bad("no MaxCLL");
+                    }
+                }
+                check(std::string(mode) == "pq" ? "selftest.fmt_hdr_pq" : "selftest.fmt_hdr_hlg", problem);
+            }
+        }
+        // mise a l'echelle : taille de sortie (facteur et WxH) et filtre (voisin le plus proche : quatre couleurs exactement)
+        if (formatAvailable(ffmpeg, "h264", "png")) {
+            const std::wstring quad = put(L"quad.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(p.x < 8.0 ? 1.0 : 0.0, p.y < 8.0 ? 1.0 : 0.0, 0.0, 1.0); }\n");
+            std::wstring problem;
+            for (const char* filt : {"neighbor", "bilinear"}) {
+                Settings st = base("h264", "png", 8);
+                st.width = st.height = 16;
+                st.scale = "64x64";
+                st.scaleFilter = filt;
+                std::wstring e;
+                std::string logText;
+                if (!renderOne(quad, st, e, logText)) {
+                    problem = e.empty() ? TX("selftest.render_failed") : e;
+                    break;
+                }
+                const std::wstring pat = sequencePattern(outputFile(quad, st, false));
+                const std::string px = decodeRaw(pat, L"rgb24", L"");
+                std::set<std::string> colors;
+                for (size_t i = 0; i + 2 < px.size(); i += 3) colors.insert(px.substr(i, 3));
+                if (px.size() != 64 * 64 * 3) problem = bad(std::string("size ") + std::to_string(px.size()));
+                else if (std::string(filt) == "neighbor" && colors.size() != 4) problem = bad("neighbor colors " + std::to_string(colors.size()));
+                else if (std::string(filt) == "bilinear" && colors.size() <= 4) problem = bad("bilinear colors " + std::to_string(colors.size()));
+                if (!problem.empty()) break;
+            }
+            if (problem.empty()) {  // facteur
+                Settings st = base("h264", "png", 8);
+                st.scale = "2x";
+                std::wstring e;
+                std::string logText;
+                if (!renderOne(quad, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else if (probeInfo(ffmpeg, sequencePattern(outputFile(quad, st, false))).find(" 128x128") == std::string::npos) problem = bad("2x size");
+            }
+            check("selftest.fmt_scale", problem);
+        }
+        // interpolation d'images : rendu a 10 img/s, sortie a 20 img/s, meme duree
+        if (formatAvailable(ffmpeg, "h264", "mp4")) {
+            Settings st = base("h264", "mp4", 8);
+            st.duration = 1.0;
+            st.interp = 20;
+            std::wstring e, problem;
+            std::string logText;
+            if (!renderOne(renderShader, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                const std::string info = probeInfo(ffmpeg, outputFile(renderShader, st, false));
+                const double d = probeDuration(info);
+                if (info.find(" 20 fps") == std::string::npos) problem = bad("fps: " + info.substr(info.find("Video:") == std::string::npos ? 0 : info.find("Video:"), 120));
+                else if (d < 0.85 || d > 1.3) problem = bad("duration " + std::to_string(d));
+            }
+            check("selftest.fmt_interp", problem);
+        }
+        // normalisation du son : un sinus de 10 s ressort a -16 LUFS (+/- 3) avec loudnorm=-16
+        if (formatAvailable(ffmpeg, "h264", "mp4")) {
+            const std::wstring tone = outDir + sep + L"tone10.wav";
+            runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -f lavfi -i sine=frequency=440:duration=10 -ar 44100 -ac 1 \"" + tone + L"\"",
+                       nullptr);
+            Settings st = base("h264", "mp4", 8);
+            st.fps = 5;
+            st.duration = 10;
+            st.audio = tone;
+            st.loudnorm = -16;
+            std::wstring e, problem;
+            std::string logText;
+            if (!fileExists(tone)) problem = bad("no tone");
+            else if (!renderOne(renderShader, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                std::string summary;
+                runProcess(L"\"" + ffmpeg + L"\" -hide_banner -nostats -nostdin -i \"" + outputFile(renderShader, st, false) + L"\" -af ebur128 -f null -",
+                           [&](const std::wstring& l) { summary += U8(l) + "\n"; });
+                const size_t p = summary.rfind("I:");
+                double lufs = 0;
+                if (p == std::string::npos || sscanf(summary.c_str() + p + 2, "%lf", &lufs) != 1) problem = bad("no loudness");
+                else if (std::fabs(lufs + 16.0) > 3.0) problem = bad("loudness " + std::to_string(lufs));
+            }
+            check("selftest.fmt_loudnorm", problem);
+        }
+        // apercu avec transparence : le damier gris se voit ou l'alpha est presque nul (a gauche), la couleur ou il est presque plein (a droite)
+        {
+            Settings st;
+            st.width = st.height = 64;
+            std::vector<uint8_t> got;
+            Hooks H;
+            H.log = [](const std::wstring&) {};
+            H.previewFrame = [&](int, int, std::vector<uint8_t>&& px) { got = std::move(px); };
+            std::wstring e, problem;
+            if (convertFile(alphaShader, exeDir, st, H, e) != Result::Ok || got.size() != 64 * 64 * 4) {
+                problem = e.empty() ? TX("selftest.render_failed") : e;
+            } else {
+                auto at = [&](int x, int y, int c) { return (int)got[((size_t)y * 64 + x) * 4 + c]; };  // BGRA
+                // (1, 1) : alpha 0.02 sur la case claire du damier... la premiere case (0..7) est la plus sombre (150)
+                const bool left = std::abs(at(1, 1, 2) - 150) < 8 && std::abs(at(1, 1, 1) - 150) < 8 && std::abs(at(1, 1, 0) - 150) < 8;
+                const bool right = at(62, 1, 2) > 245 && at(62, 1, 1) > 120 && at(62, 1, 1) < 136 && at(62, 1, 0) < 12;
+                if (!left || !right) problem = bad("checkerboard / color");
+            }
+            check("selftest.fmt_alpha_preview", problem);
+        }
+        // planche-contact 3x2 et vignette : le rouge suit iTime (duree 6 s), chaque vignette est tiree au milieu de son intervalle (0.5, 1.5, ... 5.5 s)
+        if (formatAvailable(ffmpeg, "h264", "png")) {
+            const std::wstring ramp = put(L"time_ramp.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(iTime / 6.0, 0.0, 0.0, 1.0); }\n");
+            std::wstring problem;
+            Settings st = base("h264", "png", 8);
+            st.width = 320;
+            st.height = 180;
+            st.duration = 6;
+            st.fps = 10;
+            {
+                Hooks H;
+                H.log = [](const std::wstring&) {};
+                H.sheetCols = 3;
+                H.sheetRows = 2;
+                std::wstring e;
+                if (convertFile(ramp, exeDir, st, H, e) != Result::Ok) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    const std::wstring sheet = outputPath(ramp, st.outdir, L"_sheet.png");
+                    const std::string px = decodeRaw(sheet, L"rgb24", L"");
+                    // 3 x 320 + 2 x 4 de marge entre les vignettes + 2 x 4 de bord = 976 ; 2 x 180 + 4 + 8 = 372
+                    if (px.size() != (size_t)976 * 372 * 3) problem = bad("sheet size " + std::to_string(px.size()));
+                    else
+                        for (int k = 0; k < 6 && problem.empty(); k++) {
+                            const int cx = 4 + (k % 3) * 324 + 160, cy = 4 + (k / 3) * 184 + 90;
+                            const int red = (uint8_t)px[((size_t)cy * 976 + cx) * 3];
+                            const int want = (int)std::lround((k + 0.5) / 6.0 * 255.0);
+                            if (std::abs(red - want) > 4) problem = bad("tile " + std::to_string(k) + " red " + std::to_string(red) + " != " + std::to_string(want));
+                        }
+                }
+            }
+            if (problem.empty()) {  // vignette a 3 s : rouge 0.5
+                Hooks H;
+                H.log = [](const std::wstring&) {};
+                H.snapshot = true;
+                H.thumbTime = 3.0;
+                std::wstring e;
+                if (convertFile(ramp, exeDir, st, H, e) != Result::Ok) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    const std::string px = decodeRaw(outputPath(ramp, st.outdir, L"_thumb.png"), L"rgb24", L"");
+                    if (px.size() != (size_t)320 * 180 * 3 || std::abs((int)(uint8_t)px[0] - 128) > 3) problem = bad("thumb " + std::to_string(px.size()));
+                }
+            }
+            check("selftest.fmt_sheet", problem);
+        }
+        // montage : trois couleurs enchainees (coupe, fondu enchaine, fondu par le noir) ; duree 2 + 1.5 + 2 + 1 = 6.5 s, couleurs aux bons instants
+        if (formatAvailable(ffmpeg, "h264", "mp4")) {
+            put(L"m_red.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(1.0, 0.0, 0.0, 1.0); }\n");
+            put(L"m_green.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(0.0, 1.0, 0.0, 1.0); }\n");
+            put(L"m_blue.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(0.0, 0.0, 1.0, 1.0); }\n");
+            const std::wstring montage = put(L"demo_mix.montage",
+                                             "# montage de test\nset width=64\nset height=64\nset fps=10\nset codec=h264\nset container=mp4\nset crf=18\nset preset=ultrafast\n"
+                                             "duration=2\nm_red.glsl\n\"m_green.glsl\" 2 crossfade 0.5\nm_blue.glsl 2 cut\nm_red.glsl 2 fade 1\n");
+            Settings st = base("h264", "mp4", 8);
+            st.name = L"";
+            st.audio = L"";
+            std::wstring e, problem;
+            std::string logText;
+            if (!renderOne(montage, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                const std::wstring out = outputFile(montage, st, false);
+                const double d = probeDuration(probeInfo(ffmpeg, out));
+                if (d < 6.35 || d > 6.65) problem = bad("duration " + std::to_string(d));
+                else {
+                    struct At {
+                        double t;
+                        int r, g, b, tol;
+                    };
+                    for (const At& a : {At{0.3, 255, 0, 0, 12}, At{3.0, 0, 255, 0, 12}, At{4.2, 0, 0, 255, 12}, At{5.0, 0, 0, 0, 150}, At{6.4, 255, 0, 0, 12}}) {  // 5.0 s : milieu du fondu par le noir (rouge fonce, ni bleu ni vert)
+                        const std::string px = decodeRaw(out, L"rgb24", wfmt(L"-ss %.2f", a.t));
+                        if (px.size() < 3) {
+                            problem = bad("no frame");
+                            break;
+                        }
+                        if (std::abs((uint8_t)px[0] - a.r) > a.tol || std::abs((uint8_t)px[1] - a.g) > a.tol || std::abs((uint8_t)px[2] - a.b) > a.tol) {
+                            problem = bad("t=" + std::to_string(a.t) + " rgb " + std::to_string((uint8_t)px[0]) + "," + std::to_string((uint8_t)px[1]) + "," +
+                                          std::to_string((uint8_t)px[2]));
+                            break;
+                        }
+                    }
+                }
+                if (problem.empty() && platform::dirExists(out.substr(0, out.find_last_of(L'.')) + L".clips")) problem = bad("clips folder left");
+            }
+            check("selftest.fmt_montage", problem);
+            // erreurs de lecture : transition inconnue, clip absent, fichier vide
+            std::wstring problem2;
+            const char* bads[] = {"m_red.glsl 2 balayage\n", "absent.glsl 3\n", "# rien\n"};
+            for (const char* body : bads) {
+                const std::wstring bm = put(L"bad.montage", body);
+                MontageDef def;
+                std::wstring pe;
+                if (parseMontage(bm, 2.0, def, pe) || pe.empty()) {
+                    problem2 = bad(std::string("accepted: ") + body);
+                    break;
+                }
+            }
+            check("selftest.fmt_montage_errors", problem2);
+        }
+        // texte incruste : le titre apparait au centre (image a 0.3 s), absent sans reglage ; ignore si ce ffmpeg n'a pas drawtext ou s'il manque une police
+        if (formatAvailable(ffmpeg, "h264", "png") && ffmpegHasDrawtext(ffmpeg) && !platform::systemFontFile().empty()) {
+            std::wstring problem;
+            long long lit[2] = {0, 0};
+            for (int withTitle = 0; withTitle < 2 && problem.empty(); withTitle++) {
+                const std::wstring black = put(L"title_black.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(0.0, 0.0, 0.0, 1.0); }\n");
+                Settings st = base("h264", "png", 8);
+                st.width = st.height = 128;
+                if (withTitle) {
+                    st.title = L"HELLO";
+                    st.credit = W("credit: by it's 100% me, ok");  // deux-points, apostrophe, pourcentage et virgule : echappements de drawtext
+                }
+                std::wstring e;
+                std::string logText;
+                if (!renderOne(black, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    const std::string px = decodeRaw(sequencePattern(outputFile(black, st, false)), L"gray", L"-framerate 10 -ss 0.3");
+                    if (px.size() != 128 * 128) problem = bad("frame size " + std::to_string(px.size()));
+                    else
+                        for (unsigned char c : px)
+                            if (c > 100) lit[withTitle]++;
+                }
+            }
+            if (problem.empty() && (lit[0] != 0 || lit[1] < 30)) problem = bad("lit pixels " + std::to_string(lit[0]) + " / " + std::to_string(lit[1]));
+            check("selftest.fmt_overlay", problem);
+        }
     }
     // Canaux dynamiques et cubemap par fichiers : audio (spectre), video (images au bon temps), six faces de couleurs distinctes
     {

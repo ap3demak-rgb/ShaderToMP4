@@ -73,6 +73,42 @@ bool codecContainerOk(const std::string& codec, const std::string& container) {
     return true;  // mkv : tout
 }
 
+bool outputSize(const Settings& s, int& w, int& h) {
+    w = s.width;
+    h = s.height;
+    auto even = [](double v) { return std::max(16, std::min(16384, (int)(std::llround(v / 2.0) * 2))); };
+    if (s.scale.empty()) return true;
+    int tw = 0, th = 0;
+    char x = 0;
+    if (sscanf(s.scale.c_str(), "%d%c%d", &tw, &x, &th) == 3 && x == 'x' && tw >= 16 && th >= 16 && tw <= 16384 && th <= 16384) {
+        w = even(tw);
+        h = even(th);
+        return true;
+    }
+    char* end = nullptr;
+    const double f = strtod(s.scale.c_str(), &end);
+    if (end != s.scale.c_str() && (*end == 0 || (*end == 'x' && end[1] == 0)) && f >= 0.1 && f <= 8.0) {
+        w = even(s.width * f);
+        h = even(s.height * f);
+        return true;
+    }
+    return false;
+}
+
+bool alphaSupported(const std::string& codec, const std::string& container) {
+    switch (outKind(container)) {
+        case OutKind::Gif: return false;
+        case OutKind::Webp:
+        case OutKind::Sequence: return true;
+        default: break;
+    }
+    return (codec == "prores_4444" && (container == "mov" || container == "mkv")) || (codec == "vp9" && (container == "webm" || container == "mkv"));
+}
+
+bool hdrSupported(const std::string& codec, const std::string& container) {
+    return outKind(container) == OutKind::Video && (codec == "h265" || codec == "av1" || codec == "vp9") && codecContainerOk(codec, container);
+}
+
 // ---------------------------------------------------------------------------
 //  Encodeurs presents dans ffmpeg
 // ---------------------------------------------------------------------------
@@ -154,15 +190,19 @@ double renderedSeconds(const Settings& s) {
 }
 
 double estimateSizeBytes(const Settings& s, double seconds, bool audio) {
-    const double fps = s.fps > 0 ? s.fps : 60.0;
+    // la sortie compte : cadence apres interpolation, taille apres mise a l'echelle, canal alpha en plus
+    const double fps = s.interp > 0 && outKind(s.container) == OutKind::Video ? s.interp : (s.fps > 0 ? s.fps : 60.0);
     const double frames = seconds * fps;
-    const double px = (double)s.width * s.height;
-    const bool deep = s.depth >= 10;
+    int ow = s.width, oh = s.height;
+    outputSize(s, ow, oh);
+    const double px = (double)ow * oh;
+    const bool deep = s.depth >= 10 || s.hdr != "off";
+    const double alphaK = s.alpha ? (s.container == "tiff" || s.container == "exr" ? 1.33 : 1.25) : 1.0;
     switch (outKind(s.container)) {
         case OutKind::Gif: return px * frames * 0.25;
-        case OutKind::Webp: return px * frames * 0.08;
+        case OutKind::Webp: return px * frames * 0.08 * alphaK;
         case OutKind::Sequence:
-            return px * frames * (s.container == "png" ? 1.4 : s.container == "tiff" ? 3.0 : 4.0) * (deep && s.container != "exr" ? 2.0 : 1.0);
+            return px * frames * (s.container == "png" ? 1.4 : s.container == "tiff" ? 3.0 : 4.0) * (deep && s.container != "exr" ? 2.0 : 1.0) * alphaK;
         default: break;
     }
     double bytes;
@@ -182,6 +222,7 @@ double estimateSizeBytes(const Settings& s, double seconds, bool audio) {
         const double ratio = s.codec == "h265" ? 0.6 : s.codec == "vp9" ? 0.65 : s.codec == "av1" ? 0.5 : 1.0;
         bytes = px * frames * bpp * ratio / 8.0;
     }
+    if (s.alpha) bytes *= alphaK;  // ProRes 4444 et VP9 : canal alpha en plus
     if (audio && !s.audio.empty()) bytes += 192.0 * 125.0 * seconds;
     return bytes;
 }

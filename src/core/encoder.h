@@ -13,6 +13,15 @@ struct ColorSpec {
     const wchar_t* tags;    // etiquettes ffmpeg (espace, primaires, transfert)
 };
 ColorSpec colorSpec(const std::string& c);
+// Espace colorimetrique de la sortie : celui du reglage `color`, ou BT.2020 avec transfert PQ (HDR10) ou HLG quand `hdr` est actif.
+ColorSpec colorSpecFor(const Settings& s);
+// Filtres ffmpeg de la sortie, chacun termine par une virgule (vides si inutiles) :
+//  - mise a l'echelle `scale` avec le filtre `scalefilter` (de w x h, taille du rendu apres supersampling, vers ow x oh) ;
+//  - interpolation d'images `interp` (minterpolate, 8 bits) ;
+//  - normalisation du son `loudnorm` (EBU R128, une passe).
+std::wstring outScaleFilter(const Settings& s, int w, int h, int ow, int oh);
+std::wstring interpFilter(const Settings& s);
+std::wstring loudnormFilter(const Settings& s);
 
 // Encodeurs materiels connus : "nvenc", "amf", "qsv" (Windows, Linux), "vaapi" (Linux), "videotoolbox" (macOS).
 // Choisit l'encodeur reellement utilisable : "cpu" ou l'un d'eux (sonde ffmpeg, repli sur le CPU).

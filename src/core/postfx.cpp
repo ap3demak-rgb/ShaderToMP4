@@ -54,7 +54,7 @@ const char* kBlurFs =
 const char* kCompositeFs =
     "#version 330 core\n"
     "uniform sampler2D uSrc, uBloom0, uBloom1, uBloom2, uLut1; uniform sampler3D uLut3;\n"
-    "uniform vec2 uRes; uniform float uFade, uFrame, uLutSize; uniform int uLutMode; uniform vec3 uLutMin, uLutMax;\n"
+    "uniform vec2 uRes; uniform float uFade, uFrame, uLutSize, uWhite; uniform int uLutMode, uAlpha, uHdr; uniform vec3 uLutMin, uLutMax;\n"
     "uniform float aSharpen, aChroma, aBloom, aContrast, aSaturation, aHue, aVignette, aGrain;\n"
     "out vec4 st_o;\n"
     "vec3 lut1d(vec3 c){ vec3 p = clamp((c - uLutMin) / (uLutMax - uLutMin), 0.0, 1.0) * (uLutSize - 1.0);\n"
@@ -77,15 +77,20 @@ const char* kCompositeFs =
     "  if (f.b > f.r) return c000 + (c010 - c000) * f.g + (c011 - c010) * f.b + (c111 - c011) * f.r;\n"
     "  return c000 + (c010 - c000) * f.g + (c110 - c010) * f.r + (c111 - c110) * f.b; }\n"
     "float hash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }\n"
+    // HDR : valeurs de shader (sRGB, au-dessus de 1 pour les lumieres fortes) -> lumiere lineaire -> primaires BT.2020 -> PQ ou HLG
+    "vec3 srgbToLinear(vec3 c){ vec3 a = abs(c); return sign(c) * mix(a / 12.92, pow((a + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), a)); }\n"
+    "vec3 pqOetf(vec3 L){ vec3 p = pow(max(L, 0.0), vec3(0.1593017578125)); return pow((0.8359375 + 18.8515625 * p) / (1.0 + 18.6875 * p), vec3(78.84375)); }\n"
+    "vec3 hlgOetf(vec3 E){ E = max(E, 0.0); vec3 hi = 0.17883277 * log(max(12.0 * E - 0.28466892, 1e-6)) + 0.55991073; return mix(sqrt(3.0 * E), hi, step(vec3(1.0 / 12.0), E)); }\n"
     "void main(){\n"
-    "  vec2 uv = gl_FragCoord.xy / uRes; vec3 col;\n"
+    "  vec2 uv = gl_FragCoord.xy / uRes; vec3 col; float alpha = uAlpha != 0 ? texture(uSrc, uv).a : 1.0;\n"
     "  if (aChroma > 0.0) { vec2 d = (uv - 0.5) * aChroma; col = vec3(texture(uSrc, uv + d).r, texture(uSrc, uv).g, texture(uSrc, uv - d).b); }\n"
     "  else col = texture(uSrc, uv).rgb;\n"
     "  if (aSharpen > 0.0) { vec2 px = 1.0 / uRes;\n"
     "    vec3 blur = (texture(uSrc, uv + vec2(px.x, 0.0)).rgb + texture(uSrc, uv - vec2(px.x, 0.0)).rgb\n"
     "               + texture(uSrc, uv + vec2(0.0, px.y)).rgb + texture(uSrc, uv - vec2(0.0, px.y)).rgb) * 0.25;\n"
     "    col += (col - blur) * aSharpen; }\n"
-    "  if (aBloom > 0.0) col += aBloom * (texture(uBloom0, uv).rgb * 0.4 + texture(uBloom1, uv).rgb * 0.6 + texture(uBloom2, uv).rgb * 0.8);\n"
+    "  if (aBloom > 0.0) { vec3 glow = aBloom * (texture(uBloom0, uv).rgb * 0.4 + texture(uBloom1, uv).rgb * 0.6 + texture(uBloom2, uv).rgb * 0.8);\n"
+    "    col += glow; if (uAlpha != 0) alpha = clamp(alpha + dot(glow, vec3(0.3333)), 0.0, 1.0); }\n"  // la lueur rend aussi les bords transparents visibles
     "  if (aContrast != 0.0) col = (col - 0.5) * (1.0 + aContrast) + 0.5;\n"
     "  if (aSaturation != 0.0) { float l = dot(col, vec3(0.2126, 0.7152, 0.0722)); col = mix(vec3(l), col, 1.0 + aSaturation); }\n"
     "  if (aHue != 0.0) { float a = aHue * 6.28318530718; float cs = cos(a), sn = sin(a);\n"
@@ -95,7 +100,11 @@ const char* kCompositeFs =
     "  if (aVignette > 0.0) { vec2 q = (uv - 0.5) * vec2(uRes.x / uRes.y, 1.0); col *= 1.0 - aVignette * smoothstep(0.3, 1.0, length(q) * 1.2); }\n"
     "  if (aGrain > 0.0) col += (hash(gl_FragCoord.xy + uFrame * 17.0) - 0.5) * aGrain;\n"
     "  if (uLutMode == 1) col = lut1d(col); else if (uLutMode == 3) col = lut3d(col);\n"
-    "  st_o = vec4(col * uFade, 1.0); }\n";
+    "  if (uHdr != 0) {\n"
+    "    vec3 lin = max(mat3(0.6274, 0.0691, 0.0164, 0.3293, 0.9195, 0.0880, 0.0433, 0.0114, 0.8956) * srgbToLinear(col) * uFade, 0.0);\n"
+    "    col = uHdr == 1 ? pqOetf(lin * uWhite / 10000.0) : hlgOetf(lin * 0.2650 * uWhite / 203.0);\n"  // HLG : blanc de reference (1.0) = signal 0.75
+    "    st_o = vec4(col, 1.0); return; }\n"                                                           // le fondu a deja agi en lumiere lineaire
+    "  st_o = uAlpha != 0 ? vec4(col, alpha * uFade) : vec4(col * uFade, 1.0); }\n";  // transparence : le fondu agit sur l'alpha
 
 }  // namespace
 
@@ -164,6 +173,7 @@ bool PostChain::build(const Settings& s, const BufferPasses& bp, const std::wstr
     release();
     w_ = w;
     h_ = h;
+    alpha_ = s.alpha;
     std::vector<PostEffect> fx;
     std::wstring bad;
     if (!parsePostEffects(s.post, fx, bad)) {
@@ -179,7 +189,9 @@ bool PostChain::build(const Settings& s, const BufferPasses& bp, const std::wstr
         const bool absolute = p.size() > 1 && (p[1] == L':' || p[0] == L'/' || p[0] == L'\\');
         if (!loadCubeLut(absolute ? p : shaderDir + p, lut, err)) return false;
     }
-    composite_ = !fx.empty() || lut.dim != 0;
+    hdr_ = s.hdr == "pq" ? 1 : s.hdr == "hlg" ? 2 : 0;
+    hdrWhite_ = (float)s.hdrWhite;
+    composite_ = !fx.empty() || lut.dim != 0 || hdr_ != 0;
     active_ = custom_ || composite_;
     if (!active_) return true;
     ogl::ActiveTexture(K_TEXTURE0);
@@ -227,7 +239,7 @@ bool PostChain::build(const Settings& s, const BufferPasses& bp, const std::wstr
         std::string types[4];
         channelTypes(bp.postSettings(), types);
         std::wstring e;
-        progCustom_ = buildProgram(bp.withCommon(bp.postCode()), e, false, types, false, false, 0, paramDecls);
+        progCustom_ = buildProgram(bp.withCommon(bp.postCode()), e, false, types, false, false, 0, paramDecls, s.alpha);
         if (!progCustom_) {
             err = L"[Post] " + locateGlslErrors(e, bp.postPath(), 1 + (int)std::count(bp.postCode().begin(), bp.postCode().end(), '\n'), bp.commonPath());  // nom-technique
             return false;
@@ -237,7 +249,7 @@ bool PostChain::build(const Settings& s, const BufferPasses& bp, const std::wstr
         chans_.w[0] = w;
         chans_.h[0] = h;
     }
-    H.log(L"  " + TXF("log.post_active", W(std::string(custom_ ? "post.glsl " : "") + s.post + (lut.dim ? (s.post.empty() ? "lut" : " lut") : "")).c_str()));
+    if (custom_ || !fx.empty() || lut.dim != 0) H.log(L"  " + TXF("log.post_active", W(std::string(custom_ ? "post.glsl " : "") + s.post + (lut.dim ? (s.post.empty() ? "lut" : " lut") : "")).c_str()));
     return true;
 }
 
@@ -306,6 +318,9 @@ void PostChain::apply(GLuint targetFbo, long long n, double t, float fade, const
         ogl::Uniform2f(loc("uRes"), (float)w_, (float)h_);
         ogl::Uniform1f(loc("uFade"), fade);
         ogl::Uniform1f(loc("uFrame"), (float)(n & 0xFFFF));
+        ogl::Uniform1i(loc("uAlpha"), alpha_ ? 1 : 0);
+        ogl::Uniform1i(loc("uHdr"), hdr_);
+        ogl::Uniform1f(loc("uWhite"), hdrWhite_);
         ogl::Uniform1i(loc("uLutMode"), lutMode_);
         ogl::Uniform1f(loc("uLutSize"), (float)lutSize_);
         ogl::Uniform3f(loc("uLutMin"), lutMin_[0], lutMin_[1], lutMin_[2]);
@@ -340,7 +355,8 @@ void PostChain::release() {
     lut3_ = lut1_ = 0;
     freeChannels(chans_);
     chans_ = ChannelSet();
-    active_ = custom_ = composite_ = false;
+    active_ = custom_ = composite_ = alpha_ = false;
+    hdr_ = 0;
     lutMode_ = lutSize_ = 0;
     for (double& a : amount_) a = 0;
 }

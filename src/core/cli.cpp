@@ -51,7 +51,7 @@ std::string num(double v) {
 
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
-    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_param", "cli.render.opt_watch",
+    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch",
                           "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
@@ -66,6 +66,8 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
     std::vector<std::wstring> files;
     std::string progress = "none";  // none | text | json
     bool snapshot = false;
+    double thumbTime = -1;       // --thumb[=secondes] : vignette de couverture
+    int sheetCols = 0, sheetRows = 0;  // --sheet=CxR : planche-contact
     std::wstring watchDir;  // --watch=dossier : rend chaque shader qui y apparait (explicite, jamais par defaut)
     int watchCount = 0;     // --watch-count=N : s'arrete apres N rendus (0 = sans fin)
     std::vector<std::pair<std::string, std::string>> overrides;
@@ -85,6 +87,16 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         if (key == "render" || key == "quiet") continue;
         if (key == "png") {
             snapshot = true;
+        } else if (key == "thumb") {  // vignette de couverture : une image a l'instant donne (milieu de la plage sans valeur), 1280 pixels au plus
+            snapshot = true;
+            thumbTime = val.empty() ? -2.0 : std::max(0.0, atof(val.c_str()));
+        } else if (key == "sheet") {  // planche-contact : colonnes x lignes vignettes tirees sur la duree
+            int c = 0, r = 0;
+            char x = 0;
+            if (sscanf(val.c_str(), "%d%c%d", &c, &x, &r) != 3 || (x != 'x' && x != 'X') || c < 1 || r < 1 || c * r > 100)
+                return fail(TXF("cli.bad_sheet", W(val).c_str()));
+            sheetCols = c;
+            sheetRows = r;
         } else if (key == "progress") {
             progress = lower(val);
             if (progress != "json" && progress != "text" && progress != "none") return fail(TXF("cli.bad_progress", W(val).c_str()));
@@ -127,6 +139,9 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         std::wstring currentOutput;
         Hooks H;
         H.snapshot = snapshot;
+        H.thumbTime = thumbTime;
+        H.sheetCols = snapshot ? 0 : sheetCols;  // une image fixe prime sur la planche
+        H.sheetRows = snapshot ? 0 : sheetRows;
         H.log = [&](const std::wstring& s) {
             if (json) write("{\"event\":\"log\",\"message\":" + jsonString(U8(s)) + "}\n", false);
             else write(U8(s) + "\n", false);

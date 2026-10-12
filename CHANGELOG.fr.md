@@ -10,6 +10,13 @@ Format : une section par version, la plus récente en premier. La section d'une 
 
 ### Ajouts
 
+- Transparence (`alpha=1`) : le canal alpha du shader en ProRes 4444, VP9 WebM, WebP et séquences PNG / TIFF / EXR (alpha droit, exact avec le supersampling et le flou de mouvement, damier dans les aperçus, autres combinaisons refusées avant le rendu).
+- Sortie HDR (`hdr=pq` pour le HDR10, `hdr=hlg`) : BT.2020, 10 bits, conversion en virgule flottante, MaxCLL / MaxFALL et volume d'affichage déclarés (`hdrpeak`, `hdrfall`, `hdrwhite`), en H.265, AV1 et VP9.
+- Taille et cadence de sortie : `scale` avec choix du filtre (`scalefilter`), interpolation d'images `interp` (rendu à 30, écriture à 60), normalisation du son `loudnorm` en LUFS.
+- Texte sur la vidéo : `title`, `credit`, `titledur` avec drawtext de ffmpeg ; le journal d'un import Shadertoy donne la ligne de crédit à ajouter.
+- Montage : un fichier `nom.montage` enchaîne plusieurs shaders avec des transitions coupe, fondu, fondu enchaîné ou balayage (clips rendus par parties reprenables, puis joints par ffmpeg).
+- Ligne de commande : `--sheet=4x3` (planche-contact) et `--thumb[=secondes]` (vignette de couverture).
+
 - Paramètres animés : `// uniform float vitesse = 1.0 [0..5]` (types float, int, bool, vec2, vec3, vec4, color) déclare un uniform réglable, disponible dans toutes les passes ; valeurs enregistrées par shader dans `params/`, images clés `// key vitesse=0:1.0 ; 4:3.0` (linéaire, lissée ou constante), `--param=nom=valeur` en ligne de commande, et paramètres qui suivent le son (`audio.level`, `audio.bass`, `audio.mid`, `audio.treble`).
 - Fenêtre « Paramètres et post-traitement » sous Windows (bouton de l'en-tête) et les mêmes contrôles en bas de la carte des réglages sous Linux et macOS ; l'aperçu en lecture reprend les valeurs tout de suite.
 - Post-traitement en virgule flottante, avant la conversion en 8 / 10 bits (donc avec le supersampling, le flou de mouvement et la sortie 10 bits) : une passe `nom.post.glsl` qui reçoit l'image dans `iChannel0`, huit effets (`sharpen`, `chroma`, `bloom`, `contrast`, `saturation`, `hue`, `vignette`, `grain`, `// post=bloom:0.4,grain`) et une LUT couleur au format `.cube`, 1D ou 3D avec interpolation tétraédrique (`// lut=etalonnage.cube`).

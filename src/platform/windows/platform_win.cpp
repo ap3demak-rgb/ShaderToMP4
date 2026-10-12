@@ -127,6 +127,17 @@ DateTime localTime() {
     return {t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond};
 }
 
+std::wstring systemFontFile() {
+    wchar_t dir[MAX_PATH];
+    const UINT n = GetWindowsDirectoryW(dir, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return L"";
+    for (const wchar_t* name : {L"\\Fonts\\segoeui.ttf", L"\\Fonts\\arial.ttf", L"\\Fonts\\tahoma.ttf"}) {
+        const std::wstring p = std::wstring(dir) + name;
+        if (fileExists(p)) return p;
+    }
+    return L"";
+}
+
 void showMessage(const std::wstring& title, const std::wstring& text, MessageKind kind) {
     UINT icon = kind == MessageKind::Error ? MB_ICONERROR : kind == MessageKind::Warning ? MB_ICONWARNING : MB_ICONINFORMATION;
     MessageBoxW(nullptr, text.c_str(), title.c_str(), MB_OK | icon);

@@ -12,5 +12,9 @@ void normalizeShaderText(std::string& code, const Hooks& H);
 
 // Convertit shaderPath selon les reglages `base` (completes par les commentaires // du shader).
 // Un contexte OpenGL doit etre courant dans le thread appelant. exeDir : dossier contenant ffmpeg.exe.
+// Un fichier .montage enchaine plusieurs shaders (voir montage.h).
 Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H,
                    std::wstring& err);
+// Comme convertFile pour un shader, mais les couples (cle, valeur) de `forced` priment sur les commentaires du shader ; sans variantes.
+Result convertFileForced(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H, std::wstring& err,
+                         const std::vector<std::pair<std::string, std::string>>& forced);

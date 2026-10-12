@@ -84,12 +84,15 @@ bool createGLContext(GLContext& c, std::wstring& err);  // contexte 3.3 core + c
 // chType : type GLSL des quatre canaux (sampler2D, samplerCube, sampler3D) ; nullptr = quatre sampler2D.
 // cubemapOut : passe « Cubemap A » (mainCubemap) : le programme est execute une fois par face (uniform st_face 0 a 5).
 // soundOut : passe « Sound » (mainSound) : un pixel = un echantillon stereo 16 bits (uniform st_sampleBase = indice du premier).
+// alphaOut : l'image ecrit aussi sa transparence (fragColor.a) au lieu d'un alpha de 1 ; le fondu (st_weight) agit alors sur l'alpha.
 // vrMode : image en realite virtuelle (mainVR) rendue en 360 equirectangulaire : 1 = mono, 2 = stereo haut / bas (oeil gauche en haut,
 // iResolution = taille d'un oeil, uniform st_ipd = ecart des yeux).
 GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut = false, const std::string* chType = nullptr,
-                    bool cubemapOut = false, bool soundOut = false, int vrMode = 0, const std::string& preamble = std::string());
+                    bool cubemapOut = false, bool soundOut = false, int vrMode = 0, const std::string& preamble = std::string(),
+                    bool alphaOut = false);
 // Programme plein ecran sans enveloppe Shadertoy (post-traitement) : fs est un fragment shader complet (#version 330 core), la sortie
 // est `out vec4 st_o`. 0 + err si echec.
 GLuint buildFullscreenProgram(const std::string& fs, std::wstring& err);
 // Programme de recopie : accumulation flottante (flou de mouvement) -> image 8 bits
-GLuint buildPresentProgram(std::wstring& err);
+// alpha : l'accumulation contient des couleurs prémultipliées (alpha en 4e composante) : la copie rend une couleur a alpha droit.
+GLuint buildPresentProgram(std::wstring& err, bool alpha = false);

@@ -182,6 +182,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 | (config.ini seulement) | `endaction` | après un lot réussi : `none` (défaut), `folder` (montrer le dernier fichier dans le gestionnaire de fichiers) ou `sleep` (mise en veille après 15 s ; fermer le programme l'annule). À la fin d'un lot le bouton de la barre des tâches / du Dock clignote toujours |
 | (config.ini seulement) | `chunk` | rendu par parties de N secondes (30 par défaut, 0 = jamais) |
 | (config.ini seulement) | `metadata` | 1 = écrire titre (nom du shader) et commentaire (taille, cadence, version) dans le fichier, 0 = aucun (1 par défaut) |
+| (commentaires du shader, config.ini) | `alpha` | `1` conserve le canal alpha du shader (ProRes 4444, VP9 WebM, WebP, PNG / TIFF / EXR) ; voir « Sortie » |
+| (commentaires du shader, config.ini) | `hdr`, `hdrpeak`, `hdrfall`, `hdrwhite` | `pq` (HDR10) ou `hlg` ; MaxCLL et MaxFALL déclarés en cd/m² (1000, 400), blanc du shader en cd/m² (203) |
+| (commentaires du shader, config.ini) | `scale`, `scalefilter` | taille de sortie (`1920x1080`, `2`, `0.5x`) et son filtre (`lanczos`, `bicubic`, `bilinear`, `area`, `neighbor`) |
+| (commentaires du shader, config.ini) | `interp`, `loudnorm` | cadence de sortie par interpolation ; normalisation du son en LUFS (`-16`) |
+| (commentaires du shader, config.ini) | `title`, `credit`, `titledur` | texte écrit sur les premières secondes de la vidéo (titre au milieu, crédit en bas à gauche) |
 | (commentaires du shader, config.ini) | `post`, `lut` | effets de post-traitement (`post=bloom:0.4,grain,vignette`) et LUT couleur (`lut=etalonnage.cube`) ; voir « Création » |
 | (commentaires du shader, `--param=`) | `key nom=…`, `param` | paramètres animés : `// key vitesse=0:1.0 ; 4:3.0`, `--param=vitesse=2.5` ; voir « Création » |
 | (commentaires du shader, config.ini) | `vr`, `vripd` | shader `mainVR` en vidéo 360° : `auto` (défaut), `off`, `mono`, `stereo` ; distance entre les yeux du rendu stéréo (voir « Compatibilité Shadertoy ») |
@@ -284,6 +289,40 @@ La fenêtre montre les effets dans l'aperçu en lecture (relancé un instant apr
 </details>
 
 <details>
+<summary><b>Sortie : transparence, HDR, taille, son, texte, montage, planches-contact</b></summary>
+
+Tout ceci s'écrit en commentaires `// clé=valeur` dans le shader, dans `config.ini` ou en ligne de commande (`--clé=valeur`) ; la fenêtre de réglages n'a pas encore de contrôles pour cela.
+
+**Transparence** (`alpha=1`). Le `fragColor.a` du shader est conservé (alpha droit, pas prémultiplié ; la plupart des shaders Shadertoy y écrivent n'importe quoi ou 0, c'est donc désactivé par défaut). Possible avec **ProRes 4444** (MOV, MKV), **VP9** (WebM, MKV ; alpha 8 bits), **WebP** et les séquences **PNG / TIFF / EXR** ; toute autre combinaison (H.264, H.265, AV1, GIF, ProRes 422...) est refusée avant le rendu avec un message. Le supersampling, le flou de mouvement et le post-traitement gardent l'alpha (le flou accumule des couleurs prémultipliées, les bords restent exacts) ; les fondus agissent sur l'alpha, l'aperçu en lecture et l'image d'aperçu montrent la transparence sur un damier gris. L'estimation de taille compte le canal alpha. Impossible avec le HDR ou l'interpolation d'images.
+
+**HDR** (`hdr=pq` pour le HDR10, `hdr=hlg` pour le HLG). L'image est rendue en virgule flottante et encodée en **BT.2020** avec le transfert PQ ou HLG, 10 bits (réglé automatiquement), avec les étiquettes de couleur correspondantes. Les valeurs du shader sont lues comme du sRGB : **1.0 est le blanc de référence**, `hdrwhite` cd/m² (203 par défaut, BT.2408), et les valeurs au-dessus de 1.0 deviennent des hautes lumières (une lumière écrite `vec3(4.0)` vaut 4 fois le blanc). En HDR10 le flux déclare ses luminances : `hdrpeak` (MaxCLL et volume d'affichage, 1000 cd/m² par défaut) et `hdrfall` (MaxFALL, 400) ; elles sont déclarées, pas mesurées sur vos images. Codecs : **H.265** (x265, avec le SEI HDR10), **AV1** (SVT-AV1 avec les métadonnées statiques quand ce ffmpeg les accepte, sinon les seules étiquettes de couleur ; le journal le dit) et **VP9** (étiquettes de couleur seulement), en MP4, MKV ou WebM. Les encodeurs matériels sont en 8 bits ici : l'encodeur CPU est utilisé et le journal le dit. Il n'y a pas de conversion HDR vers SDR : l'aperçu et les images fixes (`--png`) restent en SDR.
+
+**Taille, cadence et son.**
+- `scale=1920x1080` ou `scale=2` / `scale=0.5x` (facteur) : rend à la taille de la fenêtre, écrit à une autre ; `scalefilter=lanczos` (défaut), `bicubic`, `bilinear`, `area` ou `neighbor` (plus proche voisin, pour le pixel art). Les dimensions sont arrondies au nombre pair.
+- `interp=60` : rend à `fps` (par ex. 30) et laisse `minterpolate` de ffmpeg écrire 60 images par seconde. Le rendu natif est toujours meilleur (un shader peut rendre exactement les images en plus) ; c'est pour les shaders trop lents. Ça marche en 8 bits, pas avec l'alpha, et entre les parties d'un long rendu la première image de chaque partie n'a pas d'image précédente à interpoler.
+- `loudnorm=-16` : normalisation EBU R128 à ce niveau (LUFS), en une passe, pour le fichier `audio` et pour la passe Sound. Un son court donne un résultat moins exact (le filtre mesure sur environ 3 secondes).
+
+**Texte sur la vidéo** (`title=Mon titre`, `credit=Shader de Nom`, `titledur=3`). Le titre est écrit au milieu et le crédit en bas à gauche pendant les `titledur` premières secondes, en fondu à l'entrée et à la sortie, avec le filtre `drawtext` de ffmpeg et une police du système (Segoe UI sous Windows, DejaVu, Liberation ou Noto sous Linux, Helvetica ou Arial sous macOS) ; le rendu s'arrête avec un message si ce ffmpeg n'a pas `drawtext` ou si aucune police n'est trouvée. Le rendu par parties garde le bon minutage. Quand vous importez un `.json` de Shadertoy, le journal donne la ligne à ajouter pour créditer l'auteur.
+
+**Montage** (`nom.montage`). Un fichier texte enchaîne plusieurs shaders en une vidéo :
+
+```
+# commentaire
+set codec=h265              (réglages de la vidéo finale, comme config.ini)
+duration=6                  (durée par défaut d'un clip, secondes)
+transition=crossfade 1.0    (transition par défaut : cut | fade | crossfade | wipe, puis sa durée)
+intro.glsl 5
+plasma.glsl 8 crossfade 1.5
+"mon tunnel.glsl" 6 cut
+```
+
+Une ligne de clip est un chemin (relatif au `.montage` ; entre guillemets s'il a des espaces), une durée facultative, puis la transition qui amène *dans* ce clip depuis le précédent (ignorée pour le premier) : `cut`, `fade` (par le noir), `crossfade` ou `wipe`, avec sa durée. Ajoutez le fichier à la liste ou en ligne de commande comme un shader. Chaque clip est rendu comme un shader, **par parties reprenables** (un clip déjà rendu avec les mêmes réglages est réutilisé après une interruption), dans un dossier `nom.clips` à côté de la vidéo, en ProRes HQ (ou en H.264 sans perte si ce ffmpeg n'a pas ProRes) ; puis ffmpeg les joint avec les transitions (`xfade`, `acrossfade`) et écrit la vidéo finale avec votre codec. La taille, la cadence, `scale`, `interp`, `title`, `credit`, les fondus et `loudnorm` s'appliquent au montage entier, pas à chaque clip ; le réglage `audio` est une seule bande-son sur tout le montage, sinon le son de chaque clip (une passe Sound) est joint avec du silence pour les clips qui n'en ont pas. Limites : conteneurs vidéo seulement, ni alpha ni HDR, ni aperçu ni image fixe d'un montage, et un commentaire `// audio=` ou `// duration=` dans un clip est remplacé par le montage.
+
+**Planche-contact et vignette de couverture** (ligne de commande). `--sheet=4x3` écrit `nom_sheet.png`, une grille de 4 × 3 vignettes tirées au milieu de 12 intervalles égaux de la plage rendue (100 vignettes au plus, 1920 pixels de large au total) ; `--thumb` écrit `nom_thumb.png`, une image du milieu de la plage, ou `--thumb=2.5` à la seconde 2,5, 1280 pixels de large au plus. Les deux marchent avec les tampons (l'historique est rejoué) et avec le post-traitement.
+
+</details>
+
+<details>
 <summary><b>Reprise après interruption</b></summary>
 
 Les vidéos plus longues que `chunk` secondes sont rendues par parties, dans un dossier `<nom>.parts` à côté de la vidéo. Si le rendu est annulé, plante ou échoue, les parties terminées restent : relance le même rendu **avec les mêmes réglages** et il reprend où il s'était arrêté, puis assemble les parties (copie des flux, sans réencodage). Si le shader ou un réglage a changé, les anciennes parties sont jetées.
@@ -304,7 +343,7 @@ Les vidéos plus longues que `chunk` secondes sont rendues par parties, dans un 
 | `ShaderToMP4 --version` | Affiche la version, le copyright et la licence |
 | `ShaderToMP4 --help` | Affiche les options |
 
-**Rendu sans fenêtre** (`--render`) : les options sont les clés du tableau des réglages écrites `--clé=valeur` (`--width=1280 --height=720 --fps=30 --duration=10 --codec=h265 --container=mp4 --crf=18 --outdir=sortie`), appliquées après `config.ini` et après `--profile=fichier.ini` ; les commentaires `// clé=valeur` d'un shader restent prioritaires, comme dans la fenêtre. `--png` rend une seule image au temps de départ. `--param=nom=valeur` (répétable) règle un paramètre déclaré dans le shader par `// uniform`, ou lui donne des images clés : `--param="vitesse=smooth 0:1 ; 4:3"` (voir « Création »). `--watch=dossier` laisse le programme actif et rend chaque `.glsl` / `.txt` qui apparaît dans le dossier (une fois que sa taille ne change plus ; les fichiers de passes comme `nom.bufferA.glsl` ne sont pas des shaders à part ; arrêt par `Ctrl+C`, ou `--watch-count=N` pour s'arrêter après N rendus). La surveillance n'est jamais active par défaut. `--progress=json` écrit un objet JSON par ligne sur la sortie standard : `start`, `progress` (`frame`, `frames`, `percent`, `fps`, `eta`), `log`, `done` (avec le fichier `output`), `error`, puis `end` (`ok`, `failed`) ; `--progress=text` écrit une ligne tous les 10 %. Codes de sortie : `0` tout est rendu, `1` un rendu a échoué, `2` ligne de commande invalide, `3` pas d'OpenGL 3.3, `4` ffmpeg introuvable. Sous Windows le programme est une application à fenêtre : utilisez `start /wait` dans `cmd`, ou `Start-Process -Wait -NoNewWindow` dans PowerShell, pour l'attendre et lire le code de sortie.
+**Rendu sans fenêtre** (`--render`) : les options sont les clés du tableau des réglages écrites `--clé=valeur` (`--width=1280 --height=720 --fps=30 --duration=10 --codec=h265 --container=mp4 --crf=18 --outdir=sortie`), appliquées après `config.ini` et après `--profile=fichier.ini` ; les commentaires `// clé=valeur` d'un shader restent prioritaires, comme dans la fenêtre. `--png` rend une seule image au temps de départ. `--thumb[=secondes]` écrit une vignette de couverture et `--sheet=4x3` une planche-contact (voir « Sortie »). `--param=nom=valeur` (répétable) règle un paramètre déclaré dans le shader par `// uniform`, ou lui donne des images clés : `--param="vitesse=smooth 0:1 ; 4:3"` (voir « Création »). `--watch=dossier` laisse le programme actif et rend chaque `.glsl` / `.txt` qui apparaît dans le dossier (une fois que sa taille ne change plus ; les fichiers de passes comme `nom.bufferA.glsl` ne sont pas des shaders à part ; arrêt par `Ctrl+C`, ou `--watch-count=N` pour s'arrêter après N rendus). La surveillance n'est jamais active par défaut. `--progress=json` écrit un objet JSON par ligne sur la sortie standard : `start`, `progress` (`frame`, `frames`, `percent`, `fps`, `eta`), `log`, `done` (avec le fichier `output`), `error`, puis `end` (`ok`, `failed`) ; `--progress=text` écrit une ligne tous les 10 %. Codes de sortie : `0` tout est rendu, `1` un rendu a échoué, `2` ligne de commande invalide, `3` pas d'OpenGL 3.3, `4` ffmpeg introuvable. Sous Windows le programme est une application à fenêtre : utilisez `start /wait` dans `cmd`, ou `Start-Process -Wait -NoNewWindow` dans PowerShell, pour l'attendre et lire le code de sortie.
 
 ```
 ShaderToMP4 --render --progress=json --container=webm --codec=vp9 --width=1280 --height=720 --outdir=sortie shader.glsl

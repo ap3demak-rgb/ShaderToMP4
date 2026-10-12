@@ -262,7 +262,7 @@ void drawShaders(App& a, float height) {
             if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + w <= rowRight) ImGui::SameLine();
         };
         if (button("ui.btn.add", "add", 0, !run, 0, "ui.tip.add"))
-            openBrowser(a, BrowseMode::OpenFiles, "dialog.shaders", {L".glsl", L".txt", L".json"}, L"", [&a](const std::vector<std::wstring>& r) { a.model.addFiles(r); });
+            openBrowser(a, BrowseMode::OpenFiles, "dialog.shaders", {L".glsl", L".txt", L".json", L".montage"}, L"", [&a](const std::vector<std::wstring>& r) { a.model.addFiles(r); });
         fit(buttonWidth("ui.btn.remove", true));
         if (button("ui.btn.remove", "trash", 0, !run && any, 0, "ui.tip.remove")) m.removeSelected();
         fit(buttonWidth("ui.btn.clear", true));
@@ -901,7 +901,7 @@ void drawFrame(App& a, GLFWwindow* win) {
     if (!popup) {  // raccourcis (désactivés pendant une fenêtre modale)
         const bool ctrl = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper;
         if (ctrl && ImGui::IsKeyPressed(ImGuiKey_O, false) && !m.running())
-            openBrowser(a, BrowseMode::OpenFiles, "dialog.shaders", {L".glsl", L".txt", L".json"}, L"", [&a](const std::vector<std::wstring>& r) { a.model.addFiles(r); });
+            openBrowser(a, BrowseMode::OpenFiles, "dialog.shaders", {L".glsl", L".txt", L".json", L".montage"}, L"", [&a](const std::vector<std::wstring>& r) { a.model.addFiles(r); });
         if (ctrl && ImGui::IsKeyPressed(ImGuiKey_P, false)) m.runPreview();
         if (ImGui::IsKeyPressed(ImGuiKey_F1, false)) a.showAbout = true;
         if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) m.startJobs(false);
