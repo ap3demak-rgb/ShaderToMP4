@@ -27,6 +27,7 @@ struct Settings {
     std::string loopMode = "none";  // none | crossfade (fondu temporel vers le debut) | pingpong (le temps monte puis redescend) : boucle sans couture
     double loopFade = 1.0;          // duree du fondu de la boucle crossfade (s)
     std::string timemap;            // courbe de temps « 0:0;4:2;8:10 » (video:shader, en secondes) ; "" = temps reel
+    bool audioFollow = false;       // le son suit la vitesse constante (`speed`) : atempo, hauteur conservee
     double speed = 1.0;             // vitesse du temps du shader (0.25 = ralenti x4) ; combinee a la courbe
     std::wstring audio;             // fichier son a mixer ("" = aucun)
     double fadein = 0, fadeout = 0; // fondus entree / sortie (s), image et son

@@ -23,7 +23,7 @@ namespace {
 enum {
     ID_OD_CLOSE = 900, ID_OD_ALPHA, ID_OD_HDR, ID_OD_PEAK, ID_OD_FALL, ID_OD_WHITE, ID_OD_SCALE, ID_OD_FILTER, ID_OD_INTERP, ID_OD_LOUD,
     ID_OD_TITLE, ID_OD_CREDIT, ID_OD_TITLEDUR, ID_OD_NEXT, ID_OD_NAME, ID_OD_EXISTS, ID_OD_META, ID_OD_ENDACT, ID_OD_CHUNK, ID_OD_PBO, ID_OD_SHUTTER, ID_OD_VARIANTS,
-    ID_OD_LOOPMODE, ID_OD_LOOPFADE, ID_OD_TIMEMAP, ID_OD_SPEED, ID_OD_SAMPLES, ID_OD_TILE, ID_OD_DPI, ID_OD_FINDLOOP
+    ID_OD_LOOPMODE, ID_OD_LOOPFADE, ID_OD_TIMEMAP, ID_OD_SPEED, ID_OD_SAMPLES, ID_OD_TILE, ID_OD_DPI, ID_OD_FINDLOOP, ID_OD_TIME, ID_OD_CURVE, ID_OD_AUDIOF
 };
 
 struct Dlg {
@@ -31,10 +31,10 @@ struct Dlg {
     HWND alpha = nullptr, hdr = nullptr, peak = nullptr, fall = nullptr, white = nullptr, scale = nullptr, filter = nullptr, interp = nullptr,
          loud = nullptr, title = nullptr, credit = nullptr, titleDur = nullptr;
     HWND name = nullptr, exists = nullptr, meta = nullptr, endAct = nullptr, chunk = nullptr, pbo = nullptr, shutter = nullptr, variants = nullptr;
-    HWND loopMode = nullptr, loopFade = nullptr, timemap = nullptr, speed = nullptr, samples = nullptr, tile = nullptr, dpiEdit = nullptr;
+    HWND loopMode = nullptr, loopFade = nullptr, timemap = nullptr, speed = nullptr, samples = nullptr, tile = nullptr, dpiEdit = nullptr, audioF = nullptr, curve = nullptr;
     std::vector<HWND> headers;  // titres de section (en couleur d'accentuation)
     UINT dpi = 96;
-    int page = 0;   // 0 sortie, 1 avance
+    int page = 0;   // 0 sortie, 1 avance, 2 temps et boucle
     int next = -1;  // page a ouvrir apres la fermeture (-1 = aucune)
     bool done = false;
 } D;
@@ -110,7 +110,7 @@ OutputFields readFields() {
         f.title = txt(D.title);
         f.credit = txt(D.credit);
         f.titleDur = txt(D.titleDur);
-    } else {
+    } else if (D.page == 1) {
         f.name = txt(D.name);
         f.exists = std::max(0, (int)SendMessageW(D.exists, CB_GETCURSEL, 0, 0));
         f.metadata = SendMessageW(D.meta, CB_GETCURSEL, 0, 0) == 1;
@@ -119,7 +119,9 @@ OutputFields readFields() {
         f.pbo = txt(D.pbo);
         f.shutter = txt(D.shutter);
         f.variants = txt(D.variants);
+    } else {
         f.loopMode = std::max(0, (int)SendMessageW(D.loopMode, CB_GETCURSEL, 0, 0));
+        f.audioFollow = SendMessageW(D.audioF, CB_GETCURSEL, 0, 0) == 1;
         f.loopFade = txt(D.loopFade);
         f.timemap = txt(D.timemap);
         f.speed = txt(D.speed);
@@ -148,6 +150,85 @@ bool applyAndClose(int next) {
     return true;
 }
 
+// Apercu de la courbe de temps : l'instant du shader (ordonnee) selon l'instant de la video (abscisse), avec la diagonale du temps reel en pointille ;
+// suit les champs au fur et a mesure de la saisie (rouge si le texte de la courbe est invalide)
+void drawCurve(HDC dc, const RECT& r) {
+    HBRUSH bg = CreateSolidBrush(cref(FIELD));
+    FillRect(dc, &r, bg);
+    DeleteObject(bg);
+    const int pad = S(6), w = r.right - r.left - 2 * pad, h = r.bottom - r.top - 2 * pad;
+    if (w < 10 || h < 10) return;
+    OutputFields f;
+    f.timemap = txt(D.timemap);
+    f.speed = txt(D.speed);
+    f.loopMode = (int)SendMessageW(D.loopMode, CB_GETCURSEL, 0, 0);
+    std::string curve;
+    for (char c : U8(f.timemap))
+        if (!isspace((unsigned char)c)) curve += c;
+    double speed = 1.0;
+    {
+        std::wstring sp = f.speed;
+        for (auto& c : sp)
+            if (c == L',') c = L'.';
+        wchar_t* end = nullptr;
+        const double v = wcstod(sp.c_str(), &end);
+        if (!sp.empty() && end != sp.c_str() && *end == 0 && v != 0 && std::fabs(v) <= 100) speed = v;
+    }
+    std::vector<double> y;
+    const bool ok = timeCurveSamples(curve, speed, f.loopMode == 2, std::max(0.1, g.base.duration), 120, y);
+    HPEN grid = CreatePen(PS_DOT, 1, cref(FAINT));
+    HGDIOBJ old = SelectObject(dc, grid);
+    SetBkMode(dc, TRANSPARENT);
+    if (!ok) {
+        SetTextColor(dc, cref(ERR));
+        std::wstring m = TX("error.timemap_invalid_short");
+        TextOutW(dc, r.left + pad, r.top + pad, m.c_str(), (int)m.size());
+        SelectObject(dc, old);
+        DeleteObject(grid);
+        return;
+    }
+    double lo = 0, hi = std::max(0.1, g.base.duration);  // l'echelle contient toujours le temps reel
+    for (double v : y) {
+        lo = std::min(lo, v);
+        hi = std::max(hi, v);
+    }
+    auto px = [&](int i) { return r.left + pad + (int)((double)w * i / (double)(y.size() - 1)); };
+    auto py = [&](double v) { return r.top + pad + h - (int)((v - lo) / (hi - lo) * h); };
+    MoveToEx(dc, px(0), py(0), nullptr);  // temps reel : de 0 a la duree
+    LineTo(dc, px((int)y.size() - 1), py(std::max(0.1, g.base.duration)));
+    SelectObject(dc, old);
+    DeleteObject(grid);
+    HPEN line = CreatePen(PS_SOLID, std::max(1, S(2)), cref(ACCENT));
+    old = SelectObject(dc, line);
+    MoveToEx(dc, px(0), py(y[0]), nullptr);
+    for (size_t i = 1; i < y.size(); i++) LineTo(dc, px((int)i), py(y[i]));
+    SelectObject(dc, old);
+    DeleteObject(line);
+    SetTextColor(dc, cref(MUTED));
+    wchar_t lab[64];
+    swprintf(lab, 64, L"%.4g s", hi);
+    TextOutW(dc, r.left + pad + 2, r.top + pad, lab, (int)wcslen(lab));
+    swprintf(lab, 64, L"%.4g s", lo);
+    SIZE sz{};
+    GetTextExtentPoint32W(dc, lab, (int)wcslen(lab), &sz);
+    TextOutW(dc, r.left + pad + 2, r.bottom - pad - sz.cy, lab, (int)wcslen(lab));
+}
+
+// Fenetre de l'apercu de la courbe (classe propre : un STATIC en dessin parent ne recevait pas WM_DRAWITEM dans cette boite)
+LRESULT CALLBACK curveProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_PAINT) {
+        PAINTSTRUCT ps;
+        HDC dc = BeginPaint(h, &ps);
+        RECT r;
+        GetClientRect(h, &r);
+        drawCurve(dc, r);
+        EndPaint(h, &ps);
+        return 0;
+    }
+    if (msg == WM_ERASEBKGND) return 1;
+    return DefWindowProcW(h, msg, wp, lp);
+}
+
 LRESULT CALLBACK dlgProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_DRAWITEM: {
@@ -174,7 +255,9 @@ LRESULT CALLBACK dlgProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_COMMAND:
             if (LOWORD(wp) == ID_OD_CLOSE || LOWORD(wp) == IDCANCEL) applyAndClose(-1);
-            else if (LOWORD(wp) == ID_OD_NEXT) applyAndClose(1 - D.page);
+            else if (LOWORD(wp) == ID_OD_NEXT) applyAndClose(D.page == 1 ? 0 : 1);
+            else if (LOWORD(wp) == ID_OD_TIME) applyAndClose(2);
+            else if (D.page == 2 && (HIWORD(wp) == EN_CHANGE || HIWORD(wp) == CBN_SELCHANGE) && D.curve) InvalidateRect(D.curve, nullptr, FALSE);
             else if (LOWORD(wp) == ID_OD_FINDLOOP) applyAndClose(-2);
             else if (LOWORD(wp) == ID_OD_HDR && HIWORD(wp) == CBN_SELCHANGE) updateEnabled();
             return 0;
@@ -207,6 +290,13 @@ int runPage(HWND parent, int page) {
         wc.lpszClassName = kDlgClass;
         RegisterClassExW(&wc);
         registered = true;
+        WNDCLASSEXW cc{};
+        cc.cbSize = sizeof(cc);
+        cc.lpfnWndProc = curveProc;
+        cc.hInstance = hi;
+        cc.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
+        cc.lpszClassName = L"ShaderToMP4Curve";
+        RegisterClassExW(&cc);
     }
     D = Dlg();
     D.dpi = theme::dpiFor(parent);
@@ -218,14 +308,14 @@ int runPage(HWND parent, int page) {
     const DWORD style = WS_CAPTION | WS_SYSMENU;
     RECT work{};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
-    const int clientH = page == 0 ? 620 : 676;
+    const int clientH = page == 0 ? 620 : page == 1 ? 452 : 450;
     RECT want{0, 0, S(600), S(clientH)};
     AdjustWindowRectExForDpi(&want, style, FALSE, WS_EX_DLGMODALFRAME, D.dpi);
     RECT pr;
     GetWindowRect(parent, &pr);
     const int ww = want.right - want.left, wh = want.bottom - want.top;
     const int x = pr.left + ((pr.right - pr.left) - ww) / 2, y = std::max((int)work.top, (int)(pr.top + ((pr.bottom - pr.top) - wh) / 2));
-    D.wnd = CreateWindowExW(WS_EX_DLGMODALFRAME, kDlgClass, TX(page == 0 ? "ui.output.title" : "ui.output.adv_title").c_str(), style | WS_VISIBLE | WS_CLIPCHILDREN, x, y,
+    D.wnd = CreateWindowExW(WS_EX_DLGMODALFRAME, kDlgClass, TX(page == 0 ? "ui.output.title" : page == 1 ? "ui.output.adv_title" : "ui.output.time_title").c_str(), style | WS_VISIBLE | WS_CLIPCHILDREN, x, y,
                             ww, wh, parent, nullptr, hi, nullptr);
     if (!D.wnd) return -1;
     ui::darkTitleBar(D.wnd);
@@ -272,6 +362,29 @@ int runPage(HWND parent, int page) {
         label(TX("ui.output.titledur"), lx, 496, 130);
         D.titleDur = edit(ID_OD_TITLEDUR, f.titleDur, fx, 496, 150);
         hint(TX("ui.output.hint_text"), 530, 34);
+    } else if (page == 2) {
+        const std::vector<std::wstring> offOn = {TX("ui.output.off"), TX("ui.output.on")};
+        header(TX("ui.output.sec_time"), 12);
+        label(TX("ui.output.loopmode"), lx, 40, 130);
+        D.loopMode = combo(ID_OD_LOOPMODE, {TX("ui.loopmode.none"), TX("ui.loopmode.crossfade"), TX("ui.loopmode.pingpong")}, f.loopMode, fx, 40, 150);
+        SendMessageW(D.loopMode, CB_SETDROPPEDWIDTH, S(220), 0);
+        label(TX("ui.output.loopfade"), rx, 40, 130);
+        D.loopFade = edit(ID_OD_LOOPFADE, f.loopFade, rf, 40, 118);
+        label(TX("ui.output.timemap"), lx, 72, 130);
+        D.timemap = edit(ID_OD_TIMEMAP, f.timemap, fx, 72, 428);
+        label(TX("ui.output.speed"), lx, 104, 130);
+        D.speed = edit(ID_OD_SPEED, f.speed, fx, 104, 150);
+        label(TX("ui.output.audiofollow"), rx, 104, 130);
+        D.audioF = combo(ID_OD_AUDIOF, offOn, f.audioFollow ? 1 : 0, rf, 104, 118);
+        D.curve = make(L"ShaderToMP4Curve", L"", 0, ID_OD_CURVE, 20, 140, 560, 76);
+        hint(TX("ui.output.hint_time"), 222, 50);
+        header(TX("ui.output.sec_still"), 282);
+        label(TX("ui.output.samples"), lx, 310, 130);
+        D.samples = edit(ID_OD_SAMPLES, f.samples, fx, 310, 150);
+        label(TX("ui.output.tile"), rx, 310, 130);
+        D.tile = edit(ID_OD_TILE, f.tile, rf, 310, 118);
+        label(TX("ui.output.dpi"), lx, 342, 130);
+        D.dpiEdit = edit(ID_OD_DPI, f.dpi, fx, 342, 150);
     } else {
         const std::vector<std::wstring> offOn = {TX("ui.output.off"), TX("ui.output.on")};
 
@@ -298,24 +411,6 @@ int runPage(HWND parent, int page) {
         label(TX("ui.output.shutter"), lx, 302, 130);
         D.shutter = edit(ID_OD_SHUTTER, f.shutter, fx, 302, 150);
         hint(TX("ui.output.hint_engine"), 338, 50);
-
-        header(TX("ui.output.sec_time"), 396);
-        label(TX("ui.output.loopmode"), lx, 424, 130);
-        D.loopMode = combo(ID_OD_LOOPMODE, {TX("ui.loopmode.none"), TX("ui.loopmode.crossfade"), TX("ui.loopmode.pingpong")}, f.loopMode, fx, 424, 150);
-        SendMessageW(D.loopMode, CB_SETDROPPEDWIDTH, S(220), 0);
-        label(TX("ui.output.loopfade"), rx, 424, 130);
-        D.loopFade = edit(ID_OD_LOOPFADE, f.loopFade, rf, 424, 118);
-        label(TX("ui.output.timemap"), lx, 456, 130);
-        D.timemap = edit(ID_OD_TIMEMAP, f.timemap, fx, 456, 428);
-        label(TX("ui.output.speed"), lx, 488, 130);
-        D.speed = edit(ID_OD_SPEED, f.speed, fx, 488, 150);
-        label(TX("ui.output.samples"), rx, 488, 130);
-        D.samples = edit(ID_OD_SAMPLES, f.samples, rf, 488, 118);
-        label(TX("ui.output.tile"), lx, 520, 130);
-        D.tile = edit(ID_OD_TILE, f.tile, fx, 520, 150);
-        label(TX("ui.output.dpi"), rx, 520, 130);
-        D.dpiEdit = edit(ID_OD_DPI, f.dpi, rf, 520, 118);
-        hint(TX("ui.output.hint_time"), 556, 50);
     }
 
     // noms accessibles : chaque champ est annonce par son libelle (lecteurs d'ecran)
@@ -325,22 +420,27 @@ int runPage(HWND parent, int page) {
             {D.scale, "ui.output.scale"}, {D.filter, "ui.output.filter"}, {D.interp, "ui.output.interp"}, {D.loud, "ui.output.loudnorm"},
             {D.title, "ui.output.text_title"}, {D.credit, "ui.output.credit"}, {D.titleDur, "ui.output.titledur"}};
         for (const auto& n : names) setAccessibleName(n.c, n.key);
-    } else {
+    } else if (page == 1) {
         const struct { HWND c; const char* key; } names[] = {
             {D.name, "ui.output.name"}, {D.exists, "ui.output.exists"}, {D.meta, "ui.output.metadata"}, {D.endAct, "ui.output.endaction"},
-            {D.chunk, "ui.output.chunk"}, {D.pbo, "ui.output.pbo"}, {D.shutter, "ui.output.shutter"}, {D.variants, "ui.output.variants"},
+            {D.chunk, "ui.output.chunk"}, {D.pbo, "ui.output.pbo"}, {D.shutter, "ui.output.shutter"}, {D.variants, "ui.output.variants"}};
+        for (const auto& n : names) setAccessibleName(n.c, n.key);
+    } else {
+        const struct { HWND c; const char* key; } names[] = {
             {D.loopMode, "ui.output.loopmode"}, {D.loopFade, "ui.output.loopfade"}, {D.timemap, "ui.output.timemap"}, {D.speed, "ui.output.speed"},
-            {D.samples, "ui.output.samples"}, {D.tile, "ui.output.tile"}, {D.dpiEdit, "ui.output.dpi"}};
+            {D.audioF, "ui.output.audiofollow"}, {D.curve, "ui.output.curve_name"}, {D.samples, "ui.output.samples"}, {D.tile, "ui.output.tile"},
+            {D.dpiEdit, "ui.output.dpi"}};
         for (const auto& n : names) setAccessibleName(n.c, n.key);
     }
-    D.bNext = button(page == 0 ? "ui.output.adv_btn" : "ui.output.back_btn", ID_OD_NEXT, IC_SLIDERS, ui::BtnStyle::Secondary, 20, clientH - 50, 150, hi);
+    D.bNext = button(page == 1 ? "ui.output.back_btn" : "ui.output.adv_btn", ID_OD_NEXT, IC_SLIDERS, ui::BtnStyle::Secondary, 20, clientH - 50, 150, hi);
     D.bClose = button("ui.params.close", ID_OD_CLOSE, IC_CHECK, ui::BtnStyle::Primary, 600 - 20 - 130, clientH - 50, 130, hi);
-    if (page == 1) button("ui.output.findloop_btn", ID_OD_FINDLOOP, IC_EYE, ui::BtnStyle::Secondary, 190, clientH - 50, 240, hi);
+    if (page == 1) button("ui.output.time_btn", ID_OD_TIME, IC_FILM, ui::BtnStyle::Secondary, 190, clientH - 50, 240, hi);
+    if (page == 2) button("ui.output.findloop_btn", ID_OD_FINDLOOP, IC_EYE, ui::BtnStyle::Secondary, 190, clientH - 50, 240, hi);
     updateEnabled();
 
     // Boîte modale : la fenêtre principale est désactivée pendant l'affichage
     EnableWindow(parent, FALSE);
-    SetFocus(page == 0 ? D.alpha : D.name);
+    SetFocus(page == 0 ? D.alpha : page == 1 ? D.name : D.loopMode);
     MSG m;
     while (!D.done && GetMessageW(&m, nullptr, 0, 0) > 0) {
         if (!IsDialogMessageW(D.wnd, &m)) {

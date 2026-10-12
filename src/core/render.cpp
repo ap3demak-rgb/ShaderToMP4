@@ -413,12 +413,41 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         bp.report(s, code, notes);
         for (const auto& n : notes) H.log(L"  " + n);
     }
-    if (videoMode && bp.any() && (crossfade || tm.pingpong() || (!tm.identity() && !tm.monotone()))) {  // l'etat des tampons ne se rejoue pas a l'envers
-        err = TX(crossfade ? "error.loop_history" : "error.timemap_history");
+    if (videoMode && bp.any() && crossfade) {  // le deuxieme tirage du fondu demanderait l'etat des tampons a un autre instant, en meme temps que le premier
+        err = TX("error.loop_history");
         bp.release();
         return Result::Failed;
     }
-    if (videoMode && !tm.identity() && (hasAudio || bp.hasSound())) H.log(L"  " + TX("log.timemap_audio"));
+    // Passes a historique avec un temps qui recule (aller-retour, courbe decroissante) : l'etat ne se calcule que dans le sens du temps, il est donc
+    // rejoue depuis le debut de la plage chaque fois que le temps recule (cout borne, annonce)
+    const bool replayHist = videoMode && bp.any() && (tm.pingpong() || (!tm.identity() && !tm.monotone()));
+    if (replayHist) {
+        constexpr long long kReplayLimit = 400000;
+        long long steps = 0, pos = -(long long)s.warmup;
+        for (long long n = 0; n < N; n++) {
+            const long long m = std::max(0LL, std::llround(tm.at((double)n / s.fps) * s.fps));
+            if (m < pos) pos = -(long long)s.warmup;
+            steps += m + 1 - pos;
+            pos = m + 1;
+        }
+        if (steps > kReplayLimit) {
+            err = TXF("error.timemap_history", steps, kReplayLimit);
+            bp.release();
+            return Result::Failed;
+        }
+        H.log(L"  " + TXF("log.timemap_replay", steps));
+    }
+    // Son : la vitesse constante peut etre suivie (atempo, hauteur conservee) ; une courbe, l'aller-retour ou une vitesse negative ne le peuvent pas
+    double followSpeed = 1.0;
+    if (videoMode && !tm.identity() && (hasAudio || bp.hasSound())) {
+        if (s.audioFollow && !tm.hasCurve() && !tm.pingpong() && s.speed > 0) {
+            followSpeed = s.speed;
+            H.log(L"  " + TXF("log.audio_follow", followSpeed));
+        } else {
+            H.log(L"  " + TX(s.audioFollow ? "log.audio_follow_unsupported" : "log.timemap_audio"));
+        }
+    }
+    const double soundSec = totalSec * followSpeed;  // duree de son necessaire : la video montre `followSpeed` secondes de shader par seconde
     // Parametres (// uniform ...) : declarations injectees dans tous les programmes, valeurs reglees a chaque image
     ParamSet params;
     {
@@ -560,11 +589,12 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     };
 
     // Passes de tampon : memes variables que l'image, renseignees pour chaque programme
+    bool inSim = false;  // en cours de simulation des tampons (historique rejoue) : le temps est celui de l'image simulee, pas celui de la video
     auto setPassUniforms = [&](GLuint p, long long n) {
-        const double t = shaderTime((double)n / s.fps);
+        const double t = inSim ? s.start + (double)n / s.fps : shaderTime((double)n / s.fps);
         ogl::Uniform3f(ogl::GetUniformLocation(p, "iResolution"), (float)RW, (float)RH, 1.0f);
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iTime"), (float)t);
-        ogl::Uniform1f(ogl::GetUniformLocation(p, "iTimeDelta"), (float)deltaAt(n));
+        ogl::Uniform1f(ogl::GetUniformLocation(p, "iTimeDelta"), (float)(inSim ? 1.0 / s.fps : deltaAt(n)));
         ogl::Uniform1i(ogl::GetUniformLocation(p, "iFrame"), (GLint)(n + s.warmup));
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iFrameRate"), (float)s.fps);
         setMouse(ogl::GetUniformLocation(p, "iMouse"), t);
@@ -593,15 +623,25 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     auto advanceBuffers = [&](long long n) {
         if (!bp.any()) return;
         const Tick tb = timing ? tickStart() : Tick();
-        for (; simFrame < n && !H.cancelled(); simFrame++) {
-            if (!replayLogged) {
+        long long target = n;  // image des tampons voulue : celle de l'instant du shader quand le temps est decale ou recule
+        if (replayHist) {
+            target = std::max(0LL, std::llround(tm.at((double)n / s.fps) * s.fps));
+            if (target < simFrame) {
+                bp.reset();
+                simFrame = -(long long)s.warmup;
+            }
+            inSim = true;
+        }
+        for (; simFrame < target && !H.cancelled(); simFrame++) {
+            if (!replayLogged && !replayHist) {
                 H.log(L"  " + TXF("log.buffers_replay", (long long)(n + s.warmup)));
                 replayLogged = true;
             }
-            bp.step(simFrame, shaderTime((double)simFrame / s.fps), RW, RH, setPassUniforms);
+            bp.step(simFrame, replayHist ? s.start + (double)simFrame / s.fps : shaderTime((double)simFrame / s.fps), RW, RH, setPassUniforms);
         }
-        bp.step(n, shaderTime((double)n / s.fps), RW, RH, setPassUniforms);
-        simFrame = n + 1;
+        bp.step(target, replayHist ? s.start + (double)target / s.fps : shaderTime((double)target / s.fps), RW, RH, setPassUniforms);
+        inSim = false;
+        simFrame = target + 1;
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);  // retour a l'image
         ogl::UseProgram(prog);
         if (timing) tickStop(tb, 1);
@@ -945,7 +985,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             H.log(L"  " + TX("log.sound_rendering"));
             wavGuard.path = out + L".sound.wav";
             const SoundResult sr = renderSoundWav(bp.withCommon(bp.soundCode()), bp.soundPath(), 1 + (int)std::count(bp.soundCode().begin(), bp.soundCode().end(), '\n'),
-                                                  bp.commonPath(), s.start, totalSec, wavGuard.path, H, err);
+                                                  bp.commonPath(), s.start, soundSec, wavGuard.path, H, err);
             if (sr != SoundResult::Ok) {
                 wavGuard.path.clear();
                 cleanupGL();
@@ -960,7 +1000,20 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             hasAudio = true;
         }
     }
-    std::wstring audioFilter = loudnormFilter(s);  // normalisation du son (LUFS), puis fondus
+    std::wstring audioFilter;
+    if (followSpeed != 1.0) {  // atempo accepte 0.5 a 2 : on enchaine
+        double f = followSpeed;
+        while (f > 2.0) {
+            audioFilter += L"atempo=2.0,";
+            f /= 2.0;
+        }
+        while (f < 0.5) {
+            audioFilter += L"atempo=0.5,";
+            f /= 0.5;
+        }
+        audioFilter += wfmt(L"atempo=%.6f,", f);
+    }
+    audioFilter += loudnormFilter(s);  // normalisation du son (LUFS), puis fondus
     if (fi > 0) audioFilter += wfmt(L"afade=t=in:st=0:d=%g,", fi);
     if (fo > 0) audioFilter += wfmt(L"afade=t=out:st=%g:d=%g,", totalSec - fo, fo);
     audioFilter += L"apad";  // son plus court que la video : complete par du silence
