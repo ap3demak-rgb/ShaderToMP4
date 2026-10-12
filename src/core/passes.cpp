@@ -72,7 +72,7 @@ void BufferPasses::report(const Settings& imageSettings, const std::string& imag
                            {L"Buffer C", &bufs_[2].st, &bufs_[2].code, used_[2]}, {L"Buffer D", &bufs_[3].st, &bufs_[3].code, used_[3]},
                            {L"Cubemap A", &cube_.st, &cube_.code, cubeUsed_},      {L"Image", &imageSettings, &imageAll, true}};  // nom-technique
     // passe lue par le canal i d'une passe : 0 a 3 = Buffer A a D, 4 = Cubemap A, -1 = autre chose
-    auto target = [](const std::wstring& spec) {
+    auto target = [](const std::wstring& spec) -> int {
         std::wstring l = spec;
         for (auto& c : l) c = (wchar_t)towlower(c);
         if (l == L"cubea" || l == L"cubemapa") return 4;
