@@ -6,6 +6,14 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
+## Unreleased
+
+### Added
+
+- Animated parameters: `// uniform float speed = 1.0 [0..5]` (types float, int, bool, vec2, vec3, vec4, color) declares an adjustable uniform available in every pass; values saved per shader in `params/`, keyframes `// key speed=0:1.0 ; 4:3.0` (linear, smooth or constant), `--param=name=value` on the command line, and parameters that follow the sound (`audio.level`, `audio.bass`, `audio.mid`, `audio.treble`).
+- “Parameters and post-processing” window on Windows (header button) and the same controls at the bottom of the settings card on Linux and macOS; the live preview picks the values up at once.
+- Post-processing in floating point, before the 8 / 10-bit conversion (so with supersampling, motion blur and 10-bit output): a `name.post.glsl` pass that receives the image in `iChannel0`, eight effects (`sharpen`, `chroma`, `bloom`, `contrast`, `saturation`, `hue`, `vignette`, `grain`, `// post=bloom:0.4,grain`) and a color LUT in `.cube` format, 1D or 3D with tetrahedral interpolation (`// lut=grade.cube`).
+
 ## 1.8.0 — 2026-10-12
 
 ### Added

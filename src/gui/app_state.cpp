@@ -90,6 +90,7 @@ void updateForced() {
         if (!o.empty()) text = TXF("ui.forced", o.c_str());
     }
     SetWindowTextW(g.lblForced, text.c_str());
+    updatePrevLabel();  // autre shader : repères des images clés sur le curseur de l'aperçu
 }
 
 void updateButtons() {

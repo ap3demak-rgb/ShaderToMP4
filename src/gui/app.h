@@ -17,7 +17,7 @@ enum {
     ID_LIST = 101, ID_ADD, ID_REMOVE, ID_CLEAR, ID_START, ID_CANCEL, ID_PROG, ID_STATUS, ID_LOG,
     ID_RES = 120, ID_W, ID_H, ID_FPS, ID_DUR, ID_START_T, ID_CODEC, ID_PRESET, ID_CRF, ID_SNAP, ID_CONTAINER, ID_SS, ID_OUT, ID_BROWSE, ID_LOADP, ID_SAVEP,
     ID_BITRATE, ID_COLOR, ID_BLUR, ID_LOOP, ID_AUDIO, ID_AUDIOB, ID_FADEIN, ID_FADEOUT, ID_PAUSE, ID_FOLDER, ID_PREVIEW,
-    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_PLAY, ID_ABOUT, ID_LANG
+    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_PLAY, ID_ABOUT, ID_LANG, ID_PARAMS
 };
 enum {
     WM_APP_LOG = WM_APP + 1,  // lParam = std::wstring* (a liberer)
@@ -58,7 +58,7 @@ struct App {
     HBRUSH brCard = nullptr, brField = nullptr;
     HWND chips[5] = {nullptr, nullptr, nullptr, nullptr, nullptr};  // preselections rapides
     HWND tip = nullptr;
-    HWND bAbout = nullptr, bLang = nullptr;  // en-tête : À propos, langue
+    HWND bAbout = nullptr, bLang = nullptr, bParams = nullptr;  // en-tête : À propos, langue, paramètres et post-traitement
     int chipRight = 0;                       // bord droit de la pastille de version (à gauche des boutons de l'en-tête)
     struct Card {
         RECT r;
@@ -142,4 +142,5 @@ void restoreWindowPlacement(HWND wnd, int showCmd);  // window.ini : position et
 void saveWindowPlacement(HWND wnd);
 std::string readSavedLanguage();  // langue mémorisée dans window.ini ("" si aucune)
 void showAbout(HWND parent);      // fenêtre « À propos » (about.cpp)
+void showParams(HWND parent);     // fenêtre « Paramètres et post-traitement » (params_dialog.cpp)
 void setDropHot(bool hot);  // illumine / eteint la zone de depot (fondu)

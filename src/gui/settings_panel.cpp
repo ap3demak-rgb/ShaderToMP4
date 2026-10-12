@@ -68,6 +68,8 @@ void updateCrfLabel() {
 }
 
 void settingsToUI(const Settings& s) {
+    g.base.post = s.post;  // post-traitement : reglé dans la fenêtre « Paramètres », pas dans ce panneau
+    g.base.lut = s.lut;
     SetWindowTextW(g.edW, std::to_wstring(s.width).c_str());
     SetWindowTextW(g.edH, std::to_wstring(s.height).c_str());
     SetWindowTextW(g.cmbFps, i18n::num(s.fps).c_str());

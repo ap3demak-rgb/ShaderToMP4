@@ -42,6 +42,10 @@ void BufferPasses::discover(const std::wstring& shaderPath, const std::function<
         H.log(L"  " + TXF("log.pass_found", L"Cubemap A"));  // nom-technique
     }
     if (find("sound", sound_, soundPath_)) H.log(L"  " + TXF("log.pass_found", L"Sound"));  // nom-technique
+    if (find("post", post_, postPath_)) {
+        parseLines(postSt_, post_, true);
+        H.log(L"  " + TXF("log.pass_found", L"Post"));  // nom-technique
+    }
     if (!common_.empty()) H.log(L"  " + TX("log.pass_common"));
 }
 
@@ -57,6 +61,7 @@ std::string BufferPasses::allCode() const {
     for (int i = 0; i < 4; i++)
         if (used_[i]) all += "\n" + bufs_[i].code;
     if (cubeUsed_) all += "\n" + cube_.code;
+    if (!post_.empty()) all += "\n" + post_;
     return all;
 }
 
@@ -125,7 +130,7 @@ bool BufferPasses::build(int rw, int rh, const std::wstring& shaderDir, const st
         std::wstring e;
         std::string types[4];
         channelTypes(cube_.st, types);
-        cube_.prog = buildProgram(withCommon(cube_.code), e, false, types, true);
+        cube_.prog = buildProgram(withCommon(cube_.code), e, false, types, true, false, 0, preamble_);
         if (!cube_.prog) {
             err = L"[Cubemap A] " + locateGlslErrors(e, cube_.path, 1 + (int)std::count(cube_.code.begin(), cube_.code.end(), '\n'), commonPath_);  // nom-technique
             return false;
@@ -161,7 +166,7 @@ bool BufferPasses::build(int rw, int rh, const std::wstring& shaderDir, const st
         std::wstring e;
         std::string types[4];
         channelTypes(b.st, types);
-        b.prog = buildProgram(withCommon(b.code), e, true, types);
+        b.prog = buildProgram(withCommon(b.code), e, true, types, false, false, 0, preamble_);
         if (!b.prog) {
             err = std::wstring(L"[") + kLabels[i] + L"] " +
                   locateGlslErrors(e, b.path, 1 + (int)std::count(b.code.begin(), b.code.end(), '\n'), commonPath_);

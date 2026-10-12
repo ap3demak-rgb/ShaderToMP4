@@ -20,6 +20,8 @@ void setButtonIcon(HWND btn, int iconId);
 // Messages du curseur "STSlider" : memes que le trackbar (TBM_SETRANGE, TBM_SETPOS, TBM_GETPOS), il envoie WM_HSCROLL.
 // Messages de "STProgress" : memes que la barre de progression (PBM_SETRANGE32, PBM_SETPOS, PBM_GETPOS) + etat.
 enum { STPB_SETSTATE = WM_USER + 100 };  // wParam : 0 normal, 1 pause, 2 erreur
+// STSlider : reperes sur la piste (images cles des parametres) ; wParam = nombre, lParam = float* de positions dans 0..1 (copiees)
+enum { STSL_SETMARKS = WM_USER + 101 };
 
 void darkTheme(HWND h, const wchar_t* theme);  // "DarkMode_Explorer", "DarkMode_CFD"...
 void darkTitleBar(HWND wnd);                   // barre de titre sombre (Windows 10 1809+ / 11)

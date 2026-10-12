@@ -96,6 +96,7 @@ LRESULT CALLBACK btnProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD
 struct Slider {
     int min = 0, max = 100, pos = 0;
     bool drag = false, hot = false, tracking = false;
+    std::vector<float> marks;  // reperes sur la piste, positions dans 0..1
 };
 
 void sliderNotify(HWND h, int code) {
@@ -129,6 +130,10 @@ void sliderPaint(HWND h, Slider* s) {
     if (xt > x0)
         f.fillRoundGradient(rectf(x0, mid - trackH / 2, xt, mid + trackH / 2), trackH / 2,
                             enabled ? rgb(ACCENT_A) : rgb(FAINT), enabled ? rgb(ACCENT_B) : rgb(FAINT));
+    for (float m : s->marks) {  // images cles : un trait fin de part et d'autre de la piste
+        const float mx = x0 + std::min(1.0f, std::max(0.0f, m)) * (x1 - x0);
+        f.fillRound(rectf(mx - px(1, dpi), mid - px(8, dpi), mx + px(1, dpi), mid + px(8, dpi)), px(1, dpi), rgb(ACCENT));
+    }
     float r = px(s->drag || s->hot ? 8 : 7, dpi);
     if (enabled) {
         f.fillCircle(xt, mid, r + px(2, dpi), rgb(ACCENT, 0.25f));
@@ -164,6 +169,10 @@ LRESULT CALLBACK sliderProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             if (wp) InvalidateRect(h, nullptr, FALSE);
             return 0;
         case TBM_GETPOS: return s->pos;
+        case STSL_SETMARKS:
+            s->marks.assign((const float*)lp, (const float*)lp + (lp ? wp : 0));
+            InvalidateRect(h, nullptr, FALSE);
+            return 0;
         case WM_ENABLE: InvalidateRect(h, nullptr, FALSE); return 0;
         case WM_SETFOCUS:
         case WM_KILLFOCUS: InvalidateRect(h, nullptr, FALSE); return 0;

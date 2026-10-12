@@ -5,6 +5,7 @@
 #include "core/ffmpeg_download.h"
 #include "core/i18n.h"
 #include "core/gl.h"
+#include "core/params.h"
 #include "core/render.h"
 #include "core/util.h"
 #include "ui_controls.h"
@@ -132,10 +133,13 @@ void startJobs(bool snapshot) {
     g.worker = std::thread(runJobs, std::move(jobs));
 }
 
+static void refreshPrevMarks(double start, double dur);
+
 void updatePrevLabel() {
     double start = 0, dur = 0;
     if (!parseSeconds(getText(g.edStart), start)) start = 0;
     if (!parseSeconds(getText(g.edDur), dur)) dur = 0;
+    refreshPrevMarks(start, dur);
     double t = start + SendMessageW(g.trkPrev, TBM_GETPOS, 0, 0) / (double)kPrevSteps * dur;
     SetWindowTextW(g.lblPrev, TXF("ui.preview_time", i18n::fixed(t, 2).c_str()).c_str());
 }
@@ -143,6 +147,28 @@ void updatePrevLabel() {
 static int selectedOrFirst() {
     int sel = (int)SendMessageW(g.list, LVM_GETNEXTITEM, (WPARAM)-1, LVNI_SELECTED);
     return sel < 0 ? 0 : sel;
+}
+
+// Images cles des parametres du shader selectionne, reperees sur le curseur de l'apercu (relues seulement si le code ou la plage change)
+static void refreshPrevMarks(double start, double dur) {
+    static std::string lastKey;
+    if (!g.trkPrev) return;
+    const std::wstring path = g.paths.empty() ? L"" : g.paths[(size_t)selectedOrFirst() < g.paths.size() ? (size_t)selectedOrFirst() : 0];
+    const std::string key = U8(path) + "|" + std::to_string(start) + "|" + std::to_string(dur) + "|" + (path.empty() ? "" : fnvHex(collectShaderCode(path)));
+    if (key == lastKey) return;
+    lastKey = key;
+    std::vector<float> marks;
+    if (!path.empty() && dur > 0) {
+        std::vector<ParamInfo> infos;
+        std::vector<double> keys;
+        std::wstring err;
+        if (loadShaderParams(g.exeDir, path, infos, err, nullptr, &keys))
+            for (double t : keys) {
+                const double f = (t - start) / dur;
+                if (f >= 0 && f <= 1) marks.push_back((float)f);
+            }
+    }
+    SendMessageW(g.trkPrev, ui::STSL_SETMARKS, marks.size(), (LPARAM)marks.data());
 }
 
 // --- Lecture en temps reel -----------------------------------------------------------------------------------------

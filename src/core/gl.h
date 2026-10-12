@@ -23,6 +23,7 @@ namespace ogl {
     F(GLint, GetUniformLocation, (GLuint, const char*))                              \
     F(void, Uniform1f, (GLint, GLfloat))                                             \
     F(void, Uniform1i, (GLint, GLint))                                               \
+    F(void, Uniform2f, (GLint, GLfloat, GLfloat))                                    \
     F(void, Uniform3f, (GLint, GLfloat, GLfloat, GLfloat))                           \
     F(void, Uniform4f, (GLint, GLfloat, GLfloat, GLfloat, GLfloat))                  \
     F(void, Uniform1fv, (GLint, GLsizei, const GLfloat*))                            \
@@ -66,6 +67,7 @@ constexpr GLenum K_STREAM_READ = 0x88E1;
 constexpr GLenum K_READ_ONLY = 0x88B8;
 constexpr GLenum K_RGBA8 = 0x8058;
 constexpr GLenum K_RGBA16 = 0x805B;
+constexpr GLenum K_RGBA16F = 0x881A;
 constexpr GLenum K_RGBA32F = 0x8814;
 }  // namespace ogl
 
@@ -85,6 +87,9 @@ bool createGLContext(GLContext& c, std::wstring& err);  // contexte 3.3 core + c
 // vrMode : image en realite virtuelle (mainVR) rendue en 360 equirectangulaire : 1 = mono, 2 = stereo haut / bas (oeil gauche en haut,
 // iResolution = taille d'un oeil, uniform st_ipd = ecart des yeux).
 GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut = false, const std::string* chType = nullptr,
-                    bool cubemapOut = false, bool soundOut = false, int vrMode = 0);
+                    bool cubemapOut = false, bool soundOut = false, int vrMode = 0, const std::string& preamble = std::string());
+// Programme plein ecran sans enveloppe Shadertoy (post-traitement) : fs est un fragment shader complet (#version 330 core), la sortie
+// est `out vec4 st_o`. 0 + err si echec.
+GLuint buildFullscreenProgram(const std::string& fs, std::wstring& err);
 // Programme de recopie : accumulation flottante (flou de mouvement) -> image 8 bits
 GLuint buildPresentProgram(std::wstring& err);

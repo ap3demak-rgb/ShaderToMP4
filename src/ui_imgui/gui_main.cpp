@@ -5,6 +5,8 @@
 #include "core/ffmpeg_download.h"
 #include "core/formats.h"
 #include "core/locate.h"
+#include "core/params.h"
+#include "core/postfx.h"
 #include "core/presets.h"
 #include "core/queue.h"
 #include "core/i18n.h"
@@ -311,6 +313,30 @@ void drawPreview(App& a, float height) {
         ImGui::SetNextItemWidth(std::max(S(60), ImGui::GetContentRegionAvail().x - bw - pw - S(16)));
         if (ImGui::SliderFloat("##pt", &m.f.previewPos, 0.0f, 1.0f, "") && on) m.seekPlay();
         tip("ui.tip.preview_time");
+        {  // images clés des paramètres du shader sélectionné : un trait fin sur le curseur (relues si le code ou la plage change)
+            static std::string lastKey;
+            static std::vector<float> marks;
+            const std::wstring path = m.paths.empty() ? L"" : m.paths[std::min(std::max(0, m.selected), (int)m.paths.size() - 1)];
+            const std::string key = U8(path) + "|" + std::to_string(st) + "|" + std::to_string(du) + "|" + (path.empty() ? "" : fnvHex(collectShaderCode(path)));
+            if (key != lastKey) {
+                lastKey = key;
+                marks.clear();
+                std::vector<ParamInfo> infos;
+                std::vector<double> keys;
+                std::wstring err;
+                if (!path.empty() && du > 0 && loadShaderParams(m.exeDir, path, infos, err, nullptr, &keys))
+                    for (double kt : keys) {
+                        const double f = (kt - st) / du;
+                        if (f >= 0 && f <= 1) marks.push_back((float)f);
+                    }
+            }
+            const ImVec2 a0 = ImGui::GetItemRectMin(), a1 = ImGui::GetItemRectMax();
+            const float grab = ImGui::GetStyle().GrabMinSize;
+            for (float f : marks) {
+                const float x = a0.x + grab * 0.5f + f * (a1.x - a0.x - grab);
+                ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(x - S(1), a0.y + S(2)), ImVec2(x + S(1), a1.y - S(2)), col(pal::ACCENT, 0.9f), S(1));
+            }
+        }
         ImGui::SameLine();
         if (button(on ? "ui.btn.stop_play" : "ui.btn.play", on ? "stop" : "play", 0, !m.running() && !m.paths.empty(), pw, "ui.tip.play")) m.togglePlay();
         ImGui::SameLine();
@@ -383,6 +409,135 @@ const std::vector<std::string>& formatLabels(Model& m, bool codecs) {
             containerNames.push_back(U8(containerAt(i).label) + (containerAvailable(ff, containerAt(i).id) ? "" : na));
     }
     return codecs ? codecNames : containerNames;
+}
+
+// --- Paramètres du shader (// uniform ...) ------------------------------------------------------------------------------------
+// Un curseur, une case ou un sélecteur de couleur par paramètre déclaré dans le shader sélectionné ; les valeurs sont enregistrées
+// dans params/ (dossier de l'application) et reprises par l'aperçu en lecture et par les rendus.
+struct ParamsUi {
+    std::wstring path, file;
+    std::string codeHash;
+    double checked = -10;
+    std::vector<ParamInfo> infos;
+    std::string error;
+};
+
+void reloadParams(Model& m, ParamsUi& u, const std::wstring& path) {
+    u.path = path;
+    u.infos.clear();
+    u.error.clear();
+    u.codeHash.clear();
+    if (path.empty()) return;
+    u.file = paramsFile(m.exeDir, path);
+    std::wstring err;
+    if (!loadShaderParams(m.exeDir, path, u.infos, err, &u.codeHash)) u.error = U8(err);
+}
+
+void drawParams(App& a) {
+    static ParamsUi u;
+    Model& m = a.model;
+    const std::wstring cur = m.paths.empty() ? L"" : m.paths[std::min(std::max(0, m.selected), (int)m.paths.size() - 1)];
+    const double now = ImGui::GetTime();
+    if (cur != u.path) {
+        reloadParams(m, u, cur);
+        u.checked = now;
+    } else if (now - u.checked > 1.0) {  // le fichier du shader a pu changer sur le disque
+        u.checked = now;
+        if (!cur.empty() && fnvHex(collectShaderCode(cur)) != u.codeHash) reloadParams(m, u, cur);
+    }
+    if (u.infos.empty() && u.error.empty()) return;
+    ImGui::Dummy(ImVec2(0, S(6)));
+    ImGui::TextColored(colv(pal::ACCENT), "%s", T("ui.lbl.params").c_str());
+    ImGui::Separator();
+    if (!u.error.empty()) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(colv(pal::ERR), "%s", u.error.c_str());
+        ImGui::PopTextWrapPos();
+        return;
+    }
+    const float width = ImGui::GetContentRegionAvail().x - S(120) - S(110);
+    for (ParamInfo& p : u.infos) {
+        ImGui::PushID(p.name.c_str());
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(colv(pal::MUTED), "%s", p.name.c_str());
+        ImGui::SameLine(S(120));
+        const bool locked = p.animated || !p.audio.empty();
+        double lo = 0, hi = 1;
+        paramRange(p, lo, hi);
+        float v[4];
+        for (int i = 0; i < 4; i++) v[i] = (float)p.value[i];
+        bool changed = false;
+        ImGui::BeginDisabled(locked);
+        ImGui::SetNextItemWidth(width);
+        if (p.type == "float") changed = ImGui::SliderFloat("##v", &v[0], (float)lo, (float)hi, "%.3g");
+        else if (p.type == "int") {
+            int iv = (int)std::lround(v[0]);
+            if (ImGui::SliderInt("##v", &iv, (int)std::lround(lo), (int)std::lround(hi))) {
+                v[0] = (float)iv;
+                changed = true;
+            }
+        } else if (p.type == "bool") {
+            bool b = v[0] >= 0.5f;
+            if (ImGui::Checkbox("##v", &b)) {
+                v[0] = b ? 1.0f : 0.0f;
+                changed = true;
+            }
+        } else if (p.type == "color") changed = ImGui::ColorEdit3("##v", v, ImGuiColorEditFlags_PickerHueWheel);
+        else if (p.type == "vec2") changed = ImGui::SliderFloat2("##v", v, (float)lo, (float)hi, "%.3g");
+        else if (p.type == "vec3") changed = ImGui::SliderFloat3("##v", v, (float)lo, (float)hi, "%.3g");
+        else changed = ImGui::SliderFloat4("##v", v, (float)lo, (float)hi, "%.3g");
+        ImGui::EndDisabled();
+        tip("ui.tip.param");
+        if (changed) {
+            for (int i = 0; i < 4; i++) p.value[i] = v[i];
+            saveParamValue(u.file, p.name, formatParamValue(p, p.value));
+        }
+        if (locked) {
+            ImGui::SameLine();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(colv(pal::FAINT), "%s", T(p.animated ? "ui.params.animated" : "ui.params.audio").c_str());
+        }
+        ImGui::PopID();
+    }
+    if (button("ui.btn.reset_params", nullptr, 0, true, 0, "ui.tip.reset_params")) {
+        resetParamValues(u.file);
+        reloadParams(m, u, cur);
+    }
+}
+
+// --- Post-traitement : effets et LUT couleur ---------------------------------------------------------------------------------
+void drawPostfx(App& a) {
+    Fields& f = a.model.f;
+    ImGui::Dummy(ImVec2(0, S(6)));
+    ImGui::TextColored(colv(pal::ACCENT), "%s", T("ui.lbl.post").c_str());
+    ImGui::Separator();
+    const auto& fx = postEffectInfos();
+    const float width = ImGui::GetContentRegionAvail().x - S(120) - S(110);
+    for (size_t i = 0; i < fx.size() && i < 8; i++) {
+        ImGui::PushID((int)i);
+        ImGui::Checkbox("##on", &f.postOn[i]);
+        tip("ui.tip.post");
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(colv(f.postOn[i] ? pal::TEXT : pal::MUTED), "%s", T(fx[i].labelKey).c_str());
+        ImGui::SameLine(S(120));
+        ImGui::BeginDisabled(!f.postOn[i]);
+        ImGui::SetNextItemWidth(width);
+        ImGui::SliderFloat("##amt", &f.postAmt[i], (float)fx[i].lo, (float)fx[i].hi, "%.3f");
+        ImGui::EndDisabled();
+        ImGui::PopID();
+    }
+    label("ui.lbl.lut");
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - buttonWidth("ui.btn.browse", false) - S(110));
+    ImGui::InputTextWithHint("##lut", T("ui.cue.lut").c_str(), f.lut, sizeof(f.lut));
+    tip("ui.tip.lut");
+    ImGui::SameLine();
+    ImGui::PushID("lutbrowse");
+    if (button("ui.btn.browse", nullptr, 0, true, 0, "ui.tip.lut_browse"))
+        openBrowser(a, BrowseMode::OpenFile, "dialog.lut_files", {L".cube"}, L"", [&a](const std::vector<std::wstring>& r) {
+            if (!r.empty()) snprintf(a.model.f.lut, sizeof(a.model.f.lut), "%s", U8(r[0]).c_str());
+        });
+    ImGui::PopID();
 }
 
 void drawSettings(App& a, float height) {
@@ -589,6 +744,8 @@ void drawSettings(App& a, float height) {
                 if (!r.empty()) snprintf(a.model.f.outdir, sizeof(a.model.f.outdir), "%s", U8(r[0]).c_str());
             });
         ImGui::PopID();
+        drawPostfx(a);
+        drawParams(a);
         ImGui::EndChild();
 
         if (button("ui.btn.profile", "folder", 0, true, 0, "ui.tip.profile_load"))

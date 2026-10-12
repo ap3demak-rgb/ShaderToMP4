@@ -10,6 +10,7 @@
 #include "core/shadertoy_import.h"
 #include "core/gl.h"
 #include "core/i18n.h"
+#include "core/postfx.h"
 #include "core/render.h"
 #include "core/util.h"
 #include "platform/platform.h"
@@ -111,6 +112,20 @@ void Model::fromSettings(const Settings& s) {
     const auto& encs = encoderList();
     for (size_t i = 0; i < encs.size(); i++)
         if (s.encoder == encs[i]) f.encoder = (int)i;
+    // post-traitement : quantités par défaut, puis celles de s.post
+    const auto& fx = postEffectInfos();
+    for (size_t i = 0; i < fx.size() && i < 8; i++) {
+        f.postOn[i] = false;
+        f.postAmt[i] = (float)fx[i].def;
+    }
+    std::vector<PostEffect> on;
+    std::wstring bad;
+    if (parsePostEffects(s.post, on, bad))
+        for (const PostEffect& e : on) {
+            f.postOn[e.index] = true;
+            f.postAmt[e.index] = (float)e.amount;
+        }
+    copyTo(f.lut, sizeof(f.lut), U8(s.lut));
 }
 
 bool Model::toSettings(Settings& s, std::wstring& err) const {
@@ -150,6 +165,15 @@ bool Model::toSettings(Settings& s, std::wstring& err) const {
     s.audio = W(f.audio);
     const auto& encs = encoderList();
     s.encoder = encs[std::min((int)encs.size() - 1, std::max(0, f.encoder))];
+    s.post.clear();
+    const auto& fx = postEffectInfos();
+    for (size_t i = 0; i < fx.size() && i < 8; i++)
+        if (f.postOn[i]) {
+            char b[64];
+            snprintf(b, sizeof(b), "%s%s:%g", s.post.empty() ? "" : ",", fx[i].name, (double)f.postAmt[i]);
+            s.post += b;
+        }
+    s.lut = W(f.lut);
     return true;
 }
 

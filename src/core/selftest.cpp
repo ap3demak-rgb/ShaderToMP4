@@ -5,6 +5,7 @@
 #include "formats.h"
 #include "gl.h"
 #include "locate.h"
+#include "params.h"
 #include "passes.h"
 #include "player.h"
 #include "shadertoy_import.h"
@@ -405,6 +406,49 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_vr") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
         if (!problem.empty()) fails++;
     }
+    // Chaine flottante complete : supersampling x2, flou de mouvement x4 et sortie 16 bits avec un effet de couleur sur un aplat
+    // (saturation -1 : les trois canaux deviennent la luminance 0.2126 r + 0.7152 g + 0.0722 b)
+    if (formatAvailable(ffmpeg, "h264", "png")) {
+        total++;
+        const std::wstring vshader = outDir + platform::pathSeparator() + L"postdeep.glsl";
+        const std::string vsrc = "// post=saturation:-1\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(0.25, 0.5, 0.75, 1.0); }\n";
+        if (FILE* f = platform::openFile(vshader, "wb")) {
+            fwrite(vsrc.data(), 1, vsrc.size(), f);
+            fclose(f);
+        }
+        Settings st = base("h264", "png", 10);
+        st.ss = 2;
+        st.blur = 4;
+        st.name = L"postdeep";
+        std::wstring e, problem;
+        Hooks H;
+        H.log = [](const std::wstring&) {};
+        if (convertFile(vshader, exeDir, st, H, e) != Result::Ok) {
+            problem = e.empty() ? TX("selftest.render_failed") : e;
+        } else {
+            const std::wstring first = outputFile(vshader, st, false);
+            const std::wstring raw = outDir + platform::pathSeparator() + L"postdeep.raw";
+            runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -i \"" + sequencePattern(first) +
+                           L"\" -frames:v 1 -f rawvideo -pix_fmt rgb48le \"" + raw + L"\"",
+                       nullptr);
+            std::string bytes;
+            if (!readFile(raw, bytes) || bytes.size() < 6) {
+                problem = TXF("selftest.fmt_bad", W("no frame").c_str());
+            } else {
+                const double want = (0.2126 * 0.25 + 0.7152 * 0.5 + 0.0722 * 0.75) * 65535.0;
+                for (int c = 0; c < 3; c++) {
+                    const double v = (uint8_t)bytes[(size_t)c * 2] | ((uint8_t)bytes[(size_t)c * 2 + 1] << 8);
+                    if (std::fabs(v - want) > 0.02 * 65535.0) {
+                        problem = TXF("selftest.fmt_bad", W("16-bit value " + std::to_string(v) + " != " + std::to_string(want)).c_str());
+                        break;
+                    }
+                }
+            }
+            platform::removeFile(raw);
+        }
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_postdeep") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
     // Canaux dynamiques et cubemap par fichiers : audio (spectre), video (images au bon temps), six faces de couleurs distinctes
     {
         const std::wstring sep(1, platform::pathSeparator());
@@ -452,6 +496,19 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             else if (got[2] < 200 || got[1] > 60) problem = bad("spectrum r=" + std::to_string(got[2]) + " g=" + std::to_string(got[1]));
             else if (got[0] < 20) problem = bad("waveform");
             report1("selftest.fmt_audio", problem);
+        }
+        // parametres lies au son : le niveau et les bandes du meme fichier (sinus de 1 kHz : mediums au maximum, graves nuls)
+        {
+            const std::string tone = U8(outDir + sep + L"tone.wav");
+            const std::wstring sh = writeShader(L"paramaudio.glsl",
+                "// audio=" + tone + "\n// uniform float lvl = audio.level\n// uniform float mid = audio.mid\n// uniform float bas = audio.bass\n"
+                "void mainImage(out vec4 o, in vec2 p){ o = vec4(lvl * 4.0, mid, bas, 1.0); }\n");
+            std::vector<uint8_t> got;
+            std::wstring e, problem;
+            if (!preview(sh, 16, 16, 1.0, got, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else if (got[2] < 100 || got[2] > 155 || got[1] < 230 || got[0] > 30)
+                problem = bad("level r=" + std::to_string(got[2]) + " mid g=" + std::to_string(got[1]) + " bass b=" + std::to_string(got[0]));
+            report1("selftest.fmt_param_audio", problem);
         }
         // video : l'image montree au temps t est celle que ffmpeg decode a ce temps
         {
@@ -609,6 +666,213 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         if (notes.size() != 2 || notes[0].find(L"Image") == std::wstring::npos || notes[1].find(L"Buffer C") == std::wstring::npos)
             problem = TXF("selftest.fmt_bad", W("notes " + std::to_string(notes.size())).c_str());
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_compat_passes") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
+    // Parametres : un nom deja pris (variable Shadertoy, uniform du shader, doublon) ou une valeur invalide arrete le rendu avec un message
+    {
+        total++;
+        const std::wstring dir = outDir + platform::pathSeparator();
+        struct Case {
+            const char* name;
+            const char* body;
+            const char* mustContain;  // texte attendu dans l'erreur
+        };
+        const Case cases[] = {
+            {"pe1.glsl", "// uniform float iTime = 1.0\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(1.0); }\n", "iTime"},
+            {"pe2.glsl", "uniform float k;\n// uniform float k = 1.0\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(k); }\n", "k"},
+            {"pe3.glsl", "// uniform float a = 1.0\n// uniform float a = 2.0\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(a); }\n", "a"},
+            {"pe4.glsl", "// uniform float a = 1.0\n// key a=0:1 ; x:2\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(a); }\n", "x:2"},
+            {"pe5.glsl", "// uniform float a = zz\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(a); }\n", "zz"}};
+        std::wstring problem;
+        for (const Case& c : cases) {
+            if (FILE* f = platform::openFile(dir + W(c.name), "wb")) {
+                fputs(c.body, f);
+                fclose(f);
+            }
+            Settings st;
+            st.width = st.height = 16;
+            std::vector<uint8_t> unused;
+            Hooks H;
+            H.log = [](const std::wstring&) {};
+            H.previewFrame = [&](int, int, std::vector<uint8_t>&& px) { unused = std::move(px); };
+            std::wstring e;
+            if (convertFile(dir + W(c.name), exeDir, st, H, e) == Result::Ok || e.find(W(c.mustContain)) == std::wstring::npos) {
+                problem = TXF("selftest.fmt_bad", W(std::string(c.name) + " " + U8(e)).c_str());
+                break;
+            }
+        }
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_param_errors") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
+    // Lecture des parametres hors rendu (fenetres de reglage) : BOM UTF-8, fins de ligne CRLF, images cles et temps des cles
+    {
+        total++;
+        const std::wstring path = outDir + platform::pathSeparator() + L"paramload.glsl";
+        const std::string body = "\xEF\xBB\xBF// uniform float v = 1 [0..2]\r\n// key v=0:0 ; 3:2\r\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(v); }\r\n";
+        if (FILE* f = platform::openFile(path, "wb")) {
+            fwrite(body.data(), 1, body.size(), f);
+            fclose(f);
+        }
+        std::vector<ParamInfo> infos;
+        std::vector<double> keys;
+        std::wstring err, problem;
+        if (!loadShaderParams(exeDir, path, infos, err, nullptr, &keys))
+            problem = err;
+        else if (infos.size() != 1 || infos[0].name != "v" || !infos[0].animated || keys.size() != 2 || keys[1] != 3.0)
+            problem = TXF("selftest.fmt_bad", W("params " + std::to_string(infos.size()) + " keys " + std::to_string(keys.size())).c_str());
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_param_load") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
+    // LUT 3D : l'interpolation tetraedrique du GPU est comparee a une version CPU sur les 4096 pixels d'un degrade
+    {
+        total++;
+        const std::wstring dir = outDir + platform::pathSeparator();
+        const int N = 5;
+        std::vector<float> lutv((size_t)N * N * N * 3);
+        uint32_t x = 0x9E3779B9u;
+        for (auto& v : lutv) {
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            v = (x >> 8) / 16777216.0f;
+        }
+        std::string cube = "LUT_3D_SIZE 5\n";
+        char line[96];
+        for (size_t i = 0; i < (size_t)N * N * N; i++) {
+            snprintf(line, sizeof(line), "%.6f %.6f %.6f\n", lutv[i * 3], lutv[i * 3 + 1], lutv[i * 3 + 2]);
+            cube += line;
+        }
+        auto put = [&](const std::wstring& name, const std::string& body) {
+            if (FILE* f = platform::openFile(dir + name, "wb")) {
+                fwrite(body.data(), 1, body.size(), f);
+                fclose(f);
+            }
+        };
+        put(L"random5.cube", cube);
+        put(L"lutrandom.glsl",
+            "// lut=random5.cube\nvoid mainImage(out vec4 o, in vec2 p){ vec2 uv = p / iResolution.xy; o = vec4(uv, 0.37, 1.0); }\n");
+        Settings st;
+        st.width = st.height = 64;
+        std::vector<uint8_t> got;
+        Hooks H;
+        H.log = [](const std::wstring&) {};
+        H.previewFrame = [&](int, int, std::vector<uint8_t>&& px) { got = std::move(px); };
+        std::wstring e, problem;
+        if (convertFile(dir + L"lutrandom.glsl", exeDir, st, H, e) != Result::Ok || got.size() != 64 * 64 * 4) {
+            problem = e.empty() ? TX("selftest.render_failed") : e;
+        } else {
+            auto fetch = [&](int r, int g, int b, int c) { return (double)lutv[(((size_t)b * N + g) * N + r) * 3 + c]; };
+            int worst = 0;
+            for (int yTop = 0; yTop < 64 && problem.empty(); yTop++)
+                for (int xx = 0; xx < 64; xx++) {
+                    const double in[3] = {(xx + 0.5) / 64.0, (63 - yTop + 0.5) / 64.0, 0.37};
+                    int i0[3], i1[3];
+                    double f[3];
+                    for (int c = 0; c < 3; c++) {
+                        const double p = in[c] * (N - 1);
+                        i0[c] = (int)std::floor(p);
+                        f[c] = p - i0[c];
+                        i1[c] = std::min(i0[c] + 1, N - 1);
+                    }
+                    for (int c = 0; c < 3; c++) {  // interpolation tetraedrique, memes six cas que le GPU
+                        auto C = [&](int r, int g, int b) { return fetch(r ? i1[0] : i0[0], g ? i1[1] : i0[1], b ? i1[2] : i0[2], c); };
+                        double v;
+                        if (f[0] > f[1]) {
+                            if (f[1] > f[2]) v = C(0, 0, 0) + (C(1, 0, 0) - C(0, 0, 0)) * f[0] + (C(1, 1, 0) - C(1, 0, 0)) * f[1] + (C(1, 1, 1) - C(1, 1, 0)) * f[2];
+                            else if (f[0] > f[2]) v = C(0, 0, 0) + (C(1, 0, 0) - C(0, 0, 0)) * f[0] + (C(1, 0, 1) - C(1, 0, 0)) * f[2] + (C(1, 1, 1) - C(1, 0, 1)) * f[1];
+                            else v = C(0, 0, 0) + (C(0, 0, 1) - C(0, 0, 0)) * f[2] + (C(1, 0, 1) - C(0, 0, 1)) * f[0] + (C(1, 1, 1) - C(1, 0, 1)) * f[1];
+                        } else {
+                            if (f[2] > f[1]) v = C(0, 0, 0) + (C(0, 0, 1) - C(0, 0, 0)) * f[2] + (C(0, 1, 1) - C(0, 0, 1)) * f[1] + (C(1, 1, 1) - C(0, 1, 1)) * f[0];
+                            else if (f[2] > f[0]) v = C(0, 0, 0) + (C(0, 1, 0) - C(0, 0, 0)) * f[1] + (C(0, 1, 1) - C(0, 1, 0)) * f[2] + (C(1, 1, 1) - C(0, 1, 1)) * f[0];
+                            else v = C(0, 0, 0) + (C(0, 1, 0) - C(0, 0, 0)) * f[1] + (C(1, 1, 0) - C(0, 1, 0)) * f[0] + (C(1, 1, 1) - C(1, 1, 0)) * f[2];
+                        }
+                        const int want = (int)std::lround(std::min(1.0, std::max(0.0, v)) * 255.0);
+                        const int have = got[((size_t)yTop * 64 + xx) * 4 + (2 - c)];  // BGRA
+                        worst = std::max(worst, std::abs(want - have));
+                    }
+                }
+            if (worst > 2) problem = TXF("selftest.fmt_bad", W("tetrahedral max difference " + std::to_string(worst)).c_str());
+        }
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_lut") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
+    // Fichiers LUT invalides, effets inconnus : le rendu s'arrete avec un message qui nomme le fichier ou l'effet
+    {
+        total++;
+        const std::wstring dir = outDir + platform::pathSeparator();
+        struct Case {
+            const char* shader;
+            const char* cube;      // contenu du .cube ("" = pas de fichier)
+            const char* directive; // ligne // du shader
+            const char* contains;  // texte attendu dans l'erreur
+        };
+        const Case cases[] = {
+            {"lb1.glsl", "LUT_3D_SIZE 2\n1 1 1\n", "// lut=lb1.cube", "lb1.cube"},                               // trop peu de lignes
+            {"lb2.glsl", "LUT_3D_SIZE 1\n0 0 0\n", "// lut=lb2.cube", "lb2.cube"},                               // taille hors limites
+            {"lb3.glsl", "LUT_1D_SIZE 2\nWHATEVER 3\n0 0 0\n1 1 1\n", "// lut=lb3.cube", "lb3.cube:2"},         // mot-cle inconnu, ligne 2
+            {"lb4.glsl", "LUT_1D_SIZE 2\n0 0 0\n1 x 1\n", "// lut=lb4.cube", "lb4.cube:3"},                    // ligne de donnees invalide
+            {"lb5.glsl", "", "// lut=absent.cube", "absent.cube"},                                              // fichier absent
+            {"lb6.glsl", "", "// post=bloom,glitter", "glitter"},                                              // effet inconnu
+            {"lb7.glsl", "", "// post=bloom:fort", "fort"}};                                                   // quantite invalide
+        std::wstring problem;
+        for (const Case& c : cases) {
+            const std::string body = std::string(c.directive) + "\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(1.0); }\n";
+            if (FILE* f = platform::openFile(dir + W(c.shader), "wb")) {
+                fwrite(body.data(), 1, body.size(), f);
+                fclose(f);
+            }
+            if (*c.cube) {
+                const std::wstring cubeName = W(std::string(c.shader).substr(0, 3) + ".cube");
+                if (FILE* f = platform::openFile(dir + cubeName, "wb")) {
+                    fputs(c.cube, f);
+                    fclose(f);
+                }
+            }
+            Settings st;
+            st.width = st.height = 16;
+            std::vector<uint8_t> unused;
+            Hooks H;
+            H.log = [](const std::wstring&) {};
+            H.previewFrame = [&](int, int, std::vector<uint8_t>&& px) { unused = std::move(px); };
+            std::wstring e;
+            if (convertFile(dir + W(c.shader), exeDir, st, H, e) == Result::Ok || e.find(W(c.contains)) == std::wstring::npos) {
+                problem = TXF("selftest.fmt_bad", W(std::string(c.shader) + " " + U8(e)).c_str());
+                break;
+            }
+        }
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_lut_errors") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
+    // Grain : du bruit autour de la valeur d'origine, sans la deplacer
+    {
+        total++;
+        const std::wstring dir = outDir + platform::pathSeparator();
+        const std::string body = "// post=grain:0.2\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(0.5, 0.5, 0.5, 1.0); }\n";
+        if (FILE* f = platform::openFile(dir + L"grain.glsl", "wb")) {
+            fwrite(body.data(), 1, body.size(), f);
+            fclose(f);
+        }
+        Settings st;
+        st.width = st.height = 64;
+        std::vector<uint8_t> got;
+        Hooks H;
+        H.log = [](const std::wstring&) {};
+        H.previewFrame = [&](int, int, std::vector<uint8_t>&& px) { got = std::move(px); };
+        std::wstring e, problem;
+        if (convertFile(dir + L"grain.glsl", exeDir, st, H, e) != Result::Ok || got.size() != 64 * 64 * 4) {
+            problem = e.empty() ? TX("selftest.render_failed") : e;
+        } else {
+            double sum = 0, sq = 0;
+            for (size_t i = 0; i < got.size(); i += 4) {
+                sum += got[i + 1];
+                sq += (double)got[i + 1] * got[i + 1];
+            }
+            const double n = got.size() / 4.0, mean = sum / n, sd = std::sqrt(std::max(0.0, sq / n - mean * mean));
+            // bruit uniforme de largeur 0.2 : ecart type 0.2 / sqrt(12) = 0.058 soit 14.7 sur 255 ; moyenne inchangee
+            if (std::fabs(mean - 127.5) > 4.0 || sd < 10.0 || sd > 20.0)
+                problem = TXF("selftest.fmt_bad", W("grain mean " + std::to_string(mean) + " sd " + std::to_string(sd)).c_str());
+        }
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_grain") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
         if (!problem.empty()) fails++;
     }
     // Textures par fichier : image decodee par ffmpeg (PNG 8 bits, HDR flottant) lue en 1:1 par le shader

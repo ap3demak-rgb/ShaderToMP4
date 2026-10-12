@@ -42,6 +42,8 @@ bool usesWord(const std::string& code, const std::string& word) {
 
 }  // namespace
 
+std::string stripCodeComments(const std::string& code) { return stripComments(code); }
+
 bool codeUsesWord(const std::string& code, const std::string& word) { return usesWord(stripComments(code), word); }
 
 std::string adaptShaderCode(const std::string& code, std::vector<std::wstring>& notes) {
