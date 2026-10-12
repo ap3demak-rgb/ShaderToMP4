@@ -41,10 +41,13 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdarg>
+#include <cstddef>
+#include <cstdlib>
 #include <cstdint>
 #include <cerrno>
 #include <cstdio>
 #include <ctime>
+#include <cwctype>
 #include <cstring>
 #include <cmath>
 #include <functional>
