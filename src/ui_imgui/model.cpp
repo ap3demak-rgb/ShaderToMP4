@@ -154,6 +154,7 @@ void Model::fromSettings(const Settings& real) {
     copyTo(f.loopFade, sizeof(f.loopFade), U8(o.loopFade));
     copyTo(f.timemap, sizeof(f.timemap), U8(o.timemap));
     copyTo(f.speed, sizeof(f.speed), U8(o.speed));
+    f.stillFormat = o.stillFormat;
     f.audioFollow = o.audioFollow;
     copyTo(f.samples, sizeof(f.samples), U8(o.samples));
     copyTo(f.tile, sizeof(f.tile), U8(o.tile));
@@ -238,6 +239,7 @@ bool Model::toSettings(Settings& s, std::wstring& err) const {
     o.loopFade = W(f.loopFade);
     o.timemap = W(f.timemap);
     o.speed = W(f.speed);
+    o.stillFormat = f.stillFormat;
     o.audioFollow = f.audioFollow;
     o.samples = W(f.samples);
     o.tile = W(f.tile);
@@ -630,7 +632,16 @@ void Model::runJobsThread(std::vector<std::pair<int, std::wstring>> jobs) {
             e.total = total;
             e.speed = speed;
             e.remaining = remaining;
+            e.gpuImage = gpu_[0];
+            e.gpuBuffers = gpu_[1];
+            e.gpuPost = gpu_[2];
             post(std::move(e));
+        };
+        gpu_[0] = gpu_[1] = gpu_[2] = 0;
+        H.gpuTimes = [this](double image, double buffers, double postMs) {
+            gpu_[0] = image;
+            gpu_[1] = buffers;
+            gpu_[2] = postMs;
         };
         std::wstring e;
         Settings run = settingsForFile(runSettings_, exeDir, jobs[i].second);  // reglages generaux + ceux de ce shader
@@ -644,7 +655,16 @@ void Model::runJobsThread(std::vector<std::pair<int, std::wstring>> jobs) {
         } else if (snapshotRun_ && imageKind_ == 6) {  // carte de chaleur du cout GPU par zone
             HeatStats hs;
             std::wstring heatFile;
-            if (renderHeatmap(jobs[i].second, exeDir, run, 16, 9, -1, H, hs, heatFile, e)) {
+            Hooks Hh = H;  // la carte s'affiche dans l'apercu
+            Hh.previewFrame = [this](int w, int h, std::vector<uint8_t>&& px) {
+                Event ev;
+                ev.kind = Event::Preview;
+                ev.w = w;
+                ev.h = h;
+                ev.px = std::move(px);
+                post(std::move(ev));
+            };
+            if (renderHeatmap(jobs[i].second, exeDir, run, 16, 9, -1, Hh, hs, heatFile, e)) {
                 postLog(L"  " + describeHeat(hs));
             } else {
                 r = cancel_ ? Result::Cancelled : Result::Failed;
@@ -757,7 +777,7 @@ void Model::startJobs(bool snapshot, int imageKind, int cols, int rows, bool atP
     previewRun = false;
     progress = 0;
     progressFailed = false;
-    if (snapshot) snapshotPath_ = imageKind == 3 || imageKind == 4 || imageKind == 5 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
+    if (snapshot) snapshotPath_ = imageKind == 3 || imageKind == 4 || imageKind == 5 || imageKind == 6 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
     setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot ? "status.rendering_image" : "status.rendering"));
     worker_ = std::thread(&Model::runJobsThread, this, std::move(jobs));
 }
@@ -883,7 +903,11 @@ void Model::pump() {
                 const int pct = (int)(e.n * 100 / std::max(1LL, e.total));
                 progress = (float)e.n / (float)std::max(1LL, e.total);
                 if (e.idx >= 0 && e.idx < (int)paths.size()) stateText[e.idx] = TXF("status.running_pct", pct);
-                setStatus(TXF("status.progress", e.n, e.total, pct, i18n::fixed(e.speed, 1).c_str(), fmtTime(e.remaining).c_str()));
+                {
+                    std::wstring st = TXF("status.progress", e.n, e.total, pct, i18n::fixed(e.speed, 1).c_str(), fmtTime(e.remaining).c_str());
+                    if (e.gpuImage > 0) st += TXF("status.gpu", i18n::fixed(e.gpuImage, 1).c_str(), i18n::fixed(e.gpuBuffers, 1).c_str(), i18n::fixed(e.gpuPost, 1).c_str());
+                    setStatus(st);
+                }
                 break;
             }
             case Event::File:

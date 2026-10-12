@@ -20,6 +20,7 @@ struct RenderReport {
     std::string codec, container, encoder;
     double gpuImageMs = 0, gpuBufferMs = 0, gpuPostMs = 0;  // temps GPU moyen par image (ms), mesure sur quelques images ; 0 = non mesure
     int gpuSamples = 0;
+    double gpuPassMs[5] = {0, 0, 0, 0, 0};  // par passe : Buffer A a D, Cubemap A
     bool loopChecked = false;           // controle de la couture d'une video en boucle (looptools.h)
     double loopSeam = 0, loopTypical = 0;
     bool loopPerfect = false;

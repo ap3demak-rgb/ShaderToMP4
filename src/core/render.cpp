@@ -117,6 +117,7 @@ struct ReportData {
     std::string encoder;
     double gpuImageMs = 0, gpuBufferMs = 0, gpuPostMs = 0;  // temps GPU moyen par image, mesure sur quelques images
     int gpuSamples = 0;
+    double gpuPassMs[5] = {0, 0, 0, 0, 0};
     bool loopChecked = false;  // controle de la couture apres le rendu (looptools.h)
     double loopSeam = 0, loopTypical = 0;
     bool loopPerfect = false;
@@ -158,6 +159,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     rep.gpuBufferMs = rd.gpuBufferMs;
     rep.gpuPostMs = rd.gpuPostMs;
     rep.gpuSamples = rd.gpuSamples;
+    for (int k = 0; k < 5; k++) rep.gpuPassMs[k] = rd.gpuPassMs[k];
     rep.loopChecked = rd.loopChecked;
     rep.loopSeam = rd.loopSeam;
     rep.loopTypical = rd.loopTypical;
@@ -317,6 +319,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         }
     }
     const int RW = tiled ? TW : FW, RH = tiled ? TH : FH;  // taille des cibles de rendu : une tuile, ou l'image entiere
+    const int PW = FW, PH = FH;                            // taille des passes (tampons) : toujours l'image entiere
     const size_t frameBytes = (size_t)RW * RH * 4 * bpc;
     bool hasAudio = videoMode && kind == OutKind::Video && !s.audio.empty();
     if (videoMode && kind != OutKind::Video && !s.audio.empty()) H.log(L"  " + TX("log.audio_ignored"));
@@ -332,7 +335,9 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         return Result::Failed;
     }
     if (!preview && !s.outdir.empty()) platform::makeDir(s.outdir);  // sans effet si deja present
-    const std::wstring ext = H.cubeFace >= 0 && H.snapshot ? std::wstring(L"_") + vrFaceName(H.cubeFace) + L".png" : thumb ? L"_thumb" + H.thumbSuffix + L".png" : H.snapshot ? L".png" : sheet ? L"_sheet.png" : L"." + W(s.container);
+    const bool tiff = still && s.stillFormat == "tiff";  // image fixe en TIFF
+    const std::wstring stillExt = tiff ? L".tif" : L".png";
+    const std::wstring ext = H.cubeFace >= 0 && H.snapshot ? std::wstring(L"_") + vrFaceName(H.cubeFace) + stillExt : thumb ? L"_thumb" + H.thumbSuffix + L".png" : H.snapshot ? stillExt : sheet ? L"_sheet.png" : L"." + W(s.container);
     bool skipExisting = false;
     const std::wstring out = !videoMode ? outputPath(shaderPath, s.outdir, ext) : outputFile(shaderPath, s, true, &skipExisting);
     if (skipExisting) {
@@ -394,7 +399,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         return Result::Failed;
     }
     if (vrMode > 0 && !preview) {
-        const char* const vrLog[7] = {"", "log.compat_vr", "log.vr_stereo", "log.vr_sbs", "log.vr_anaglyph", "log.vr_fulldome", "log.vr_face"};
+        const char* const vrLog[8] = {"", "log.compat_vr", "log.vr_stereo", "log.vr_sbs", "log.vr_anaglyph", "log.vr_fulldome", "log.vr_face", "log.vr_fulldome_flat"};
         H.log(L"  " + TX(vrLog[vrMode]));
         if (!vrAspectOk(W_, H_, vrMode)) H.log(L"  " + TXF("log.vr_aspect", W_, H_, vrAspectText(vrMode)));
     }
@@ -534,7 +539,12 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
     }
     const std::wstring shaderDir = shaderPath.find_last_of(L"\\/") == std::wstring::npos ? L"" : shaderPath.substr(0, shaderPath.find_last_of(L"\\/") + 1);
-    if (!bp.build(RW, RH, shaderDir, findFfmpeg(exeDir), H, err, s.start, s.fps, &s)) {
+    if (tiled && bp.any() && ((long long)FW * FH > 8192LL * 8192 || FW > gpuEdge || FH > gpuEdge)) {  // les tampons sont calcules une fois a pleine taille : ils doivent tenir
+        err = TXF("error.tile_passes", FW, FH);
+        cleanupGL();
+        return Result::Failed;
+    }
+    if (!bp.build(PW, PH, shaderDir, findFfmpeg(exeDir), H, err, s.start, s.fps, &s)) {
         cleanupGL();
         return Result::Failed;
     }
@@ -542,8 +552,8 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         cleanupGL();
         return Result::Failed;
     }
-    if (tiled && (bp.any() || post.active())) {  // les passes et le post-traitement lisent leurs voisins : pas decoupables
-        err = TX("error.tile_passes");
+    if (tiled && post.active()) {  // le post-traitement lit les voisins de chaque pixel : pas decoupable
+        err = TX("error.tile_post");
         cleanupGL();
         return Result::Failed;
     }
@@ -573,7 +583,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         ogl::Uniform4f(loc, m[0], m[1], m[2], m[3]);
     };
     setMouse(uMouse, s.start);
-    if (!loadChannels(s, shaderDir, findFfmpeg(exeDir), chans, H, err, RW, RH, s.start, s.fps)) {  // canaux d'entree (textures, tampons)
+    if (!loadChannels(s, shaderDir, findFfmpeg(exeDir), chans, H, err, PW, PH, s.start, s.fps)) {  // canaux d'entree (textures, tampons)
         cleanupGL();
         return Result::Failed;
     }
@@ -592,7 +602,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     bool inSim = false;  // en cours de simulation des tampons (historique rejoue) : le temps est celui de l'image simulee, pas celui de la video
     auto setPassUniforms = [&](GLuint p, long long n) {
         const double t = inSim ? s.start + (double)n / s.fps : shaderTime((double)n / s.fps);
-        ogl::Uniform3f(ogl::GetUniformLocation(p, "iResolution"), (float)RW, (float)RH, 1.0f);
+        ogl::Uniform3f(ogl::GetUniformLocation(p, "iResolution"), (float)PW, (float)PH, 1.0f);
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iTime"), (float)t);
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iTimeDelta"), (float)(inSim ? 1.0 / s.fps : deltaAt(n)));
         ogl::Uniform1i(ogl::GetUniformLocation(p, "iFrame"), (GLint)(n + s.warmup));
@@ -610,6 +620,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     // Temps GPU par passe : mesure sur quelques images seulement (le GPU est vide avant et apres, ce qui coute du debit) ; ms cumules
     bool timing = false;
     double gpuMs[3] = {0, 0, 0};  // image, tampons, post-traitement
+    double gpuPassMs[5] = {0, 0, 0, 0, 0};  // par passe : Buffer A a D, Cubemap A
     int gpuSamples = 0;
     using Tick = std::chrono::steady_clock::time_point;
     auto tickStart = [&]() -> Tick {
@@ -623,6 +634,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     auto advanceBuffers = [&](long long n) {
         if (!bp.any()) return;
         const Tick tb = timing ? tickStart() : Tick();
+        bp.timePasses = timing;
         long long target = n;  // image des tampons voulue : celle de l'instant du shader quand le temps est decale ou recule
         if (replayHist) {
             target = std::max(0LL, std::llround(tm.at((double)n / s.fps) * s.fps));
@@ -637,14 +649,20 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                 H.log(L"  " + TXF("log.buffers_replay", (long long)(n + s.warmup)));
                 replayLogged = true;
             }
-            bp.step(simFrame, replayHist ? s.start + (double)simFrame / s.fps : shaderTime((double)simFrame / s.fps), RW, RH, setPassUniforms);
+            bp.step(simFrame, replayHist ? s.start + (double)simFrame / s.fps : shaderTime((double)simFrame / s.fps), PW, PH, setPassUniforms);
         }
-        bp.step(target, replayHist ? s.start + (double)target / s.fps : shaderTime((double)target / s.fps), RW, RH, setPassUniforms);
+        bp.step(target, replayHist ? s.start + (double)target / s.fps : shaderTime((double)target / s.fps), PW, PH, setPassUniforms);
         inSim = false;
         simFrame = target + 1;
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);  // retour a l'image
+        glViewport(0, 0, RW, RH);
         ogl::UseProgram(prog);
-        if (timing) tickStop(tb, 1);
+        if (timing) {
+            tickStop(tb, 1);
+            for (int k = 0; k < 5; k++) gpuPassMs[k] += bp.passMs[k];
+            for (double& v : bp.passMs) v = 0;
+            bp.timePasses = false;
+        }
     };
 
     auto drawAt = [&](double t, long long n, long long extraFrame = 0) {
@@ -828,11 +846,13 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         }
         H.log(L"  " + TXF("log.tiles", nx, ny, TW, TH, W_, H_));
         const wchar_t* inFmt = deep ? L"rgba64le" : L"rgba";
-        const wchar_t* outFmt = s.alpha ? (deep ? L"rgba64be" : L"rgba") : (deep ? L"rgb48be" : L"rgb24");
+        const wchar_t* outFmt = s.alpha ? (deep ? L"rgba64be" : L"rgba") : (deep ? L"rgb48be" : L"rgb24");  // bandes : toujours en PNG
+        const wchar_t* finalFmt = !tiff ? outFmt : s.alpha ? (deep ? L"rgba64le" : L"rgba") : (deep ? L"rgb48le" : L"rgb24");
         const std::wstring dpiArg = s.dpi > 0 ? wfmt(L" -dpi %d", s.dpi) : std::wstring();
         const int OW = W_;
         const GLint uOff = ogl::GetUniformLocation(prog, "st_offset");
         std::vector<uint8_t> tileBuf((size_t)TW * TH * 4 * bpc);
+        if (bp.any()) advanceBuffers(0);  // les tampons de l'image fixe : une fois, a pleine taille ; chaque tuile les lit
         long long doneTiles = 0;
         bool stopped = false;
         std::vector<std::wstring> strips;
@@ -907,8 +927,11 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         }
         H.log(L"  " + TX("log.assembling"));
         bool joined = true;
-        if (strips.size() == 1) {
+        if (strips.size() == 1 && !tiff) {
             joined = platform::moveFile(strips[0], out, true);
+        } else if (strips.size() == 1) {  // une seule bande en TIFF : conversion
+            const std::wstring cmd = L"\"" + ffm + L"\" -hide_banner -loglevel error -nostdin -y -i \"" + strips[0] + L"\" -frames:v 1 -pix_fmt " + finalFmt + L" -compression_algo deflate" + dpiArg + L" \"" + out + L"\"";
+            joined = runProcess(cmd, [&](const std::wstring& line) { H.log(TX("log.ffmpeg_prefix") + line); }) == 0;
         } else {
             std::wstring cmd = L"\"" + ffm + L"\" -hide_banner -loglevel error -nostdin -y";
             std::wstring labels;
@@ -916,13 +939,14 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                 cmd += L" -i \"" + strips[i] + L"\"";
                 labels += L"[" + std::to_wstring(i) + L":v]";
             }
-            cmd += L" -filter_complex \"" + labels + L"vstack=inputs=" + std::to_wstring(strips.size()) + L"[v]\" -map [v] -frames:v 1 -pix_fmt " + outFmt + dpiArg + L" \"" + out + L"\"";
+            cmd += L" -filter_complex \"" + labels + L"vstack=inputs=" + std::to_wstring(strips.size()) + L"[v]\" -map [v] -frames:v 1 -pix_fmt " + finalFmt + (tiff ? L" -compression_algo deflate" : L"") + dpiArg + L" \"" + out + L"\"";
             joined = runProcess(cmd, [&](const std::wstring& line) { H.log(TX("log.ffmpeg_prefix") + line); }) == 0;
         }
         if (!joined) return fail(TX("error.assemble_failed"));
         clearDir(tilesDir);
         platform::removeDir(tilesDir);
         cleanupGL();
+        if (!tiff) pngTagSrgb(out);  // declare l'image en sRGB
         H.log(L"  " + TXF("log.ok_output", out.c_str()));
         if (H.output) H.output(out);
         if (rd) rd->output = out;
@@ -1043,8 +1067,8 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                   L" -frames:v 1 -pix_fmt rgb24 \"" + dest + L"\"";
         } else if (H.snapshot) {  // image RGB pleine plage, sans conversion YUV
             const std::wstring thumbScale = thumb ? L"scale='min(1280,iw)':-2:flags=area," : L"";
-            const std::wstring still8 = s.alpha ? (deep ? L"rgba64be" : L"rgba") : (deep ? L"rgb48be" : L"rgb24");
-            cmd = head + L" -vf \"vflip," + ssFilter + thumbScale + L"format=" + still8 + L"\" -frames:v 1 -pix_fmt " + still8 + (s.dpi > 0 && !thumb ? wfmt(L" -dpi %d", s.dpi) : std::wstring()) + L" \"" + dest + L"\"";
+            const std::wstring still8 = tiff ? (s.alpha ? (deep ? L"rgba64le" : L"rgba") : (deep ? L"rgb48le" : L"rgb24")) : (s.alpha ? (deep ? L"rgba64be" : L"rgba") : (deep ? L"rgb48be" : L"rgb24"));
+            cmd = head + L" -vf \"vflip," + ssFilter + thumbScale + L"format=" + still8 + L"\" -frames:v 1 -pix_fmt " + still8 + (tiff ? L" -compression_algo deflate" : L"") + (s.dpi > 0 && !thumb ? wfmt(L" -dpi %d", s.dpi) : std::wstring()) + L" \"" + dest + L"\"";
         } else if (kind != OutKind::Video) {  // image animee ou sequence : RGB pleine plage, pas de YUV
             std::wstring text;  // texte incruste (le temps de la video : une image par 1/fps)
             std::wstring oe;
@@ -1148,7 +1172,10 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             if (SMP > 1) renderSamples(n, t, 1.0f);
             else renderFrame(n, t, videoMode ? fadeAt(n) : 1.0f);
 
-            if (timing) gpuSamples++;
+            if (timing) {
+                gpuSamples++;
+                if (H.gpuTimes) H.gpuTimes(gpuMs[0] / gpuSamples, gpuMs[1] / gpuSamples, gpuMs[2] / gpuSamples);
+            }
             timing = false;
             ogl::BindBuffer(ogl::K_PIXEL_PACK_BUFFER, pbo[k % D]);
             glReadPixels(0, 0, RW, RH, GL_RGBA, deep ? GL_UNSIGNED_SHORT : GL_UNSIGNED_BYTE, nullptr);
@@ -1299,6 +1326,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             rd->gpuImageMs = gpuMs[0] / gpuSamples;
             rd->gpuBufferMs = gpuMs[1] / gpuSamples;
             rd->gpuPostMs = gpuMs[2] / gpuSamples;
+            for (int k = 0; k < 5; k++) rd->gpuPassMs[k] = gpuPassMs[k] / gpuSamples;
         }
     }
     if (result == Result::Ok && videoMode && gpuSamples > 0)
@@ -1327,6 +1355,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                 }
             }
         }
+        if (still && !tiff && !sequence && fileExists(out)) pngTagSrgb(out);  // declare l'image en sRGB
         H.log(L"  " + TXF("log.ok_output", out.c_str()));
         if (H.output) H.output(out);
         if (rd) rd->output = out;

@@ -1540,6 +1540,11 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                 Hooks H;
                 H.log = [](const std::wstring&) {};
                 HeatStats hs;
+                int previewW = 0, previewH = 0;
+                H.previewFrame = [&](int w, int h, std::vector<uint8_t>&&) {  // la carte va aussi a l'apercu
+                    previewW = w;
+                    previewH = h;
+                };
                 std::wstring file, e;
                 if (!renderHeatmap(heavy, exeDir, sp, 8, 4, -1, H, hs, file, e)) problem = bad("heatmap " + U8(e));
                 else {
@@ -1555,6 +1560,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                     else if (b0 <= r0 || r1 <= b1) problem = bad("colour ramp");
                     else if (img.size() != (size_t)960 * 540 * 3) problem = bad("image size " + std::to_string(img.size()));
                     else if (describeHeat(hs).empty()) problem = bad("figures");
+                    else if (previewW != 960 || previewH != 540) problem = bad("preview " + std::to_string(previewW) + "x" + std::to_string(previewH));
                 }
                 check("selftest.fmt_heatmap", problem);
             }
@@ -1580,7 +1586,9 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                         const size_t pi = js.find("\"image\": ", g), pb = js.find("\"buffers\": ", g);
                         if (pi != std::string::npos) image = atof(js.c_str() + pi + 9);
                         if (pb != std::string::npos) buffers = atof(js.c_str() + pb + 11);
-                        if (image <= 0 || buffers <= 0) problem = bad("passes " + std::to_string(image) + "," + std::to_string(buffers));
+                        const size_t pa = js.find("\"buffer_a\": ", g);
+                        const double bufferA = pa != std::string::npos ? atof(js.c_str() + pa + 12) : -1.0;  // temps de la passe Buffer A seule
+                        if (image <= 0 || buffers <= 0 || bufferA <= 0) problem = bad("passes " + std::to_string(image) + "," + std::to_string(buffers) + "," + std::to_string(bufferA));
                     }
                 }
                 check("selftest.fmt_gpupasses", problem);
@@ -1653,6 +1661,92 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                 }
                 if (problem.empty() && (level[1] < -30 || level[0] > -60)) problem = bad("volume follow " + std::to_string(level[1]) + " / plain " + std::to_string(level[0]));
                 check("selftest.fmt_audiofollow", problem);
+            }
+            // images fixes : passes Buffer en mode tuiles, formats TIFF et etiquette sRGB, fulldome d'un shader ordinaire
+            if (formatAvailable(ffmpeg, "h264", "png")) {
+                auto stillRun = [&](const std::wstring& shader, const Settings& st, std::wstring& e) {
+                    Hooks Hs;
+                    Hs.snapshot = true;
+                    Hs.log = [](const std::wstring&) {};
+                    return convertFile(shader, exeDir, st, Hs, e) == Result::Ok;
+                };
+                const std::wstring gradient = put(L"p17b_grad.glsl", "void mainImage(out vec4 o, in vec2 p){ vec2 u = p / iResolution.xy; float k = mod(floor(p.x / 7.0) + floor(p.y / 5.0), 2.0); o = vec4(u.x, u.y, k * 0.5 + 0.25 * sin(iResolution.x * 0.01), 1.0); }\n");
+                {  // une passe Buffer : calculee une fois a pleine taille, lue par chaque tuile ; trop grande -> refusee
+                    std::wstring problem;
+                    const std::wstring withPass = put(L"p17b_pass.glsl", "// iChannel0=bufferA\nvoid mainImage(out vec4 o, in vec2 p){ o = texture(iChannel0, p / iResolution.xy); }\n");
+                    put(L"p17b_pass.bufferA.glsl", "void mainImage(out vec4 o, in vec2 p){ float k = mod(floor(p.x / 7.0) + floor(p.y / 5.0), 2.0); o = vec4(p / iResolution.xy, k, 1.0); }\n");
+                    Settings plain = seqSettings(1);
+                    plain.width = 96;
+                    plain.height = 64;
+                    std::wstring e;
+                    if (!stillRun(withPass, plain, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else {
+                        const std::string ref = decodeRaw(outputPath(withPass, plain.outdir, L".png"), L"rgb24", L"");
+                        Settings tiled = plain;
+                        tiled.tile = 32;
+                        if (!stillRun(withPass, tiled, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                        else if (ref.size() != 96 * 64 * 3 || decodeRaw(outputPath(withPass, plain.outdir, L".png"), L"rgb24", L"") != ref) problem = bad("tiled pass differs");
+                    }
+                    if (problem.empty()) {
+                        Settings huge = plain;
+                        huge.width = huge.height = 9000;
+                        if (stillRun(withPass, huge, e) || e.find(L"9000") == std::wstring::npos) problem = bad("large pass not refused");
+                    }
+                    check("selftest.fmt_tilepasses", problem);
+                }
+                {  // TIFF 8 et 16 bits (aussi par tuiles), memes pixels que le PNG, etiquette sRGB du PNG, resolution
+                    std::wstring problem;
+                    Settings png = seqSettings(1);
+                    png.width = 96;
+                    png.height = 64;
+                    png.dpi = 300;
+                    std::wstring e;
+                    std::string pngBytes;
+                    for (int deep = 0; deep < 2 && problem.empty(); deep++) {
+                        png.depth = deep ? 10 : 8;
+                        Settings tif = png;
+                        tif.stillFormat = "tiff";
+                        const wchar_t* pix = deep ? L"rgb48le" : L"rgb24";
+                        if (!stillRun(gradient, png, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                        else {
+                            const std::wstring pngFile = outputPath(gradient, png.outdir, L".png");
+                            std::string bytes;
+                            readFile(pngFile, bytes);
+                            if (bytes.find("sRGB") == std::string::npos || bytes.find("pHYs") == std::string::npos) problem = bad("png tags");
+                            const std::string refPixels = decodeRaw(pngFile, pix, L"");
+                            if (problem.empty() && refPixels.size() != (size_t)96 * 64 * (deep ? 6 : 3)) problem = bad("png size");
+                            for (int tile : {0, 32}) {
+                                if (!problem.empty()) break;
+                                tif.tile = tile;
+                                const std::wstring tifFile = outputPath(gradient, tif.outdir, L".tif");
+                                platform::removeFile(tifFile);
+                                if (!stillRun(gradient, tif, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                                else {
+                                    std::string head;
+                                    readFile(tifFile, head);
+                                    if (head.size() < 8 || head.compare(0, 4, std::string("II*\0", 4)) != 0) problem = bad("not a TIFF");
+                                    else if (decodeRaw(tifFile, pix, L"") != refPixels) problem = bad(std::string("tiff differs deep=") + std::to_string(deep) + " tile=" + std::to_string(tile));
+                                }
+                            }
+                        }
+                    }
+                    check("selftest.fmt_stillformat", problem);
+                }
+                {  // fulldome d'un shader plein ecran : le centre garde l'image, le coin est noir
+                    std::wstring problem;
+                    const std::wstring red = put(L"p17b_red.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(1.0, 0.0, 0.0, 1.0); }\n");
+                    Settings st = seqSettings(1);
+                    st.vr = "fulldome";
+                    st.width = st.height = 64;
+                    std::wstring e;
+                    if (!stillRun(red, st, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else {
+                        const std::string px = decodeRaw(outputPath(red, st.outdir, L".png"), L"rgb24", L"");
+                        auto at = [&](int x, int y, int c) { return px.size() == 64 * 64 * 3 ? (int)(uint8_t)px[((size_t)y * 64 + x) * 3 + c] : -1; };
+                        if (at(32, 32, 0) < 250 || at(32, 32, 1) > 5 || at(60, 32, 0) < 250 || at(1, 1, 0) > 3 || at(62, 62, 0) > 3) problem = bad("dome mask");
+                    }
+                    check("selftest.fmt_domeflat", problem);
+                }
             }
         }
     }

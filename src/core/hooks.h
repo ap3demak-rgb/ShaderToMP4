@@ -24,6 +24,8 @@ struct Hooks {
     double previewTime = 0;
     // fichier produit (premiere image pour une sequence), appele une fois le rendu termine avec succes
     std::function<void(const std::wstring&)> output;
+    // temps GPU moyens par image (image, tampons, post-traitement, en ms) mesures sur les images echantillonnees jusqu'ici : appele pendant le rendu
+    std::function<void(double image, double buffers, double post)> gpuTimes;
     bool cancelled() const { return cancel && cancel->load(); }
     bool paused() const { return pause && pause->load(); }
 };

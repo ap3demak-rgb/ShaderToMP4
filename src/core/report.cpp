@@ -93,7 +93,7 @@ std::string reportJson(const RenderReport& r) {
     field("container", jstr(r.container));
     field("encoder", jstr(r.encoder));
     if (r.gpuSamples > 0)
-        field("gpu_ms", "{\"image\": " + jnum(r.gpuImageMs) + ", \"buffers\": " + jnum(r.gpuBufferMs) + ", \"post\": " + jnum(r.gpuPostMs) + ", \"sampled_frames\": " + std::to_string(r.gpuSamples) + "}");
+        field("gpu_ms", "{\"image\": " + jnum(r.gpuImageMs) + ", \"buffers\": " + jnum(r.gpuBufferMs) + ", \"post\": " + jnum(r.gpuPostMs) + ", \"buffer_a\": " + jnum(r.gpuPassMs[0]) + ", \"buffer_b\": " + jnum(r.gpuPassMs[1]) + ", \"buffer_c\": " + jnum(r.gpuPassMs[2]) + ", \"buffer_d\": " + jnum(r.gpuPassMs[3]) + ", \"cubemap_a\": " + jnum(r.gpuPassMs[4]) + ", \"sampled_frames\": " + std::to_string(r.gpuSamples) + "}");
     else
         field("gpu_ms", "null");
     if (r.loopChecked)

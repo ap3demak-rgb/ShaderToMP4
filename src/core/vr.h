@@ -7,7 +7,8 @@
 #include "settings.h"
 
 // Mode de rendu de l'image pour ce code : 0 = mainImage normal, 1 = 360 mono, 2 = 360 stereo haut / bas, 3 = 360 stereo cote a cote,
-// 4 = 360 anaglyphe rouge-cyan, 5 = fulldome (fisheye 180 degres, carre), 6 = une face de cubemap (fixee par le moteur, jamais par `vr`).
+// 4 = 360 anaglyphe rouge-cyan, 5 = fulldome (fisheye 180 degres, carre) d'un shader mainVR, 6 = une face de cubemap (fixee par le moteur, jamais
+// par `vr`), 7 = fulldome d'un shader mainImage : l'image carree telle quelle, noire hors du cercle (domemaster).
 // Reglage `vr` : auto (mainVR utilise seulement si le code n'a pas de mainImage), off, mono, stereo, sbs, anaglyph, fulldome.
 // Faux + err si un mode demande est choisi sans mainVR.
 bool vrModeFor(const std::string& code, const Settings& s, int& mode, std::wstring& err);

@@ -14,6 +14,10 @@ bool vrModeFor(const std::string& code, const Settings& s, int& mode, std::wstri
     const bool hasVR = codeUsesWord(code, "mainVR"), hasImage = codeUsesWord(code, "mainImage");
     mode = 0;
     if (s.vr == "off") return true;
+    if (s.vr == "fulldome" && !hasVR && hasImage) {  // shader plein ecran : image carree masquee en cercle
+        mode = 7;
+        return true;
+    }
     if (s.vr == "mono" || s.vr == "stereo" || s.vr == "sbs" || s.vr == "anaglyph" || s.vr == "fulldome") {
         if (!hasVR) {
             err = TX("error.vr_missing");
@@ -28,11 +32,11 @@ bool vrModeFor(const std::string& code, const Settings& s, int& mode, std::wstri
 
 bool vrAspectOk(int width, int height, int mode) {
     if (mode == 0 || height <= 0) return true;
-    const double want = mode == 2 || mode == 5 || mode == 6 ? 1.0 : mode == 3 ? 4.0 : 2.0, got = (double)width / height;
+    const double want = mode == 2 || mode == 5 || mode == 6 || mode == 7 ? 1.0 : mode == 3 ? 4.0 : 2.0, got = (double)width / height;
     return std::fabs(got - want) <= 0.01 * want;
 }
 
-const wchar_t* vrAspectText(int mode) { return mode == 2 || mode == 5 || mode == 6 ? L"1:1" : mode == 3 ? L"4:1" : L"2:1"; }
+const wchar_t* vrAspectText(int mode) { return mode == 2 || mode == 5 || mode == 6 || mode == 7 ? L"1:1" : mode == 3 ? L"4:1" : L"2:1"; }
 
 void vrEyeSize(int mode, int width, int height, int& eyeW, int& eyeH) {
     eyeW = mode == 3 ? width / 2 : width;

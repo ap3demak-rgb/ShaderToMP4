@@ -994,8 +994,9 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             if (!g.pause) taskbar::normal();
             taskbar::progress(p->n, p->total);
             if (idx >= 0 && idx < (int)g.paths.size()) setItemText(idx, 1, TXF("status.running_pct", pct));
-            setStatus(TXF("status.progress", p->n, p->total, pct, i18n::fixed(p->speed, 1).c_str(),
-                           fmtTime(p->remaining).c_str()));
+            std::wstring st = TXF("status.progress", p->n, p->total, pct, i18n::fixed(p->speed, 1).c_str(), fmtTime(p->remaining).c_str());
+            if (p->gpuImage > 0) st += TXF("status.gpu", i18n::fixed(p->gpuImage, 1).c_str(), i18n::fixed(p->gpuBuffers, 1).c_str(), i18n::fixed(p->gpuPost, 1).c_str());
+            setStatus(st);
             delete p;
             return 0;
         }

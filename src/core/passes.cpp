@@ -209,8 +209,21 @@ void BufferPasses::latest(GLuint out[5]) const {
 
 void BufferPasses::step(long long n, double t, int rw, int rh, const std::function<void(GLuint prog, long long n)>& setUniforms) {
     glDisable(GL_BLEND);
+    using Clk = std::chrono::steady_clock;
+    Clk::time_point t0;
+    auto begin = [&] {
+        if (!timePasses) return;
+        glFinish();
+        t0 = Clk::now();
+    };
+    auto end = [&](int slot) {
+        if (!timePasses) return;
+        glFinish();
+        passMs[slot] += std::chrono::duration<double, std::milli>(Clk::now() - t0).count();
+    };
     if (cubeUsed_) {  // Cubemap A d'abord : les tampons et l'image peuvent la lire
         const int w = 1 - cube_.read;
+        begin();
         glViewport(0, 0, kCubeSize, kCubeSize);
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, cube_.fbo[w]);
         ogl::UseProgram(cube_.prog);
@@ -226,11 +239,13 @@ void BufferPasses::step(long long n, double t, int rw, int rh, const std::functi
             glDrawArrays(GL_TRIANGLES, 0, 3);
         }
         cube_.read = w;
+        end(4);
     }
     glViewport(0, 0, rw, rh);
     for (int i = 0; i < 4; i++) {
         if (!used_[i]) continue;
         Buf& b = bufs_[i];
+        begin();
         const int w = 1 - b.read;  // on ecrit dans l'autre texture : la precedente reste lisible (par ce tampon aussi)
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, b.fbo[w]);
         ogl::UseProgram(b.prog);
@@ -243,6 +258,7 @@ void BufferPasses::step(long long n, double t, int rw, int rh, const std::functi
         bindChannels(b.chans, b.prog, src);
         glDrawArrays(GL_TRIANGLES, 0, 3);
         b.read = w;
+        end(i);
     }
     glViewport(0, 0, rw, rh);  // un tampon a taille propre a change la zone de dessin
 }

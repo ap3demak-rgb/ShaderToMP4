@@ -23,7 +23,7 @@ namespace {
 enum {
     ID_OD_CLOSE = 900, ID_OD_ALPHA, ID_OD_HDR, ID_OD_PEAK, ID_OD_FALL, ID_OD_WHITE, ID_OD_SCALE, ID_OD_FILTER, ID_OD_INTERP, ID_OD_LOUD,
     ID_OD_TITLE, ID_OD_CREDIT, ID_OD_TITLEDUR, ID_OD_NEXT, ID_OD_NAME, ID_OD_EXISTS, ID_OD_META, ID_OD_ENDACT, ID_OD_CHUNK, ID_OD_PBO, ID_OD_SHUTTER, ID_OD_VARIANTS,
-    ID_OD_LOOPMODE, ID_OD_LOOPFADE, ID_OD_TIMEMAP, ID_OD_SPEED, ID_OD_SAMPLES, ID_OD_TILE, ID_OD_DPI, ID_OD_FINDLOOP, ID_OD_TIME, ID_OD_CURVE, ID_OD_AUDIOF
+    ID_OD_LOOPMODE, ID_OD_LOOPFADE, ID_OD_TIMEMAP, ID_OD_SPEED, ID_OD_SAMPLES, ID_OD_TILE, ID_OD_DPI, ID_OD_FINDLOOP, ID_OD_TIME, ID_OD_CURVE, ID_OD_AUDIOF, ID_OD_STILLF
 };
 
 struct Dlg {
@@ -31,7 +31,7 @@ struct Dlg {
     HWND alpha = nullptr, hdr = nullptr, peak = nullptr, fall = nullptr, white = nullptr, scale = nullptr, filter = nullptr, interp = nullptr,
          loud = nullptr, title = nullptr, credit = nullptr, titleDur = nullptr;
     HWND name = nullptr, exists = nullptr, meta = nullptr, endAct = nullptr, chunk = nullptr, pbo = nullptr, shutter = nullptr, variants = nullptr;
-    HWND loopMode = nullptr, loopFade = nullptr, timemap = nullptr, speed = nullptr, samples = nullptr, tile = nullptr, dpiEdit = nullptr, audioF = nullptr, curve = nullptr;
+    HWND loopMode = nullptr, loopFade = nullptr, timemap = nullptr, speed = nullptr, samples = nullptr, tile = nullptr, dpiEdit = nullptr, audioF = nullptr, curve = nullptr, stillF = nullptr;
     std::vector<HWND> headers;  // titres de section (en couleur d'accentuation)
     UINT dpi = 96;
     int page = 0;   // 0 sortie, 1 avance, 2 temps et boucle
@@ -122,6 +122,7 @@ OutputFields readFields() {
     } else {
         f.loopMode = std::max(0, (int)SendMessageW(D.loopMode, CB_GETCURSEL, 0, 0));
         f.audioFollow = SendMessageW(D.audioF, CB_GETCURSEL, 0, 0) == 1;
+        f.stillFormat = std::max(0, (int)SendMessageW(D.stillF, CB_GETCURSEL, 0, 0));
         f.loopFade = txt(D.loopFade);
         f.timemap = txt(D.timemap);
         f.speed = txt(D.speed);
@@ -385,6 +386,8 @@ int runPage(HWND parent, int page) {
         D.tile = edit(ID_OD_TILE, f.tile, rf, 310, 118);
         label(TX("ui.output.dpi"), lx, 342, 130);
         D.dpiEdit = edit(ID_OD_DPI, f.dpi, fx, 342, 150);
+        label(TX("ui.output.stillformat"), rx, 342, 130);
+        D.stillF = combo(ID_OD_STILLF, {L"PNG", L"TIFF"}, f.stillFormat, rf, 342, 118);
     } else {
         const std::vector<std::wstring> offOn = {TX("ui.output.off"), TX("ui.output.on")};
 
@@ -429,7 +432,7 @@ int runPage(HWND parent, int page) {
         const struct { HWND c; const char* key; } names[] = {
             {D.loopMode, "ui.output.loopmode"}, {D.loopFade, "ui.output.loopfade"}, {D.timemap, "ui.output.timemap"}, {D.speed, "ui.output.speed"},
             {D.audioF, "ui.output.audiofollow"}, {D.curve, "ui.output.curve_name"}, {D.samples, "ui.output.samples"}, {D.tile, "ui.output.tile"},
-            {D.dpiEdit, "ui.output.dpi"}};
+            {D.dpiEdit, "ui.output.dpi"}, {D.stillF, "ui.output.stillformat"}};
         for (const auto& n : names) setAccessibleName(n.c, n.key);
     }
     D.bNext = button(page == 1 ? "ui.output.back_btn" : "ui.output.adv_btn", ID_OD_NEXT, IC_SLIDERS, ui::BtnStyle::Secondary, 20, clientH - 50, 150, hi);

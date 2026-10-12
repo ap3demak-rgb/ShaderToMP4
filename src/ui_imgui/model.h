@@ -53,6 +53,7 @@ struct Fields {
     // Temps et boucle : boucle sans couture (0 aucune, 1 fondu, 2 aller-retour), fondu, courbe de temps, vitesse, echantillons de l'image fixe
     int loopMode = 0;
     bool audioFollow = false;
+    int stillFormat = 0;  // 0 PNG, 1 TIFF
     char loopFade[16] = "1", timemap[256] = "", speed[16] = "", samples[16] = "", tile[16] = "", dpi[16] = "";
 };
 
@@ -152,6 +153,7 @@ private:
         int idx = 0, w = 0, h = 0;
         long long n = 0, total = 0;
         double speed = 0, remaining = 0;
+        double gpuImage = 0, gpuBuffers = 0, gpuPost = 0;  // temps GPU moyens par image (ms)
         std::wstring text;
         std::vector<uint8_t> px;
     };
@@ -160,6 +162,7 @@ private:
     void join();
 
     std::atomic<bool> running_{false}, cancel_{false}, pause_{false};
+    std::atomic<double> gpu_[3];  // temps GPU moyens par image mesures pendant le rendu
     bool snapshotRun_ = false;
     int imageKind_ = 0, sheetCols_ = 0, sheetRows_ = 0;
 public:
