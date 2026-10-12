@@ -4,6 +4,8 @@
 // Reglages de la video : config.ini (a cote du .exe), commentaires `// cle=valeur` des shaders, fenetre.
 #pragma once
 #include "common.h"
+#include "keyboard.h"
+#include "mouse.h"
 
 struct Settings {
     int width = 1920, height = 1080;
@@ -34,11 +36,15 @@ struct Settings {
     std::string chFilter[4];        // nearest | linear | mipmap ("" : mipmap pour une image, linear pour un tampon)
     std::string chWrap[4];          // clamp | repeat ("" : repeat pour une image, clamp pour un tampon)
     bool chVflip[4] = {true, true, true, true};                          // comme Shadertoy : haut de l'image en v = 1
-    bool mouseSet = false;          // iMouse fixe : position en fraction de la taille (0,0 = bas gauche)
-    double mouseX = 0, mouseY = 0;
-    bool mouseDown = false;         // bouton considere comme enfonce
-    std::string date;               // iDate fixe "AAAA-MM-JJ[THH:MM[:SS]]" ("" = date reelle)
-    double chunk = 30;              // rendu par parties de N secondes, reprenables (0 = jamais)
+    std::vector<MouseKey> mouseKeys;  // iMouse simule : images cles (vide = 0) ; positions en fractions de la taille (0,0 = bas gauche)
+    double bufScale[4] = {0, 0, 0, 0};  // taille du tampon A-D : fraction de la taille du rendu (0 = taille du rendu)
+    int bufW[4] = {0, 0, 0, 0}, bufH[4] = {0, 0, 0, 0};  // ou taille fixe en pixels (0 = taille du rendu)
+    std::vector<KeyPress> keys;    // canal `keyboard` : touches pressees a des instants donnes
+    std::string date;              // iDate fixe "AAAA-MM-JJ[THH:MM[:SS]]" ("" = date reelle)
+    std::string vr = "auto";        // auto | off | mono | stereo : shader mainVR rendu en 360 equirectangulaire (stereo = haut / bas)
+    double vrIpd = 0.064;           // ecart des yeux du rendu stereo, dans l'unite du shader
+    int warmup = 0;                // images simulees avant la premiere (tampons chauffes, iFrame decale de N) ; 0 = aucune
+    double chunk = 30;             // rendu par parties de N secondes, reprenables (0 = jamais)
 };
 
 bool sameSettings(const Settings& a, const Settings& b);

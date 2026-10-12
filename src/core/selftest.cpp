@@ -5,6 +5,7 @@
 #include "formats.h"
 #include "gl.h"
 #include "locate.h"
+#include "passes.h"
 #include "player.h"
 #include "shadertoy_import.h"
 #include "i18n.h"
@@ -368,6 +369,42 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_variants") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
         if (!problem.empty()) fails++;
     }
+    // mainVR en 360 stereo : metadonnees spheriques ajoutees au MP4 (moov avant mdat : les positions des donnees sont decalees),
+    // fichier toujours lisible et decodable sans erreur par ffmpeg
+    if (formatAvailable(ffmpeg, "h264", "mp4")) {
+        total++;
+        const std::wstring vshader = outDir + platform::pathSeparator() + L"vrtest.glsl";
+        const std::string vsrc =
+            "// vr=stereo\nvoid mainVR(out vec4 o, in vec2 p, in vec3 ro, in vec3 rd){ o = vec4(rd * 0.5 + 0.5, 1.0); }\n";
+        if (FILE* f = platform::openFile(vshader, "wb")) {
+            fwrite(vsrc.data(), 1, vsrc.size(), f);
+            fclose(f);
+        }
+        Settings st = base("h264", "mp4", 8);
+        st.name = L"";
+        std::wstring e, problem;
+        Hooks H;
+        H.log = [](const std::wstring&) {};
+        const bool ok = convertFile(vshader, exeDir, st, H, e) == Result::Ok;
+        const std::wstring vout = outDir + platform::pathSeparator() + L"vrtest.mp4";
+        std::string bytes;
+        static const char kUuid[17] = "\xff\xcc\x82\x63\xf8\x55\x4a\x93\x88\x14\x58\x7a\x02\x52\x1f\xdd";
+        if (!ok || !readFile(vout, bytes)) {
+            problem = e.empty() ? TX("selftest.render_failed") : e;
+        } else if (bytes.find(std::string(kUuid, 16)) == std::string::npos || bytes.find("top-bottom") == std::string::npos) {
+            problem = TXF("selftest.fmt_bad", W("no spherical metadata").c_str());
+        } else {
+            const std::string info = probeInfo(ffmpeg, vout);
+            int decodeLines = 0;
+            const int rc = runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -i \"" + vout + L"\" -f null -",
+                                      [&](const std::wstring&) { decodeLines++; });
+            const double d = probeDuration(info);
+            if (info.find(" 64x64") == std::string::npos || d < 0.35 || d > 0.8) problem = TXF("selftest.fmt_bad", W("vr size/duration").c_str());
+            else if (rc != 0 || decodeLines != 0) problem = TXF("selftest.fmt_bad", W("vr decode").c_str());
+        }
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_vr") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
     // Canaux dynamiques et cubemap par fichiers : audio (spectre), video (images au bon temps), six faces de couleurs distinctes
     {
         const std::wstring sep(1, platform::pathSeparator());
@@ -543,6 +580,35 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             if (!found) problem = TXF("selftest.fmt_bad", W("file:line").c_str());
         }
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_locate") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
+    // Rapport de compatibilite des passes : canal declare mais jamais lu, passe que personne n'utilise
+    {
+        total++;
+        const std::wstring dir = outDir + platform::pathSeparator();
+        auto put = [&](const std::wstring& name, const std::string& body) {
+            if (FILE* f = platform::openFile(dir + name, "wb")) {
+                fwrite(body.data(), 1, body.size(), f);
+                fclose(f);
+            }
+        };
+        const std::string mainCode =
+            "// iChannel0=bufferA\n// iChannel1=noise\nvoid mainImage(out vec4 o, in vec2 p){ o = texture(iChannel0, p / iResolution.xy); }\n";
+        put(L"rpt.glsl", mainCode);
+        put(L"rpt.bufferA.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(1.0); }\n");
+        put(L"rpt.bufferC.glsl", "// iChannel0=bufferC\nvoid mainImage(out vec4 o, in vec2 p){ o = texture(iChannel0, p / iResolution.xy) + 0.1; }\n");
+        BufferPasses bp;
+        Hooks H;
+        H.log = [](const std::wstring&) {};
+        bp.discover(dir + L"rpt.glsl", [](const std::wstring& p, std::string& out) { return readFile(p, out); }, H);
+        Settings st;
+        parseLines(st, mainCode, true);
+        std::vector<std::wstring> notes;
+        bp.report(st, mainCode, notes);
+        std::wstring problem;
+        if (notes.size() != 2 || notes[0].find(L"Image") == std::wstring::npos || notes[1].find(L"Buffer C") == std::wstring::npos)
+            problem = TXF("selftest.fmt_bad", W("notes " + std::to_string(notes.size())).c_str());
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_compat_passes") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
         if (!problem.empty()) fails++;
     }
     // Textures par fichier : image decodee par ffmpeg (PNG 8 bits, HDR flottant) lue en 1:1 par le shader

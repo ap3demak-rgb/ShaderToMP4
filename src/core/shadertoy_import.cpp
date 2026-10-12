@@ -134,8 +134,11 @@ bool importShadertoyJson(const std::wstring& jsonPath, const std::wstring& outDi
                 } else if (ctype == "music" || ctype == "musicstream" || ctype == "mic") {
                     spec = "audio";
                     res.notes.push_back(TXF("log.import_note_audio", ch, W(name).c_str()));
+                } else if (ctype == "keyboard") {
+                    spec = "keyboard";
+                    res.notes.push_back(TXF("log.import_note_keyboard", ch, W(name).c_str()));
                 } else {
-                    res.notes.push_back(TXF("log.import_note_unsupported", ch, W(name).c_str(), W(ctype).c_str()));  // webcam, clavier, video de Shadertoy
+                    res.notes.push_back(TXF("log.import_note_unsupported", ch, W(name).c_str(), W(ctype).c_str()));  // webcam, video de Shadertoy
                 }
                 if (spec.empty()) continue;
                 const std::string key = "// iChannel" + std::to_string(ch);

@@ -12,7 +12,7 @@ ShaderToMP4 doit fonctionner sur **Windows, Linux et macOS**, comme un programme
 
 Le code est aujourd'hui découpé en deux couches :
 
-- `src/core/` : le moteur de rendu (OpenGL 3.3 core, tube vers ffmpeg, parties et reprise, réglages, i18n, auto-test). Il est indépendant de l'interface mais appelle encore des API Windows par endroits.
+- `src/core/` : le moteur de rendu (OpenGL 3.3 core, tube vers ffmpeg, parties et reprise, réglages, i18n, auto-test). Il est indépendant de l'interface et n'appelle aucune API du système : tout passe par `src/platform/`.
 - `src/gui/` : l'interface Windows (Win32 + Direct2D/DirectWrite, SVG via Direct2D).
 
 ## 2. Options étudiées pour l'interface
@@ -28,7 +28,7 @@ Le code est aujourd'hui découpé en deux couches :
 
 - **Windows garde l'interface actuelle** (Direct2D/DirectWrite, icônes SVG, thème sombre, glisser-déposer OLE, progression dans la barre des tâches). C'est l'expérience de référence, elle reste intacte.
 - **Linux et macOS utilisent une nouvelle interface** fondée sur **GLFW** (fenêtre, entrées, contexte OpenGL, dépôt de fichiers), **Dear ImGui** (widgets, stylés pour ressembler à la version Windows : cartes sombres, coins arrondis, accent en dégradé) et **NanoSVG** (rastérise les mêmes fichiers `res/icons/*.svg` en textures). Une police est embarquée dans l'exécutable pour que le texte soit rendu de la même façon sur les deux systèmes.
-- **Les deux interfaces partagent tout ce qui est en dessous** : le moteur, les traductions, les réglages, la file de rendus et la logique des statuts.
+- **Les deux interfaces partagent tout ce qui est en dessous** : le moteur, les traductions, les réglages et les préréglages. Chaque interface garde son propre état de fenêtre (`g` dans `src/gui`, `Model` dans `src/ui_imgui`) et parle au moteur par `Hooks`.
 
 ```
  +--------------------------+     +--------------------------+
@@ -39,12 +39,8 @@ Le code est aujourd'hui découpé en deux couches :
               +---------------+----------------+
                               |
                   +-----------v-----------+
-                  |  src/app  (commun)    |   file de rendus, réglages <-> interface,
-                  |                       |   statuts, préréglages, aperçu
-                  +-----------+-----------+
-                              |
-                  +-----------v-----------+
-                  |  src/core (moteur)    |   rendu, encodeur, réglages, i18n, ...
+                  |  src/core (moteur)    |   rendu, encodeur, réglages, formats, passes,
+                  |                       |   canaux, file, cli, i18n, ...
                   +-----------+-----------+
                               |
                   +-----------v-----------+

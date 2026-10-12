@@ -6,6 +6,25 @@
 
 Format : une section par version, la plus récente en premier. La section d'une version étiquetée est reprise dans les notes de version.
 
+## 1.8.0 — 2026-10-12
+
+### Ajouts
+
+- `iMouse` animé : trajectoire par images clés `// mouse=0:0.2,0.2 ; 5:0.8,0.6,down` (interpolation linéaire, la forme fixe `// mouse=x,y[,down]` reste valable) ; `iMouse.zw` suit Shadertoy (position du dernier clic, `w` > 0 seulement sur l'image du clic). Valable pour les rendus, l'aperçu et toutes les passes.
+- `iDate` animé : `// date=2026-03-14T15:09:26+rate=60` règle les secondes de date par seconde de vidéo (1 par défaut, 0 la fige) ; le jour, le mois et l'année changent maintenant à minuit.
+- Canal clavier simulé : `// iChannel0=keyboard` donne la texture de touches 256×3 de Shadertoy (enfoncée, pressée, bascule), avec des touches pressées à des instants donnés par `// key=space:2-4.5 ; left:1-3` (le vrai clavier n'est jamais lu). Les entrées clavier des shaders Shadertoy importés deviennent ce canal.
+- Tampons à taille propre : `// bufferA.scale=0.5` ou `// bufferA.size=512x512` (aussi pour B, C, D) ; la passe la voit dans `iResolution`, ceux qui la lisent dans `iChannelResolution`.
+- Les shaders `mainVR` (VR) sont rendus en vidéos 360° équirectangulaires, mono ou stéréo haut / bas (`// vr=mono|stereo`, `vripd`), avec les métadonnées de vidéo sphérique ajoutées aux fichiers MP4 et MOV pour que YouTube et les lecteurs VR les traitent comme du 360°.
+- Rapport de compatibilité : liste les canaux réglés mais jamais lus et les passes que rien ne lit (elles s'exécutent pour rien).
+- Fichiers de volume Shadertoy : `// iChannel0=volume:fichier.bin` lit le format de volume 3D (8 bits ou flottants, 1 à 4 canaux).
+- `warmup=N` (commentaire du shader ou config.ini) : simule N images avant la première pour que les tampons à rétroaction se stabilisent ; `iFrame` démarre à N. Vaut aussi pour le rendu par parties, la reprise et l'aperçu.
+- `iChannelTime` vaut maintenant le temps du rendu pour les canaux audio et vidéo (il valait toujours 0).
+
+### Modifications
+
+- Documentation : la FAQ et le tableau de compatibilité Shadertoy des README (anglais et français) décrivent maintenant ce qui est pris en charge (canaux, passes, passe Sound, import JSON).
+- Rapport de compatibilité : les messages sur les cubemaps et les textures 3D indiquent qu'aucun canal n'est réglé, au lieu de « pas encore pris en charge ».
+
 ## 1.7.0 — 2026-10-12
 
 ### Ajouts

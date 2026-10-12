@@ -47,7 +47,8 @@ static GLuint compileShader(GLenum type, const std::string& src, std::wstring& e
     return sh;
 }
 
-GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut, const std::string* chType, bool cubemapOut, bool soundOut) {
+GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut, const std::string* chType, bool cubemapOut, bool soundOut,
+                    int vrMode) {
     std::string channels;
     for (int i = 0; i < 4; i++) channels += "uniform " + (chType && !chType[i].empty() ? chType[i] : std::string("sampler2D")) + " iChannel" + std::to_string(i) + ";\n";
     const std::string vs =
@@ -68,6 +69,7 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         "uniform float st_weight;\n"
         "uniform int   st_face;\n"
         "uniform int   st_sampleBase;\n"
+        "uniform float st_ipd;\n"
         + channels +
         "uniform vec3  iChannelResolution[4];\n"
         "uniform float iChannelTime[4];\n"
@@ -87,6 +89,12 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
                       " else if (st_face == 2) d = vec3(q.x, 1.0, q.y); else if (st_face == 3) d = vec3(q.x, -1.0, -q.y);"
                       " else if (st_face == 4) d = vec3(q.x, -q.y, 1.0); else d = vec3(-q.x, -q.y, -1.0);"
                       " mainCubemap(c, gl_FragCoord.xy, vec3(0.0), normalize(d)); st_outColor = c; }\n"
+         : vrMode > 0 ? std::string("\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); vec2 fc = gl_FragCoord.xy; float side = 0.0;") +
+                        (vrMode == 2 ? " if (fc.y >= iResolution.y) { fc.y -= iResolution.y; side = -1.0; } else side = 1.0;" : "") +
+                        " vec2 uv = fc / iResolution.xy; float lon = (uv.x - 0.5) * 6.28318530718; float lat = (uv.y - 0.5) * 3.14159265359;"
+                        " vec3 d = vec3(sin(lon) * cos(lat), sin(lat), -cos(lon) * cos(lat));"
+                        " vec3 o = side * 0.5 * st_ipd * vec3(cos(lon), 0.0, sin(lon));"
+                        " mainVR(c, fc, o, d); st_outColor = vec4(c.rgb * st_weight, 1.0); }\n"
          : bufferOut ? "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy); st_outColor = c; }\n"
                    : "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy);"
                      " st_outColor = vec4(c.rgb * st_weight, 1.0); }\n");

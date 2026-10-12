@@ -14,6 +14,7 @@ class DynamicChannel {
 public:
     virtual ~DynamicChannel() {}
     virtual void update(double t, long long frameIndex) = 0;
+    virtual bool timed() const { return false; }  // iChannelTime = temps de lecture (audio, video) ; sinon 0
 };
 
 // Taille d'une face de la passe « Cubemap A » (cubeA)
@@ -25,7 +26,8 @@ struct ChannelSet {
     int w[4] = {0, 0, 0, 0}, h[4] = {0, 0, 0, 0}, d[4] = {1, 1, 1, 1};
     int buffer[4] = {-1, -1, -1, -1};  // canal lu dans un tampon (0 a 3 = Buffer A a D), sinon -1
     std::string filter[4], wrap[4];    // reglages appliques a la lecture d'un tampon
-    std::shared_ptr<DynamicChannel> dyn[4];  // audio / video
+    std::shared_ptr<DynamicChannel> dyn[4];  // audio / video / clavier
+    double time[4] = {0, 0, 0, 0};     // iChannelTime : mis a jour par updateChannels pour l'audio et la video
     bool any() const { return tex[0] || tex[1] || tex[2] || tex[3]; }
     bool anyBuffer() const { return buffer[0] >= 0 || buffer[1] >= 0 || buffer[2] >= 0 || buffer[3] >= 0; }
 };
@@ -37,7 +39,7 @@ void channelTypes(const Settings& s, std::string out[4]);
 
 // Charge les canaux demandes par `s` (chemins relatifs au dossier du shader). Descriptions :
 //   fichier image | noise | grid | bufferA..D | cubeA (passe Cubemap A) | cube:fichier_%d.png (six faces) | cube:croix.png | cube:sky |
-//   volume:fichier.png@N (N tranches cote a cote) | volume:noise | audio | audio:fichier | video:fichier
+//   volume:fichier.png@N (N tranches cote a cote) | volume:fichier.bin (volume Shadertoy) | volume:noise | audio | audio:fichier | video:fichier | keyboard (touches `// key=`)
 // Les images et sons sont lus par ffmpeg. `start` et `fps` calent l'audio et la video sur le temps de rendu.
 // Contexte OpenGL courant requis. bufW x bufH : taille des tampons des passes multiples.
 bool loadChannels(const Settings& s, const std::wstring& shaderDir, const std::wstring& ffmpeg, ChannelSet& out, const Hooks& H,
@@ -45,6 +47,8 @@ bool loadChannels(const Settings& s, const std::wstring& shaderDir, const std::w
 // Lie les textures aux unites 1 a 4 et renseigne iChannel0-3 et iChannelResolution du programme (actif).
 // bufferTex : textures a jour des quatre tampons (peut changer a chaque image).
 void bindChannels(const ChannelSet& cs, GLuint prog, const GLuint* bufferTex = nullptr);
-// Met a jour les canaux audio et video pour le temps t (image n).
+// Met a jour les canaux audio, video et clavier pour le temps t (image n).
 void updateChannels(ChannelSet& cs, double t, long long frameIndex);
+// Renseigne iChannelTime du programme (actif) d'apres le dernier updateChannels ; bindChannels le fait aussi.
+void setChannelTimes(const ChannelSet& cs, GLuint prog);
 void freeChannels(ChannelSet& cs);

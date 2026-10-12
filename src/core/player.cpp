@@ -4,10 +4,12 @@
 #include "player.h"
 #include "channels.h"
 #include "compat.h"
+#include "dateinput.h"
 #include "formats.h"
 #include "gl.h"
 #include "i18n.h"
 #include "locate.h"
+#include "vr.h"
 #include "passes.h"
 #include "render.h"
 #include "util.h"
@@ -35,9 +37,8 @@ struct Rig {
     int w = 0, h = 0;
     long long simFrame = 0;
     GLint uRes = -1, uTime = -1, uDelta = -1, uFrame = -1, uRate = -1, uMouse = -1, uDate = -1, uSR = -1, uWeight = -1;
-    float mouse[4] = {0, 0, 0, 0};
-    platform::DateTime date{};
-    float dateSec = 0;
+    DateInput date;
+    int vr = 0;  // mainVR : 0 = non, 1 = 360 mono, 2 = 360 stereo haut / bas
     void release() {
         bp.release();
         freeChannels(chans);
@@ -75,7 +76,7 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
     normalizeShaderText(code, quiet);
     std::vector<std::wstring> notes;
     code = adaptShaderCode(code, notes);
-    if (code.find("mainImage") == std::string::npos) {
+    if (code.find("mainImage") == std::string::npos && code.find("mainVR") == std::string::npos) {
         err = TX("error.no_main_image");
         return false;
     }
@@ -90,6 +91,7 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
     r.w = std::max(16, (int)(s.width * k));
     r.h = std::max(16, (int)(s.height * k));
     r.s = s;
+    r.simFrame = -(long long)s.warmup;  // chauffe : les images avant la premiere sont simulees aussi
 
     r.bp.discover(shaderPath, [&](const std::wstring& p, std::string& out) {
         if (!readFile(p, out)) return false;
@@ -99,7 +101,9 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
     }, quiet);
     std::string chTypes[4];
     channelTypes(s, chTypes);
-    r.prog = buildProgram(r.bp.withCommon(code), err, false, chTypes);
+    if (!vrModeFor(code, s, r.vr, err)) return false;
+    if (r.vr == 2) r.h &= ~1;  // stereo haut / bas : deux yeux de meme hauteur
+    r.prog = buildProgram(r.bp.withCommon(code), err, false, chTypes, false, false, r.vr);
     if (!r.prog) {
         err = locateGlslErrors(err, shaderPath, 1 + (int)std::count(code.begin(), code.end(), '\n'), r.bp.commonPath());
         return false;
@@ -121,11 +125,12 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
         err = TX("error.framebuffer");
         return false;
     }
-    if (!r.bp.build(r.w, r.h, shaderDir, ffmpeg, quiet, err, s.start, s.fps)) return false;
+    if (!r.bp.build(r.w, r.h, shaderDir, ffmpeg, quiet, err, s.start, s.fps, &s)) return false;
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, r.fbo);
     glViewport(0, 0, r.w, r.h);
     ogl::UseProgram(r.prog);
     if (!loadChannels(s, shaderDir, ffmpeg, r.chans, quiet, err, r.w, r.h, s.start, s.fps)) return false;
+    r.bp.fixChannelSizes(r.chans);
     bindChannels(r.chans, r.prog);
     r.uRes = ogl::GetUniformLocation(r.prog, "iResolution");
     r.uTime = ogl::GetUniformLocation(r.prog, "iTime");
@@ -136,38 +141,24 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
     r.uDate = ogl::GetUniformLocation(r.prog, "iDate");
     r.uSR = ogl::GetUniformLocation(r.prog, "iSampleRate");
     r.uWeight = ogl::GetUniformLocation(r.prog, "st_weight");
-    r.mouse[0] = r.mouse[1] = r.mouse[2] = r.mouse[3] = 0;
-    if (s.mouseSet) {
-        const float mx = (float)(s.mouseX * r.w), my = (float)(s.mouseY * r.h);
-        r.mouse[0] = mx;
-        r.mouse[1] = my;
-        r.mouse[2] = s.mouseDown ? mx : -mx;
-        r.mouse[3] = s.mouseDown ? my : -my;
-    }
-    r.date = platform::localTime();
-    if (!s.date.empty()) {
-        int y = 0, mo = 0, d = 0, hh = 0, mi = 0, ss = 0;
-        std::string dt = s.date;
-        for (auto& c : dt)
-            if (c == 'T' || c == 't' || c == '_') c = ' ';
-        if (sscanf(dt.c_str(), "%d-%d-%d %d:%d:%d", &y, &mo, &d, &hh, &mi, &ss) >= 3) {
-            r.date.year = y; r.date.month = mo; r.date.day = d; r.date.hour = hh; r.date.minute = mi; r.date.second = ss;
-        }
-    }
-    r.dateSec = r.date.hour * 3600.f + r.date.minute * 60.f + r.date.second;
+    r.date = dateInputFrom(s.date);
     return true;
 }
 
 // Variables communes d'un programme (image ou tampon) pour l'image n au temps t
 void setUniforms(const Rig& r, GLuint p, long long n, double t) {
-    ogl::Uniform3f(ogl::GetUniformLocation(p, "iResolution"), (float)r.w, (float)r.h, 1.0f);
+    ogl::Uniform3f(ogl::GetUniformLocation(p, "iResolution"), (float)r.w, (float)(p == r.prog && r.vr == 2 ? r.h / 2 : r.h), 1.0f);
+    ogl::Uniform1f(ogl::GetUniformLocation(p, "st_ipd"), (float)r.s.vrIpd);
     ogl::Uniform1f(ogl::GetUniformLocation(p, "iTime"), (float)t);
     ogl::Uniform1f(ogl::GetUniformLocation(p, "iTimeDelta"), (float)(1.0 / r.s.fps));
-    ogl::Uniform1i(ogl::GetUniformLocation(p, "iFrame"), (GLint)n);
+    ogl::Uniform1i(ogl::GetUniformLocation(p, "iFrame"), (GLint)(n + r.s.warmup));
     ogl::Uniform1f(ogl::GetUniformLocation(p, "iFrameRate"), (float)r.s.fps);
-    ogl::Uniform4f(ogl::GetUniformLocation(p, "iMouse"), r.mouse[0], r.mouse[1], r.mouse[2], r.mouse[3]);
-    ogl::Uniform4f(ogl::GetUniformLocation(p, "iDate"), (float)r.date.year, (float)(r.date.month - 1), (float)r.date.day,
-                   r.dateSec + (float)t);
+    float m[4];
+    mouseAt(r.s.mouseKeys, t, 1.0 / r.s.fps, r.w, r.h, m);
+    ogl::Uniform4f(ogl::GetUniformLocation(p, "iMouse"), m[0], m[1], m[2], m[3]);
+    float d[4];
+    dateAt(r.date, t, d);
+    ogl::Uniform4f(ogl::GetUniformLocation(p, "iDate"), d[0], d[1], d[2], d[3]);
     ogl::Uniform1f(ogl::GetUniformLocation(p, "iSampleRate"), 44100.0f);
 }
 
@@ -177,10 +168,10 @@ void renderAt(Rig& r, double t, bool send, const PreviewPlayer::FrameFn& onFrame
     if (r.bp.any()) {  // les tampons avancent image par image ; reculer repart de zero
         if (idx < r.simFrame) {
             r.bp.reset();
-            r.simFrame = 0;
+            r.simFrame = -(long long)r.s.warmup;
         }
         long long from = r.simFrame;
-        if (idx - from > 600) from = idx - 600;  // rattrapage borne
+        if (idx - from > 600 + r.s.warmup) from = idx - 600 - r.s.warmup;  // rattrapage borne (chauffe comprise)
         auto setter = [&](GLuint p, long long n) { setUniforms(r, p, n, r.s.start + (double)n / r.s.fps); };
         for (long long n = from; n < idx; n++) r.bp.step(n, r.s.start + (double)n / r.s.fps, r.w, r.h, setter);
         r.bp.step(idx, r.s.start + (double)idx / r.s.fps, r.w, r.h, setter);
@@ -190,6 +181,7 @@ void renderAt(Rig& r, double t, bool send, const PreviewPlayer::FrameFn& onFrame
     }
     ogl::UseProgram(r.prog);
     updateChannels(r.chans, t, idx);
+    setChannelTimes(r.chans, r.prog);
     if (r.chans.anyBuffer()) {
         GLuint latest[5];
         r.bp.latest(latest);

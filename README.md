@@ -13,10 +13,10 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.7.0-FF5A96?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.8.0-FF5A96?style=flat-square">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-0078D4?style=flat-square">
   <img alt="Portable" src="https://img.shields.io/badge/portable-no%20installer-3DDC97?style=flat-square">
-  <img alt="Languages" src="https://img.shields.io/badge/languages-EN%20%C2%B7%20FR-7C6CFF?style=flat-square">
+  <img alt="Languages" src="https://img.shields.io/badge/languages-6-7C6CFF?style=flat-square">
   <img alt="C++" src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0--or--later-3DDC97?style=flat-square"></a>
 </p>
@@ -25,7 +25,7 @@
   <img src="docs/screenshots/demo.gif" alt="A plasma shader being rendered" width="520">
 </p>
 
-**ShaderToMP4** converts a [Shadertoy](https://www.shadertoy.com) shader (*Image* tab) into a video, **frame by frame**, with exact timing (`iTime = frame / fps`). No screen capture, so no stutter and no loss, whatever the power of your graphics card: a shader that runs at 5 frames per second in real time still gives a perfectly smooth video.
+**ShaderToMP4** converts a [Shadertoy](https://www.shadertoy.com) shader (*Image* tab, with its Buffer A–D, Common, Cubemap A and Sound passes) into a video, **frame by frame**, with exact timing (`iTime = frame / fps`). No screen capture, so no stutter and no loss, whatever the power of your graphics card: a shader that runs at 5 frames per second in real time still gives a perfectly smooth video.
 
 One portable program for **Windows, Linux and macOS**, **no installer**, with a modern dark interface in English and French.
 
@@ -38,7 +38,7 @@ One portable program for **Windows, Linux and macOS**, **no installer**, with a 
 | **Exact timing** | Each frame is rendered at time `n / fps`, then piped straight to ffmpeg: no intermediate file. |
 | **Maximum quality** | Up to 16384 pixels wide, ×4 supersampling, motion blur (×4, ×8, ×16), correct BT.709 colour conversion, 10-bit output, lossless x264 / x265 if you want it. |
 | **Many formats** | MP4, MOV, MKV, WebM (H.264, H.265, VP9, AV1), ProRes and DNxHR for editing, animated GIF and WebP, PNG / TIFF / EXR image sequences. |
-| **Shadertoy features** | Textures (`iChannel`), multi-pass shaders (Buffer A–D, Common), fixed mouse and date, WebGL 2 style GLSL, and a compatibility report before each render. |
+| **Shadertoy features** | Textures, cubemaps, 3D textures, audio and video channels (`iChannel`), multi-pass shaders (Buffer A–D, Common, Cubemap A), Sound pass, offline import of a Shadertoy `.json` export, fixed mouse and date, WebGL 2 style GLSL, and a compatibility report before each render. |
 | **Fast** | Rendering and encoding run in parallel, asynchronous GPU read-back, optional hardware encoding (NVENC, AMF, QuickSync, VAAPI, VideoToolbox). |
 | **Reliable** | Long renders are made in parts: if anything fails, you resume exactly where you stopped. |
 | **Practical** | Built-in preview, presets (YouTube, 4K, vertical 9:16), audio with fades, perfect loop, queue of several shaders, pause and cancel. |
@@ -174,13 +174,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 | Audio | `audio` | sound file, aligned with the “Start” time, padded with silence if shorter |
 | Fade in / out | `fadein`, `fadeout` | seconds, picture and sound |
 | Output | `outdir` | output folder (empty = next to the shader) |
-| (shader comments) | `iChannel0`…`iChannel3`, `mouse`, `date` | textures, fixed mouse and date (see “Shadertoy compatibility”) |
+| (shader comments) | `iChannel0`…`iChannel3`, `bufferA`…`bufferD` (`.scale`, `.size`), `mouse`, `key`, `date` | textures, simulated mouse, keyboard and date (see “Shadertoy compatibility”) |
 | (shader comments, `--variant=`) | `variant` | extra renderings of the same shader, one line per variant: `// variant=720p:width=1280\|height=720\|crf=23`. The base render comes first, then each variant with its own settings; its name is added to the file name (`shader_720p.mp4`) unless the variant sets `name` |
 | (config.ini only) | `name`, `exists` | output file name template and what to do when it exists (see “Output formats”) |
 | (config.ini only) | `gpu` | graphics card on a two-GPU PC, Linux only: `default`, `high` (the discrete one) or `low` (the integrated one). Windows already asks for the powerful GPU; macOS chooses by itself |
 | (config.ini only) | `endaction` | after a successful batch: `none` (default), `folder` (show the last file in the file manager) or `sleep` (the computer sleeps after 15 s; closing the program cancels it). At the end of a batch the taskbar / Dock button always flashes |
 | (config.ini only) | `chunk` | render in parts of N seconds (30 by default, 0 = never) |
 | (config.ini only) | `metadata` | 1 = write title (shader name) and comment (size, frame rate, version) in the file, 0 = none (1 by default) |
+| (shader comments, config.ini) | `vr`, `vripd` | `mainVR` shader as a 360° video: `auto` (default), `off`, `mono`, `stereo`; distance between the eyes of the stereo render (see “Shadertoy compatibility”) |
+| (shader comments, config.ini) | `warmup` | frames simulated before the first one (0 to 3600, 0 by default): the buffers (Buffer A–D, Cubemap A) are warmed up, and `iFrame` starts at N (frame 0 has `iFrame` = N, `iTime` is unchanged). Useful for feedback effects that need time to settle; `iTime` of the warm-up frames is `start − N/fps`, so it can be negative |
 | (config.ini only) | `pbo` | depth of the GPU read-back queue (2 to 8, 3 by default) |
 
 </details>
@@ -207,28 +209,30 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 </details>
 
 <details>
-<summary><b>Shadertoy compatibility</b> (textures, mouse, date)</summary>
+<summary><b>Shadertoy compatibility</b> (channels, passes, sound, mouse, date)</summary>
 
-Only the **Image** tab is rendered. What works:
+The **Image** tab and the **Buffer A–D**, **Common**, **Cubemap A** and **Sound** passes are rendered, and `mainVR` (VR shaders) gives a 360° video. What works:
 
 | Feature | Status |
 |---|---|
 | `mainImage`, `iResolution`, `iTime`, `iTimeDelta`, `iFrame`, `iFrameRate`, `iSampleRate` (44100) | supported, exact per frame |
 | `iChannel0` to `iChannel3` as 2D textures | supported: `// iChannel0=image.png` (path relative to the shader; PNG, JPG, HDR, EXR… anything ffmpeg decodes), `noise` or `grid` (generated, identical on every run) |
 | texture options | `// iChannel0.filter=nearest\|linear\|mipmap` (mipmap by default), `.wrap=clamp\|repeat` (repeat by default), `.vflip=0\|1` (1 by default, like Shadertoy) |
-| `iChannelResolution`, `iChannelTime` | supported (time is 0: no animated channels) |
-| `iMouse` | fixed value: `// mouse=0.5,0.5` (fractions of the size, origin at the bottom left), `// mouse=0.5,0.5,down` for a pressed button; otherwise 0 |
-| `iDate` | real date by default; `// date=2026-03-14T15:09:26` fixes it for a reproducible render |
-| Buffer A–D, Common | supported as files next to the shader: `name.bufferA.glsl` … `name.bufferD.glsl` and `name.common.glsl` (add only `name.glsl` to the list). Each pass reads its inputs through its own `// iChannel0=bufferA` comments (`bufferA` to `bufferD`, `image`-type channels, `noise`, `grid`). Order: A, B, C, D, then Image; a buffer read after its pass in the same frame gives the current frame, read before (or by itself) it gives the previous one, as on Shadertoy. Buffers are 32-bit float, start black, are rendered once per frame (not blurred by motion blur), default to linear filtering and clamping |
+| `iChannelResolution`, `iChannelTime` | supported: the resolution of each channel (256×3 for the keyboard, 512×2 for audio); the time is the render time `iTime` for audio and video channels, 0 for the others |
+| `iMouse` | simulated and deterministic. Fixed: `// mouse=0.5,0.5` (fractions of the size, origin at the bottom left), `// mouse=0.5,0.5,down` for a pressed button. Animated, with keyframes (time in seconds, `t:x,y[,down]`, separated by `;`): `// mouse=0:0.2,0.2 ; 5:0.8,0.6,down ; 8:0.8,0.6`. The position is interpolated linearly between two keys and stays constant before the first and after the last. `iMouse.zw` follows Shadertoy: the position of the last click, `z` > 0 while the button is down, `w` > 0 only on the frame where the click starts; the button is pressed from a `down` key until the next key without `down`. Without a setting, 0 |
+| `iDate` | real date by default; `// date=2026-03-14T15:09:26` fixes the starting date for a reproducible render. The date advances with the render time (day, month and year roll over at midnight); `+rate=R` sets the seconds of date per second of video: `// date=2026-03-14T15:09:26+rate=60` runs one minute per second, `+rate=0` freezes it (the default is 1) |
+| Buffer A–D, Common | supported as files next to the shader: `name.bufferA.glsl` … `name.bufferD.glsl` and `name.common.glsl` (add only `name.glsl` to the list). Each pass reads its inputs through its own `// iChannel0=bufferA` comments (`bufferA` to `bufferD`, `image`-type channels, `noise`, `grid`). Order: A, B, C, D, then Image; a buffer read after its pass in the same frame gives the current frame, read before (or by itself) it gives the previous one, as on Shadertoy. Buffers are 32-bit float, start black, are rendered once per frame (not blurred by motion blur), default to linear filtering and clamping. A buffer can have its own size, set in the main shader (or `config.ini`): `// bufferA.scale=0.5` (fraction of the render size, supersampling included) or `// bufferA.size=512x512` (pixels, `512` alone for a square); the pass sees it in `iResolution`, and the passes that read it (and the image) in `iChannelResolution`. Reading a smaller or larger buffer is bilinear unless `.filter=nearest` is set |
 | History of the buffers | a render that starts later (resuming parts, preview at a given time) replays the earlier frames first, without encoding them; the log says so. The preview replays at most 600 frames |
 | GLSL written for WebGL 2 | accepted: `#version` and `#extension` lines are ignored, `precision` statements, `texture2D`, `texture2DLod` and `texelFetch`, `textureLod`, `dFdx`… work (the program compiles in GLSL 3.30 core). A compile error names the pass (`[Buffer A]`) and keeps the line numbers of its file |
 | Compile errors | shown as `file:line: message` (like a compiler, the file being the shader or the pass); **double-click** the line in the log to open the file at that line (Notepad++, Sublime Text or VS Code when installed, otherwise the default application) |
-| Compatibility report | before each render the log lists what is ignored or fixed: `mainVR`, `mainSound`, cubemaps, 3D textures, `iMouse` or `iDate` read without a fixed value, `iChannelTime` |
+| Compatibility report | before each render the log lists what is ignored or fixed (and, for a VR shader, the 360° mode and the size it expects): `mainSound` written in the main file, cubemaps or 3D textures read without a channel, `iMouse` or `iDate` read without a fixed value, a keyboard channel without keys, `iChannelTime` read without an audio or video channel, a channel that is set but never read by its code, and a buffer or Cubemap A pass that neither the image nor any pass that is read ever reads |
 | Sound pass | file `name.sound.glsl` with `vec2 mainSound(int samp, float time)`, rendered by the GPU (512×512 stereo samples per block, 44.1 kHz, Common available) into a temporary WAV file that becomes the audio track of the video, from the `start` time on; the `audio` setting, if set, replaces it. Video outputs only (GIF, WebP and sequences have no sound); the temporary file is deleted at the end |
 | Cubemap A | file `name.cubemapA.glsl` with `mainCubemap(out vec4 fragColor, in vec2 fragCoord, in vec3 rayOri, in vec3 rayDir)`, rendered on the six faces (512×512) every frame; read it with `// iChannel0=cubeA` |
-| Shadertoy import | drop, add or `--render` the `.json` file exported from the shader page (Export button): passes, Common and `iChannel` comments are written to the `shadertoy/` folder next to the program, then rendered. Offline, no account and no API key. Shadertoy's own media (textures, cubemaps, volumes) are replaced by generated stand-ins (noted in the log), sound passes, webcam and keyboard are not supported. The shader keeps its author's license |
-| cubemap, 3D texture, audio, video channels | supported: `// iChannel0=cube:sky` (generated sky), `cube:name_%d.png` (six square faces 0 to 5 = +X −X +Y −Y +Z −Z) or `cube:cross.png` (4×3 cross); `volume:noise` (generated) or `volume:image.png@N` (N slices side by side); `audio` (the soundtrack of the `audio` setting) or `audio:file.mp3` gives Shadertoy's 512×2 texture (row 0 spectrum, row 1 waveform, computed at the exact time of each frame, without the web analyser's smoothing between frames); `video:file.mp4` plays a video (looped, decoded by ffmpeg at the render frame rate, reduced to 1280×720 at most, `.vflip` as for images). The shader's own `samplerCube` / `sampler3D` declarations are matched automatically |
-| webcam, microphone and keyboard channels | not supported (the render is not interactive) |
+| Shadertoy import | drop, add or `--render` the `.json` file exported from the shader page (Export button): passes, Common and `iChannel` comments are written to the `shadertoy/` folder next to the program, then rendered. Offline, no account and no API key. Shadertoy's own media (textures, cubemaps, volumes) are replaced by generated stand-ins (noted in the log); the Sound pass is imported and rendered as `name.sound.glsl`; the webcam is not supported; a `mainVR` pass is rendered as 360° (see “mainVR”); a keyboard input becomes the simulated keyboard channel (set the keys with `// key=`). The shader keeps its author's license |
+| cubemap, 3D texture, audio, video channels | supported: `// iChannel0=cube:sky` (generated sky), `cube:name_%d.png` (six square faces 0 to 5 = +X −X +Y −Y +Z −Z) or `cube:cross.png` (4×3 cross); `volume:noise` (generated) or `volume:image.png@N` (N slices side by side) or `volume:file.bin` (Shadertoy's 3D volume format: 20-byte header, then 8-bit or 32-bit float values, 1 to 4 channels, up to 1024 per side; one channel gives red only, floats are kept in full precision; the Shadertoy volume files themselves are not shipped, take your own `.bin`); `audio` (the soundtrack of the `audio` setting) or `audio:file.mp3` gives Shadertoy's 512×2 texture (row 0 spectrum, row 1 waveform, computed at the exact time of each frame, without the web analyser's smoothing between frames); `video:file.mp4` plays a video (looped, decoded by ffmpeg at the render frame rate, reduced to 1280×720 at most, `.vflip` as for images). The shader's own `samplerCube` / `sampler3D` declarations are matched automatically |
+| `mainVR` (VR shaders) | rendered as a **360° equirectangular video**. A shader that has `mainVR` and no `mainImage` is detected automatically; otherwise set `// vr=mono` or `// vr=stereo` (`vr=off` ignores `mainVR`). The ray origin and direction are given for every pixel as `mainVR(out vec4 fragColor, in vec2 fragCoord, in vec3 fragRayOri, in vec3 fragRayDir)`; forward is the centre of the image (−Z), up is +Y. **Mono**: width = 2 × height (e.g. 4096×2048 or 8192×4096), `fragRayOri` is the origin. **Stereo**: top / bottom, left eye on top, width = height (e.g. 4096×4096), `iResolution` is the size of one eye and the origin moves on a circle of diameter `vripd` (0.064 by default, in shader units), as in omnidirectional stereo. The log warns when the size does not fit. In an MP4 or MOV file the “spherical video” metadata (equirectangular, top-bottom for stereo) is added after the render so that YouTube and VR players play it as 360° (`metadata=0` leaves it out; other containers cannot carry it). Only the Image pass is VR: buffers and Cubemap A are normal passes, and the head position and orientation of a headset are not simulated |
+| keyboard channel | simulated and deterministic: `// iChannel0=keyboard` gives Shadertoy's 256×3 texture (row 0 key down, row 1 key pressed during this frame, row 2 toggle; read it with `texelFetch(iChannel0, ivec2(keyCode, row), 0).x`), and the keys are pressed at the instants given by `// key=code:start-end` (key code as in JavaScript, or a letter `a`–`z`, or `space`, `enter`, `left`, `up`, `right`, `down`, `shift`, `ctrl`, `alt`, `esc`, `tab`, `backspace`; times in seconds of `iTime`). Several keys on one line with `;`, or several `// key=` lines: `// key=space:2-4.5 ; left:1-3`. The real keyboard is never read |
+| webcam channel | not supported (the render is not interactive) |
 | `// iChannel` lines are not needed when the shader never reads the channel | a channel that is read without a texture stays black and the log says so |
 
 </details>
@@ -272,10 +276,10 @@ All interface texts come from `lang/en.json` and `lang/fr.json`, embedded in the
 ## FAQ
 
 **Which Shadertoy shaders are supported?**
-Those that only use the *Image* tab and the `iResolution`, `iTime`, `iTimeDelta`, `iFrame`, `iFrameRate`, `iDate` inputs. Paste the code in a `.glsl` file: the `mainImage` function is enough.
+Most of them. The *Image* tab alone is enough: paste the code in a `.glsl` file (the `mainImage` function is enough). Buffer A–D, Common, Cubemap A and Sound tabs go in files next to it (`name.bufferA.glsl`, `name.common.glsl`, `name.cubemapA.glsl`, `name.sound.glsl`), or are written for you when you import the `.json` file exported from the shader page. Not supported: the webcam channel (`mainVR` shaders are rendered as 360° videos, see “Shadertoy compatibility”; the keyboard is simulated with `// key=`, the microphone reads the sound file of the `audio` setting).
 
 **What about textures, buffers, sound or the mouse?**
-Not yet: `iChannel0` to `iChannel3` (textures, buffers, multipass), `iMouse` (fixed at 0) and Shadertoy sound are not supported. A shader using them shows a warning and renders black for those inputs.
+Textures, cubemaps, 3D textures, audio and video channels (`iChannel0` to `iChannel3`), buffers (multipass) and the Sound pass are supported. The mouse is simulated, fixed (`// mouse=0.5,0.5[,down]`) or animated by keyframes (`// mouse=0:0.2,0.2 ; 5:0.8,0.6,down`), otherwise 0, and `iDate` can be fixed with `// date=`. An input that is read without being set up (a channel without a texture, an unset `iMouse`) is listed in the compatibility report and stays black or 0. See “Shadertoy compatibility” above.
 
 **Why not a simple screen capture?**
 A capture depends on your PC's speed: if the shader is heavy, the video stutters. Here each frame is rendered at its exact time, as slowly as needed.
@@ -342,7 +346,7 @@ src/        source code: core/ (rendering engine, no UI), platform/ (the only co
             gui/ (Windows interface, Direct2D), ui_imgui/ (Linux and macOS interface, GLFW + Dear ImGui), main.cpp, main_posix.cpp
 assets/     fonts embedded in the Linux / macOS interface (Inter)
 cmake/      resource embedding for CMake builds
-lang/       interface texts: en.json, fr.json
+lang/       interface texts: en, fr, de, es, it, pt (.json)
 res/        manifest (DPI, theme), icon, version information, SVG icons (icons/)
 scripts/    build.bat / build.sh (build), test.bat / test.sh (self-test), package-*.{ps1,sh} (portable archives), check-repo.ps1 (repository check)
 tests/      reference shaders and their .ref images
