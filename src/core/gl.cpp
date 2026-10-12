@@ -48,7 +48,7 @@ static GLuint compileShader(GLenum type, const std::string& src, std::wstring& e
 }
 
 GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut, const std::string* chType, bool cubemapOut, bool soundOut,
-                    int vrMode, const std::string& preamble) {
+                    int vrMode, const std::string& preamble, bool alphaOut) {
     std::string channels;
     for (int i = 0; i < 4; i++) channels += "uniform " + (chType && !chType[i].empty() ? chType[i] : std::string("sampler2D")) + " iChannel" + std::to_string(i) + ";\n";
     const std::string vs =
@@ -56,6 +56,11 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         "void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);"
         " gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n";
 
+    // Couleur ecrite par l'image : opaque (poids = fondu sur la couleur) ou avec transparence. En mode alpha, le fondu agit sur l'alpha ;
+    // st_premul = 1 pendant l'accumulation du flou de mouvement (couleurs prémultipliées, somme exacte), 0 sinon (alpha droit).
+    const std::string finalColor =
+        alphaOut ? "{ float a = clamp(c.a, 0.0, 1.0); st_outColor = st_premul != 0 ? vec4(c.rgb * a, a) * st_weight : vec4(c.rgb, a * st_weight); }"
+                 : "st_outColor = vec4(c.rgb * st_weight, 1.0);";
     const std::string fs =
         "#version 330 core\n"
         "uniform vec3  iResolution;\n"
@@ -70,6 +75,7 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         "uniform int   st_face;\n"
         "uniform int   st_sampleBase;\n"
         "uniform float st_ipd;\n"
+        "uniform int   st_premul;\n"
         + channels +
         "uniform vec3  iChannelResolution[4];\n"
         "uniform float iChannelTime[4];\n"
@@ -95,10 +101,9 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
                         " vec2 uv = fc / iResolution.xy; float lon = (uv.x - 0.5) * 6.28318530718; float lat = (uv.y - 0.5) * 3.14159265359;"
                         " vec3 d = vec3(sin(lon) * cos(lat), sin(lat), -cos(lon) * cos(lat));"
                         " vec3 o = side * 0.5 * st_ipd * vec3(cos(lon), 0.0, sin(lon));"
-                        " mainVR(c, fc, o, d); st_outColor = vec4(c.rgb * st_weight, 1.0); }\n"
-         : bufferOut ? "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy); st_outColor = c; }\n"
-                   : "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy);"
-                     " st_outColor = vec4(c.rgb * st_weight, 1.0); }\n");
+                        " mainVR(c, fc, o, d); " + finalColor + " }\n"
+         : bufferOut ? std::string("\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy); st_outColor = c; }\n")
+                   : "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy); " + finalColor + " }\n");
 
     GLuint v = compileShader(ogl::K_VERTEX_SHADER, vs, err);
     if (!v) return 0;
@@ -151,16 +156,18 @@ GLuint buildFullscreenProgram(const std::string& fs, std::wstring& err) {
     return prog;
 }
 
-GLuint buildPresentProgram(std::wstring& err) {
+GLuint buildPresentProgram(std::wstring& err, bool alpha) {
     const std::string vs =
         "#version 330 core\n"
         "void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);"
         " gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n";
-    const std::string fs =
+    const std::string fs = std::string(
         "#version 330 core\n"
         "uniform sampler2D st_tex;\n"
-        "out vec4 st_o;\n"
-        "void main(){ st_o = vec4(texelFetch(st_tex, ivec2(gl_FragCoord.xy), 0).rgb, 1.0); }\n";
+        "out vec4 st_o;\n") +
+        (alpha ? "void main(){ vec4 t = texelFetch(st_tex, ivec2(gl_FragCoord.xy), 0);"  // couleurs prémultipliées accumulées -> alpha droit
+                 " st_o = t.a > 1e-5 ? vec4(t.rgb / t.a, t.a) : vec4(0.0); }\n"
+               : "void main(){ st_o = vec4(texelFetch(st_tex, ivec2(gl_FragCoord.xy), 0).rgb, 1.0); }\n");
     GLuint v = compileShader(ogl::K_VERTEX_SHADER, vs, err);
     if (!v) return 0;
     GLuint f = compileShader(ogl::K_FRAGMENT_SHADER, fs, err);

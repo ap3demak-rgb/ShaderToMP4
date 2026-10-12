@@ -56,7 +56,7 @@ void browseFiles() {
     OPENFILENAMEW o{};
     o.lStructSize = sizeof(o);
     o.hwndOwner = g.wnd;
-    const std::wstring filter = makeFilter({{TX("dialog.shaders") + L" (*.txt;*.glsl;*.json)", L"*.txt;*.glsl;*.json"}, {TX("dialog.all_files"), L"*.*"}});
+    const std::wstring filter = makeFilter({{TX("dialog.shaders") + L" (*.txt;*.glsl;*.json;*.montage)", L"*.txt;*.glsl;*.json;*.montage"}, {TX("dialog.all_files"), L"*.*"}});
     o.lpstrFilter = filter.c_str();
     o.lpstrFile = buf.data();
     o.nMaxFile = (DWORD)buf.size();

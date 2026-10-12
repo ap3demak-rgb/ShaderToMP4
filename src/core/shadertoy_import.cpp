@@ -83,6 +83,8 @@ bool importShadertoyJson(const std::wstring& jsonPath, const std::wstring& outDi
     if (!id.empty()) header += " - https://www.shadertoy.com/view/" + id;
     header += "\n";
     res.notes.push_back(TXF("log.import_license", W(title.empty() ? base : title).c_str(), W(author.empty() ? "?" : author).c_str()));
+    if (!author.empty())  // credit de l'auteur dans la video : a ajouter par l'utilisateur (la licence de Shadertoy demande l'attribution)
+        res.notes.push_back(TXF("log.import_credit_hint", W(title.empty() ? base : title).c_str(), W(author).c_str()));
 
     for (const auto& p : passes->items) {
         const std::string type = p.str("type"), name = p.str("name");

@@ -10,6 +10,13 @@ Format: one section per version, newest first. The section of a tagged version i
 
 ### Added
 
+- Transparency (`alpha=1`): the shader's alpha channel in ProRes 4444, VP9 WebM, WebP and PNG / TIFF / EXR sequences (straight alpha, exact with supersampling and motion blur, checkerboard in the previews, other combinations refused before the render).
+- HDR output (`hdr=pq` for HDR10, `hdr=hlg`): BT.2020, 10 bits, floating-point conversion, declared MaxCLL / MaxFALL / mastering display (`hdrpeak`, `hdrfall`, `hdrwhite`), in H.265, AV1 and VP9.
+- Output size and cadence: `scale` with a choice of filter (`scalefilter`), frame interpolation `interp` (render at 30, write at 60), sound normalization `loudnorm` in LUFS.
+- Text on the video: `title`, `credit`, `titledur` with ffmpeg's drawtext; the log of a Shadertoy import gives the credit line to add.
+- Montage: a `name.montage` file chains several shaders with cut, fade, crossfade or wipe transitions (clips rendered in resumable parts, then joined by ffmpeg).
+- Command line: `--sheet=4x3` (contact sheet) and `--thumb[=seconds]` (cover thumbnail).
+
 - Animated parameters: `// uniform float speed = 1.0 [0..5]` (types float, int, bool, vec2, vec3, vec4, color) declares an adjustable uniform available in every pass; values saved per shader in `params/`, keyframes `// key speed=0:1.0 ; 4:3.0` (linear, smooth or constant), `--param=name=value` on the command line, and parameters that follow the sound (`audio.level`, `audio.bass`, `audio.mid`, `audio.treble`).
 - “Parameters and post-processing” window on Windows (header button) and the same controls at the bottom of the settings card on Linux and macOS; the live preview picks the values up at once.
 - Post-processing in floating point, before the 8 / 10-bit conversion (so with supersampling, motion blur and 10-bit output): a `name.post.glsl` pass that receives the image in `iChannel0`, eight effects (`sharpen`, `chroma`, `bloom`, `contrast`, `saturation`, `hue`, `vignette`, `grain`, `// post=bloom:0.4,grain`) and a color LUT in `.cube` format, 1D or 3D with tetrahedral interpolation (`// lut=grade.cube`).

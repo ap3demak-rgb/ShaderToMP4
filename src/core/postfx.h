@@ -56,7 +56,9 @@ private:
     bool makeTarget(Target& t, int w, int h, std::wstring& err);
     void drawTo(GLuint fbo, int w, int h);
 
-    bool active_ = false, custom_ = false, composite_ = false;
+    bool active_ = false, custom_ = false, composite_ = false, alpha_ = false;
+    int hdr_ = 0;          // 0 = SDR, 1 = HDR10 (PQ), 2 = HLG : transfert applique en fin de chaine (BT.2020)
+    float hdrWhite_ = 203;  // cd/m2 d'un blanc de shader a 1.0
     int w_ = 0, h_ = 0;
     double amount_[8] = {0, 0, 0, 0, 0, 0, 0, 0};  // dans l'ordre de postEffectInfos()
     Target in_, mid_;

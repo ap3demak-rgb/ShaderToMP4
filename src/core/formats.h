@@ -29,6 +29,14 @@ bool isDnxhr(const std::string& codec);
 // WebM n'accepte que VP9/AV1 ; MOV refuse VP9/AV1 ; MP4 refuse ProRes/DNxHR. Sans objet pour les images (codec ignore).
 bool codecContainerOk(const std::string& codec, const std::string& container);
 
+// Taille de la sortie apres la mise a l'echelle `scale` (« 1920x1080 », « 2 » ou « 2x » = facteur) : dimensions paires, 16 a 16384.
+// Sans reglage, la taille du rendu. Faux si le reglage est invalide.
+bool outputSize(const Settings& s, int& w, int& h);
+// Transparence possible pour ce couple : ProRes 4444 (MOV, MKV), VP9 (WebM, MKV), WebP et sequences PNG / TIFF / EXR.
+bool alphaSupported(const std::string& codec, const std::string& container);
+// HDR10 / HLG possible : H.265, AV1 ou VP9 dans un conteneur video qui les accepte.
+bool hdrSupported(const std::string& codec, const std::string& container);
+
 // Chemin de ffmpeg : a cote du programme, sinon dans le PATH, sinon le nom seul.
 std::wstring findFfmpeg(const std::wstring& exeDir);
 // Encodeurs logiciels demandes par ce couple codec / conteneur (le premier present est utilise).

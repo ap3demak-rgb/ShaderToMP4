@@ -17,6 +17,41 @@ ColorSpec colorSpec(const std::string& c) {
     return {L"tv", L"bt709", L"-colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv"};
 }
 
+ColorSpec colorSpecFor(const Settings& s) {
+    if (s.hdr == "pq")
+        return {L"tv", L"bt2020", L"-colorspace bt2020nc -color_primaries bt2020 -color_trc smpte2084 -color_range tv"};
+    if (s.hdr == "hlg")
+        return {L"tv", L"bt2020", L"-colorspace bt2020nc -color_primaries bt2020 -color_trc arib-std-b67 -color_range tv"};
+    return colorSpec(s.color);
+}
+
+std::wstring outScaleFilter(const Settings& s, int w, int h, int ow, int oh) {
+    if (ow == w && oh == h) return L"";
+    return wfmt(L"scale=%d:%d:flags=%ls,", ow, oh, W(s.scaleFilter).c_str());
+}
+
+std::wstring interpFilter(const Settings& s) {
+    if (s.interp <= 0) return L"";
+    // minterpolate ne travaille qu'en 8 bits ; la sortie est reconvertie ensuite au format demande
+    return wfmt(L"format=yuv420p,minterpolate=fps=%g:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,", s.interp);
+}
+
+std::wstring loudnormFilter(const Settings& s) {
+    if (s.loudnorm == 0) return L"";
+    return wfmt(L"loudnorm=I=%g:TP=-1.5:LRA=11,", s.loudnorm);
+}
+
+// Parametres statiques HDR10 du flux (volume d'affichage BT.2020 et luminances declarees) pour x265 / SVT-AV1.
+static std::wstring x265Hdr(const Settings& s) {
+    if (s.hdr == "pq")
+        return wfmt(L":hdr10=1:hdr10-opt=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc"
+                    L":master-display=G(8500,39850)B(6550,2300)R(35400,14600)WP(15635,16450)L(%d,1):max-cll=%d,%d",
+                    s.hdrPeak * 10000, s.hdrPeak, std::min(s.hdrFall, s.hdrPeak));
+    if (s.hdr == "hlg") return L":repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc";
+    return L"";
+}
+static bool g_svtHdrParams = true;  // ce ffmpeg accepte mastering-display / content-light de SVT-AV1 (sonde de resolveEncoder)
+
 static const char* kPresetNames[] = {"ultrafast", "superfast", "veryfast", "faster", "fast",
                                      "medium",    "slow",      "slower",   "veryslow"};
 
@@ -84,7 +119,24 @@ static std::string softwareEncoder(const Settings& s, const std::wstring& ffmpeg
     return "cpu";
 }
 
+// SVT-AV1 accepte-t-il les parametres HDR10 statiques ? (mini-encodage de test, mis en cache ; les anciennes versions les refusent)
+static bool probeSvtHdr(const std::wstring& ffmpeg) {
+    static std::map<std::wstring, bool> cache;
+    auto it = cache.find(ffmpeg);
+    if (it != cache.end()) return it->second;
+    const std::wstring cmd = L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -f lavfi -i nullsrc=s=256x256:d=0.2 -pix_fmt yuv420p10le"
+                             L" -c:v libsvtav1 -svtav1-params mastering-display=G(0.17,0.797)B(0.131,0.046)R(0.708,0.292)WP(0.3127,0.329)L(1000,0.0001):content-light=1000,400"
+                             L" -f null -";
+    const bool ok = runProcess(cmd, nullptr) == 0;
+    cache[ffmpeg] = ok;
+    return ok;
+}
+
 std::string resolveEncoder(const Settings& s, const std::wstring& ffmpeg, const Hooks& H) {
+    if (s.hdr != "off" && s.codec == "av1") {
+        g_svtHdrParams = probeSvtHdr(ffmpeg);
+        if (!g_svtHdrParams) H.log(L"  " + TX("log.hdr_av1_tags"));
+    }
     if (s.codec != "h264" && s.codec != "h265" && s.codec != "av1") {  // VP9, ProRes, DNxHR : logiciel seulement
         if (s.encoder != "cpu") H.log(L"  " + TXF("log.codec_cpu_only", codecLabel(s.codec)));
         return "cpu";
@@ -128,16 +180,21 @@ std::wstring encoderArgs(const Settings& s, const std::string& enc) {
     } else if (s.codec == "vp9") {  // CRF 0-63 : decale par rapport a x264 ; cpu-used 0 (lent) a 8 (rapide)
         a = wfmt(L" -c:v libvpx-vp9 -row-mt 1 -deadline good -cpu-used %d", std::min(5, 8 - presetIndex(s.preset))) +
             (s.bitrate > 0 ? wfmt(L" -b:v %dk", s.bitrate) : wfmt(L" -crf %d -b:v 0", std::min(63, s.crf + 9)));
+        if (s.alpha) a += L" -auto-alt-ref 0";  // libvpx ne code le canal alpha qu'avec les images de reference alternatives coupees
     } else if (s.codec == "av1" && enc == "cpu-aom") {
         a = wfmt(L" -c:v libaom-av1 -row-mt 1 -cpu-used %d", std::min(8, 8 - presetIndex(s.preset) + 1)) +
             (s.bitrate > 0 ? wfmt(L" -b:v %dk", s.bitrate) : wfmt(L" -crf %d -b:v 0", std::min(63, s.crf + 7)));
     } else if (s.codec == "av1") {  // SVT-AV1 : preset 0 (lent) a 12 (rapide)
         a = wfmt(L" -c:v libsvtav1 -preset %d", 12 - presetIndex(s.preset)) +
             (s.bitrate > 0 ? wfmt(L" -b:v %dk", s.bitrate) : wfmt(L" -crf %d", std::min(63, s.crf + 7)));
+        if (s.hdr != "off" && g_svtHdrParams)  // les etiquettes de couleur sont ajoutees par ffmpeg ; ici le volume d'affichage et les luminances
+            a += s.hdr == "pq" ? wfmt(L" -svtav1-params mastering-display=G(0.17,0.797)B(0.131,0.046)R(0.708,0.292)WP(0.3127,0.329)L(%d,0.0001):content-light=%d,%d",
+                                      s.hdrPeak, s.hdrPeak, std::min(s.hdrFall, s.hdrPeak))
+                               : std::wstring();
     } else if (enc == "cpu") {
         a = std::wstring(L" -c:v ") + (h265 ? L"libx265" : L"libx264") + L" -preset " + W(s.preset) +
             (s.bitrate > 0 ? wfmt(L" -b:v %dk", s.bitrate) : wfmt(L" -crf %d", s.crf));
-        if (h265) a += L" -tag:v hvc1 -x265-params log-level=error";
+        if (h265) a += L" -tag:v hvc1 -x265-params log-level=error" + x265Hdr(s);
     } else if (enc == "nvenc") {
         static const int kMap[] = {1, 2, 3, 4, 4, 5, 6, 7, 7};
         a = std::wstring(L" -c:v ") + W(hwCodecName(enc, s.codec)) + wfmt(L" -preset p%d", kMap[presetIndex(s.preset)]) +
@@ -168,6 +225,8 @@ std::wstring encoderArgs(const Settings& s, const std::string& enc) {
 
 std::wstring outPixFmt(const Settings& s, const std::string& enc) {
     if (enc == "vaapi") return L"";
+    if (s.alpha && s.codec == "prores_4444") return L"yuva444p10le";  // avec transparence
+    if (s.alpha && s.codec == "vp9") return L"yuva420p";               // libvpx : alpha en 8 bits seulement
     if (s.codec == "prores_4444" || s.codec == "dnxhr_444") return L"yuv444p10le";
     if (isProRes(s.codec) || s.codec == "dnxhr_hqx") return L"yuv422p10le";
     if (isDnxhr(s.codec)) return L"yuv422p";
@@ -184,10 +243,10 @@ std::wstring imageFilterTail(const Settings& s) {
     const bool deep = s.depth >= 10;
     if (s.container == "gif")  // palette optimisee calculee sur toute la sequence, tramage Bayer
         return L"format=rgb24,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle";
-    if (s.container == "webp") return L"format=yuv420p";
-    if (s.container == "png") return deep ? L"format=rgb48be" : L"format=rgb24";
-    if (s.container == "tiff") return deep ? L"format=rgb48le" : L"format=rgb24";
-    return L"format=gbrpf32le";  // exr
+    if (s.container == "webp") return s.alpha ? L"format=yuva420p" : L"format=yuv420p";
+    if (s.container == "png") return s.alpha ? (deep ? L"format=rgba64be" : L"format=rgba") : (deep ? L"format=rgb48be" : L"format=rgb24");
+    if (s.container == "tiff") return s.alpha ? (deep ? L"format=rgba64le" : L"format=rgba") : (deep ? L"format=rgb48le" : L"format=rgb24");
+    return s.alpha ? L"format=gbrapf32le" : L"format=gbrpf32le";  // exr
 }
 
 std::wstring imageEncoderArgs(const Settings& s) {
