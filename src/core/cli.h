@@ -11,6 +11,8 @@ constexpr int kExitRenderFailed = 1; // au moins un rendu a echoue
 constexpr int kExitUsage = 2;        // ligne de commande invalide (option inconnue, fichier absent, valeur illisible)
 constexpr int kExitNoGL = 3;         // contexte OpenGL 3.3 impossible a creer
 constexpr int kExitNoFfmpeg = 4;     // ffmpeg introuvable (voir --get-ffmpeg)
+constexpr int kExitCheckWarn = 6;       // --check : le controle qualite a releve au moins un avertissement
+constexpr int kExitDiff = 7;            // --compare ou --golden=verify : les images different au-dela de la tolerance
 constexpr int kExitBenchRegression = 5;  // --benchmark --compare : une cadence a baisse de plus de --max-drop %
 
 // args : arguments apres --render (fichiers et options). write(texte UTF-8, erreur) : sortie standard ou d'erreur.

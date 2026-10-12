@@ -23,7 +23,7 @@ using namespace theme;
 
 namespace {
 
-enum { ID_ED_SAVE = 1, ID_ED_CLOSE, ID_ED_EDIT, ID_ED_TAB = 100 };
+enum { ID_ED_SAVE = 1, ID_ED_CLOSE, ID_ED_EDIT, ID_ED_COMPARE, ID_ED_TAB = 100 };
 constexpr UINT_PTR kHighlightTimer = 1;
 
 struct Tab {
@@ -35,7 +35,7 @@ struct Tab {
 };
 
 struct Ed {
-    HWND wnd = nullptr, edit = nullptr, gutter = nullptr, status = nullptr, bSave = nullptr, bClose = nullptr;
+    HWND wnd = nullptr, edit = nullptr, gutter = nullptr, status = nullptr, bSave = nullptr, bClose = nullptr, bCompare = nullptr;
     std::vector<HWND> tabButtons;
     std::vector<Tab> tabs;
     int cur = 0;
@@ -242,7 +242,8 @@ void layout() {
     const int top = m + tabsH;
     MoveWindow(E.gutter, m, top, gutterW, h - top - barH - m, TRUE);
     MoveWindow(E.edit, m + gutterW, top, w - 2 * m - gutterW, h - top - barH - m, TRUE);
-    MoveWindow(E.status, m, h - barH, w - 2 * m - S(250), S(24), TRUE);
+    MoveWindow(E.status, m, h - barH, std::max(S(100), w - 2 * m - S(500)), S(24), TRUE);
+    MoveWindow(E.bCompare, w - m - S(236) - S(250), h - barH - S(4), S(244), S(34), TRUE);
     MoveWindow(E.bSave, w - m - S(236), h - barH - S(4), S(112), S(34), TRUE);
     MoveWindow(E.bClose, w - m - S(116), h - barH - S(4), S(116), S(34), TRUE);
 }
@@ -416,6 +417,17 @@ LRESULT CALLBACK editorProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_COMMAND: {
             const int id = LOWORD(wp);
             if (id == ID_ED_SAVE) saveCurrent();
+            else if (id == ID_ED_COMPARE) {  // l'image du fichier tel qu'il etait contre celle du texte en cours, au temps de l'apercu
+                captureCurrent();
+                const Tab& t = E.tabs[(size_t)E.cur];
+                if (E.cur != 0 || g.running) {
+                    appendLog(TX(E.cur != 0 ? "ui.editor.compare_image_only" : "ui.editor.compare_busy"));
+                } else {
+                    g.cmpBeforeText = U8(t.baseline);
+                    g.cmpAfterText = U8(t.text);
+                    startJobs(true, 9, 0, 0, true);
+                }
+            }
             else if (id == ID_ED_CLOSE) SendMessageW(h, WM_CLOSE, 0, 0);
             else if (id >= ID_ED_TAB && id < ID_ED_TAB + (int)E.tabs.size()) switchTab(id - ID_ED_TAB);
             else if (id == ID_ED_EDIT && HIWORD(wp) == EN_CHANGE && !E.quiet) {
@@ -545,6 +557,7 @@ void showEditor(HWND parent) {
         SendMessageW(b, WM_SETFONT, (WPARAM)g.font, TRUE);
         return b;
     };
+    E.bCompare = button("ui.editor.compare", ID_ED_COMPARE, IC_EYE, ui::BtnStyle::Secondary);
     E.bSave = button("ui.btn.save", ID_ED_SAVE, IC_SAVE, ui::BtnStyle::Primary);
     E.bClose = button("ui.params.close", ID_ED_CLOSE, IC_CHECK, ui::BtnStyle::Secondary);
     layout();

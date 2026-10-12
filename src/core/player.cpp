@@ -38,6 +38,7 @@ struct Rig {
     ChannelSet chans;
     Settings s;
     int w = 0, h = 0;
+    bool f32 = false;  // cible RGBA32F (sonde de controle : NaN et infinis visibles)
     long long simFrame = 0;
     GLint uRes = -1, uTime = -1, uDelta = -1, uFrame = -1, uRate = -1, uMouse = -1, uDate = -1, uSR = -1, uWeight = -1;
     DateInput date;
@@ -73,7 +74,7 @@ std::string watchedContent(const std::wstring& shaderPath) {
     return fnvHex(all);
 }
 
-bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, std::wstring& err, int maxSide = 640) {
+bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, std::wstring& err, int maxSide = 640, bool f32 = false) {
     Hooks quiet;
     quiet.log = [](const std::wstring&) {};
     std::string code;
@@ -132,7 +133,8 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
     ogl::BindVertexArray(r.vao);
     glGenTextures(1, &r.tex);
     glBindTexture(GL_TEXTURE_2D, r.tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, ogl::K_RGBA8, r.w, r.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    r.f32 = f32;
+    glTexImage2D(GL_TEXTURE_2D, 0, f32 ? ogl::K_RGBA32F : ogl::K_RGBA8, r.w, r.h, 0, GL_RGBA, f32 ? GL_FLOAT : GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     ogl::GenFramebuffers(1, &r.fbo);
@@ -328,9 +330,9 @@ struct ShaderProbe::Impl {
 ShaderProbe::ShaderProbe() : impl_(new Impl) {}
 ShaderProbe::~ShaderProbe() { close(); }
 
-bool ShaderProbe::open(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& s, int maxSide, std::wstring& err) {
+bool ShaderProbe::open(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& s, int maxSide, std::wstring& err, bool floatTarget) {
     close();
-    if (!buildRig(impl_->rig, shaderPath, exeDir, s, err, maxSide)) {
+    if (!buildRig(impl_->rig, shaderPath, exeDir, s, err, maxSide, floatTarget)) {
         impl_->rig.release();
         return false;
     }
@@ -338,8 +340,17 @@ bool ShaderProbe::open(const std::wstring& shaderPath, const std::wstring& exeDi
     return true;
 }
 
+bool ShaderProbe::frameAtF(double t, std::vector<float>& rgba) {
+    if (!impl_->open || !impl_->rig.f32) return false;
+    Rig& r = impl_->rig;
+    drawRig(r, t);
+    rgba.resize((size_t)r.w * r.h * 4);
+    glReadPixels(0, 0, r.w, r.h, GL_RGBA, GL_FLOAT, rgba.data());
+    return true;
+}
+
 bool ShaderProbe::frameAt(double t, std::vector<uint8_t>& rgba) {
-    if (!impl_->open) return false;
+    if (!impl_->open || impl_->rig.f32) return false;
     Rig& r = impl_->rig;
     drawRig(r, t);
     rgba.resize((size_t)r.w * r.h * 4);

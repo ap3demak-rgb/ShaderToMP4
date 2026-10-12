@@ -7,7 +7,9 @@
 #include "core/gl.h"
 #include "core/outputopts.h"
 #include "core/params.h"
+#include "core/compare.h"
 #include "core/looptools.h"
+#include "core/quality.h"
 #include "core/render.h"
 #include "core/vr.h"
 #include "core/util.h"
@@ -84,6 +86,45 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
             r = renderSmartThumbnails(jobs[i].second, g.exeDir, run, H, made, e) ? Result::Ok : g.cancel ? Result::Cancelled : Result::Failed;
             if (r == Result::Ok)  // les trois propositions s'ouvrent ensemble : on choisit en les voyant
                 for (const std::wstring& f : made) ShellExecuteW(nullptr, L"open", f.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        } else if (g.snapshotRun && g.imageKind == 7) {  // controle qualite : flashs, valeurs invalides, scintillement, aliasing, precision
+            CheckReport cr;
+            Hooks Hc = H;
+            Hc.previewFrame = [](int w, int h, std::vector<uint8_t>&& px) { PostMessageW(g.wnd, WM_APP_PREVIEW, 0, (LPARAM) new PreviewData{w, h, std::move(px)}); };
+            if (runChecks(jobs[i].second, g.exeDir, run, CheckOptions(), Hc, cr, e)) {
+                const std::string text = checkReportText(cr);
+                size_t pos = 0;
+                while (pos < text.size()) {
+                    size_t nl = text.find('\n', pos);
+                    if (nl == std::string::npos) nl = text.size();
+                    if (nl > pos) postLog(L"  " + W(text.substr(pos, nl - pos)));
+                    pos = nl + 1;
+                }
+                if (writeCheckReport(cr, outputPath(jobs[i].second, run.outdir, L""))) postLog(L"  " + TXF("log.report_written", (outputPath(jobs[i].second, run.outdir, L"") + L".check.txt").c_str()));
+            } else {
+                r = g.cancel ? Result::Cancelled : Result::Failed;
+            }
+        } else if (g.snapshotRun && g.imageKind == 8) {  // estimation du temps de rendu
+            Estimate est;
+            if (estimateRender(jobs[i].second, g.exeDir, run, H, est, e)) {
+                const std::wstring text = describeEstimate(est);
+                size_t pos = 0;
+                while (pos < text.size()) {
+                    size_t nl = text.find(L'\n', pos);
+                    if (nl == std::wstring::npos) nl = text.size();
+                    if (nl > pos) postLog(L"  " + text.substr(pos, nl - pos));
+                    pos = nl + 1;
+                }
+            } else {
+                r = g.cancel ? Result::Cancelled : Result::Failed;
+            }
+        } else if (g.snapshotRun && g.imageKind == 9) {  // version avant / apres edition : une image de chaque au temps de l'apercu
+            CompareData* cd = new CompareData{0, 0, {}, {}};
+            if (compareVersions(jobs[i].second, g.cmpBeforeText, g.cmpAfterText, g.exeDir, run, run.start, cd->before, cd->after, cd->w, cd->h, e)) {
+                PostMessageW(g.wnd, WM_APP_COMPARE, 0, (LPARAM)cd);
+            } else {
+                delete cd;
+                r = Result::Failed;
+            }
         } else if (g.snapshotRun && g.imageKind == 6) {  // carte de chaleur du cout GPU par zone
             HeatStats hs;
             std::wstring heatFile;
@@ -129,6 +170,9 @@ void showImageMenu() {
     AppendMenuW(m, MF_STRING, 5, TX("ui.menu.cubefaces").c_str());
     AppendMenuW(m, MF_STRING, 6, TX("ui.menu.heatmap").c_str());
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, 7, TX("ui.menu.check").c_str());
+    AppendMenuW(m, MF_STRING, 8, TX("ui.menu.estimate").c_str());
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     for (int i = 0; i < kSheetGridCount; i++)
         AppendMenuW(m, MF_STRING, (UINT_PTR)(10 + i), TXF("ui.menu.sheet", kSheetGrids[i][0], kSheetGrids[i][1]).c_str());
     RECT r;
@@ -141,6 +185,8 @@ void showImageMenu() {
     else if (cmd == 4) startJobs(true, 3);
     else if (cmd == 5) startJobs(true, 5);
     else if (cmd == 6) startJobs(true, 6);
+    else if (cmd == 7) startJobs(true, 7);
+    else if (cmd == 8) startJobs(true, 8);
     else if (cmd >= 10 && cmd < 10 + kSheetGridCount) startJobs(true, 2, kSheetGrids[cmd - 10][0], kSheetGrids[cmd - 10][1]);
 }
 
@@ -216,9 +262,9 @@ void startJobs(bool snapshot, int imageKind, int cols, int rows, bool atPreview,
     g.sheetRows = rows;
     g.previewRun = false;
     if (snapshot) {
-        g.snapshotPath = imageKind == 3 || imageKind == 4 || imageKind == 5 || imageKind == 6 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
+        g.snapshotPath = imageKind == 3 || imageKind == 4 || imageKind == 5 || imageKind == 6 || imageKind >= 7 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
     }
-    setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot ? "status.rendering_image" : "status.rendering"));
+    setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot && imageKind == 7 ? "status.checking" : snapshot && imageKind == 8 ? "status.estimating" : snapshot && imageKind == 9 ? "status.comparing" : snapshot ? "status.rendering_image" : "status.rendering"));
     g.worker = std::thread(runJobs, std::move(jobs));
 }
 

@@ -322,8 +322,10 @@ void drawEditor(Model& m) {
     if (!cur.errors.empty()) status = TXF8("ui.editor.line_error", cur.errors.begin()->first, cur.errors.begin()->second.c_str());
     ImGui::AlignTextToFramePadding();
     ImGui::TextColored(colv(cur.errors.empty() ? pal::MUTED : pal::ERR), "%s", status.c_str());
-    const float bw = buttonWidth("ui.btn.save", true) + buttonWidth("ui.params.close", true) + ImGui::GetStyle().ItemSpacing.x;
+    const float bw = buttonWidth("ui.editor.compare", true) + buttonWidth("ui.btn.save", true) + buttonWidth("ui.params.close", true) + 2 * ImGui::GetStyle().ItemSpacing.x;
     ImGui::SameLine(ImGui::GetWindowWidth() - bw - ImGui::GetStyle().WindowPadding.x);
+    if (button("ui.editor.compare", "eye", 0, S_.cur == 0 && !m.running())) m.compareVersions(cur.baseline, cur.text);  // l'image du fichier tel qu'il etait contre celle du texte
+    ImGui::SameLine();
     if (button("ui.btn.save", "save", 1, cur.dirty())) saveCurrent(m);
     ImGui::SameLine();
     if (button("ui.params.close", "check", 0, true)) {

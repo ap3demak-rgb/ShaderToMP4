@@ -54,6 +54,7 @@ struct Fields {
     int loopMode = 0;
     bool audioFollow = false;
     int stillFormat = 0;  // 0 PNG, 1 TIFF
+    bool precheck = false;  // controle qualite avant chaque rendu video
     char loopFade[16] = "1", timemap[256] = "", speed[16] = "", samples[16] = "", tile[16] = "", dpi[16] = "";
 };
 
@@ -139,6 +140,15 @@ public:
     std::vector<uint8_t> prevPixels;
     int prevW = 0, prevH = 0;
     bool prevFresh = false;
+    // Comparaison avant / apres edition : deux images et un rideau a glisser dans l'apercu (avant a gauche, apres a droite)
+    struct Curtain {
+        bool on = false;
+        int w = 0, h = 0;
+        std::vector<uint8_t> before, after;
+        float x = 0.5f;
+    } curtain;
+    void composeCurtain();  // ecrit l'image d'apercu a la position du rideau
+    void compareVersions(const std::string& before, const std::string& after);  // une image de chaque version au temps de l'apercu
 
     std::function<void(const std::wstring&)> logHook;  // appelee pour chaque ligne du journal (l'editeur y lit les erreurs du compilateur)
     void appendLog(const std::wstring& text);
@@ -149,19 +159,20 @@ public:
 
 private:
     struct Event {
-        enum Kind { Log, Progress, File, Done, Preview, Download, DownloadDone, Loop } kind;  // Loop : speed = periode trouvee
+        enum Kind { Log, Progress, File, Done, Preview, Download, DownloadDone, Loop, Compare } kind;  // Loop : speed = periode trouvee
         int idx = 0, w = 0, h = 0;
         long long n = 0, total = 0;
         double speed = 0, remaining = 0;
         double gpuImage = 0, gpuBuffers = 0, gpuPost = 0;  // temps GPU moyens par image (ms)
         std::wstring text;
-        std::vector<uint8_t> px;
+        std::vector<uint8_t> px, px2;  // px2 : image « apres » de la comparaison
     };
     void post(Event&& e);
     void runJobsThread(std::vector<std::pair<int, std::wstring>> jobs);
     void join();
 
     std::atomic<bool> running_{false}, cancel_{false}, pause_{false};
+    std::string cmpBefore_, cmpAfter_;  // textes des deux versions, lus par le thread de rendu
     std::atomic<double> gpu_[3];  // temps GPU moyens par image mesures pendant le rendu
     bool snapshotRun_ = false;
     int imageKind_ = 0, sheetCols_ = 0, sheetRows_ = 0;
