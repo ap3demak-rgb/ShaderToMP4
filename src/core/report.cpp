@@ -92,6 +92,10 @@ std::string reportJson(const RenderReport& r) {
     field("codec", jstr(r.codec));
     field("container", jstr(r.container));
     field("encoder", jstr(r.encoder));
+    if (r.loopChecked)
+        field("loop", "{\"seam\": " + jnum(r.loopSeam) + ", \"typical\": " + jnum(r.loopTypical) + ", \"perfect\": " + (r.loopPerfect ? "true" : "false") + "}");
+    else
+        field("loop", "null");
     o += "  \"warnings\": [";
     for (size_t i = 0; i < r.warnings.size(); i++) o += (i ? ", " : "") + jstr(U8(r.warnings[i]));
     o += "]\n}\n";
@@ -113,6 +117,8 @@ std::string reportText(const RenderReport& r) {
     if (!bn.empty()) line("log.report.bottleneck", TXF(bn == "encoder" ? "log.report.bn_encoder" : "log.report.bn_gpu", i18n::fixed(reportWaitPercent(r), 0).c_str()));
     if (r.bytes > 0) line("log.report.bytes", sizeText(r.bytes));
     if (!r.container.empty()) line("log.report.format", W(r.codec) + L" / " + W(r.container) + L" / " + W(r.encoder));
+    if (r.loopChecked)
+        line("log.report.loop", TXF(r.loopPerfect ? "log.report.loop_perfect" : "log.report.loop_visible", i18n::fixed(r.loopSeam, 2).c_str(), i18n::fixed(r.loopTypical, 2).c_str()));
     o += TX("log.report.warnings") + L":";
     if (r.warnings.empty()) o += L" " + TX("log.report.none") + L"\n";
     else {

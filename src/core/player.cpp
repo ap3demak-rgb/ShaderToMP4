@@ -73,7 +73,7 @@ std::string watchedContent(const std::wstring& shaderPath) {
     return fnvHex(all);
 }
 
-bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, std::wstring& err) {
+bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, std::wstring& err, int maxSide = 640) {
     Hooks quiet;
     quiet.log = [](const std::wstring&) {};
     std::string code;
@@ -94,8 +94,8 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
     s.height = std::max(16, s.height & ~1);
     if (s.fps <= 0) s.fps = 60;
     if (s.duration <= 0) s.duration = 10;
-    // image reduite : 640 pixels au plus sur le grand cote
-    const double k = std::min(1.0, 640.0 / std::max(s.width, s.height));
+    // image reduite : 640 pixels au plus sur le grand cote (moins pour les sondes)
+    const double k = std::min(1.0, (double)maxSide / std::max(s.width, s.height));
     r.w = std::max(16, (int)(s.width * k));
     r.h = std::max(16, (int)(s.height * k));
     r.s = s;
@@ -180,8 +180,8 @@ void setUniforms(const Rig& r, GLuint p, long long n, double t) {
     ogl::Uniform1f(ogl::GetUniformLocation(p, "iSampleRate"), 44100.0f);
 }
 
-// Rend l'image au temps t ; send : lire les pixels et les envoyer
-void renderAt(Rig& r, double t, bool send, const PreviewPlayer::FrameFn& onFrame) {
+// Rend l'image au temps t dans la cible du rig (les passes a historique avancent jusqu'a l'image de ce temps)
+void drawRig(Rig& r, double t) {
     const long long idx = std::max(0LL, std::llround((t - r.s.start) * r.s.fps));
     if (r.bp.any()) {  // les tampons avancent image par image ; reculer repart de zero
         if (idx < r.simFrame) {
@@ -217,6 +217,11 @@ void renderAt(Rig& r, double t, bool send, const PreviewPlayer::FrameFn& onFrame
         ogl::UseProgram(r.prog);
     }
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, r.fbo);
+}
+
+// Rend l'image au temps t ; send : lire les pixels et les envoyer
+void renderAt(Rig& r, double t, bool send, const PreviewPlayer::FrameFn& onFrame) {
+    drawRig(r, t);
     if (!send) return;
     std::vector<uint8_t> px((size_t)r.w * r.h * 4);
     glReadPixels(0, 0, r.w, r.h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
@@ -310,6 +315,44 @@ void playerMain(PreviewPlayer::Impl* I, std::wstring shaderPath, std::wstring ex
 }
 
 }  // namespace
+
+// --- Sonde : images reduites d'un shader a des instants quelconques (recherche de boucle, vignette intelligente) -------------------
+struct ShaderProbe::Impl {
+    Rig rig;
+    bool open = false;
+};
+
+ShaderProbe::ShaderProbe() : impl_(new Impl) {}
+ShaderProbe::~ShaderProbe() { close(); }
+
+bool ShaderProbe::open(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& s, int maxSide, std::wstring& err) {
+    close();
+    if (!buildRig(impl_->rig, shaderPath, exeDir, s, err, maxSide)) {
+        impl_->rig.release();
+        return false;
+    }
+    impl_->open = true;
+    return true;
+}
+
+bool ShaderProbe::frameAt(double t, std::vector<uint8_t>& rgba) {
+    if (!impl_->open) return false;
+    Rig& r = impl_->rig;
+    drawRig(r, t);
+    rgba.resize((size_t)r.w * r.h * 4);
+    glReadPixels(0, 0, r.w, r.h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+    return true;
+}
+
+int ShaderProbe::width() const { return impl_->rig.w; }
+int ShaderProbe::height() const { return impl_->rig.h; }
+bool ShaderProbe::hasHistory() const { return impl_->open && impl_->rig.bp.any(); }
+const Settings& ShaderProbe::settings() const { return impl_->rig.s; }
+
+void ShaderProbe::close() {
+    if (impl_ && impl_->open) impl_->rig.release();
+    if (impl_) impl_->open = false;
+}
 
 PreviewPlayer::PreviewPlayer() = default;
 PreviewPlayer::~PreviewPlayer() { stop(); }

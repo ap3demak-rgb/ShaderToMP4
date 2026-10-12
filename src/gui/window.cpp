@@ -956,6 +956,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                 case ID_OUTPUT: showOutput(hw); break;
                 case ID_FILESCOPE: toggleFileScope(); break;
                 case ID_EDITOR: showEditor(hw); break;
+                case ID_FINDLOOP: startJobs(true, 4); break;
                 case ID_LANG: {  // langue suivante (en -> fr -> ...), appliquée tout de suite
                     std::vector<std::string> langs = i18n::available();
                     std::string cur = i18n::language(), next = langs.front();
@@ -968,6 +969,15 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                 case ID_AUDIOB: browseAudio(); break;
                 case ID_PREVBTN: runPreview(); break;
             }
+            return 0;
+        }
+        case WM_APP_LOOP: {  // periode trouvee : elle devient la periode du reglage « Boucle » (la duree en sera un multiple entier)
+            double* period = (double*)lp;
+            if (!isForced("loop")) {
+                SetWindowTextW(g.edLoop, i18n::num(std::round(*period * 1000.0) / 1000.0).c_str());
+                updateEstimate();
+            }
+            delete period;
             return 0;
         }
         case WM_APP_LOG: {
@@ -993,7 +1003,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             int idx = (int)wp;
             if (idx >= 0 && idx < (int)g.paths.size()) {
                 if (g.snapshotRun && lp == ST_DONE) {  // l'image ne compte pas comme rendu video termine
-                    ShellExecuteW(hw, L"open", g.snapshotPath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                    if (!g.snapshotPath.empty()) ShellExecuteW(hw, L"open", g.snapshotPath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
                     lp = ST_PENDING;
                 }
                 g.state[idx] = (int)lp;

@@ -57,3 +57,24 @@ public:
 private:
     std::unique_ptr<Impl> impl_;
 };
+
+// Sonde : un shader compile dans le contexte OpenGL courant du thread appelant, qui rend des images reduites a des instants quelconques.
+// Sert à la recherche de boucle et à la vignette intelligente (core/looptools). Les passes à historique avancent image par image :
+// reculer dans le temps repart de zéro (lent), avancer par pas réguliers est le cas rapide.
+class ShaderProbe {
+public:
+    ShaderProbe();
+    ~ShaderProbe();
+    bool open(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& s, int maxSide, std::wstring& err);
+    // Image au temps t du shader : width() x height() pixels RGBA, première ligne en bas (ordre OpenGL)
+    bool frameAt(double t, std::vector<uint8_t>& rgba);
+    int width() const;
+    int height() const;
+    bool hasHistory() const;          // le shader a des passes Buffer / Cubemap (l'état dépend du chemin parcouru)
+    const Settings& settings() const; // réglages du shader (// clé=valeur comprises)
+    void close();
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};

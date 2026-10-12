@@ -20,6 +20,8 @@
 #include "process.h"
 #include "report.h"
 #include "soundpass.h"
+#include "timemap.h"
+#include "looptools.h"
 #include "util.h"
 #include "app_info.h"
 #include "platform/platform.h"
@@ -112,6 +114,9 @@ struct ReportData {
     double fps = 0, mediaSeconds = 0, loopSeconds = 0, waitSeconds = 0;
     long long frames = 0;
     std::string encoder;
+    bool loopChecked = false;  // controle de la boucle apres le rendu (looptools.h)
+    double loopSeam = 0, loopTypical = 0;
+    bool loopPerfect = false;
 };
 
 static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H, std::wstring& err,
@@ -146,6 +151,10 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     rep.codec = rd.s.codec;
     rep.container = rd.s.container;
     rep.encoder = rd.encoder;
+    rep.loopChecked = rd.loopChecked;
+    rep.loopSeam = rd.loopSeam;
+    rep.loopTypical = rd.loopTypical;
+    rep.loopPerfect = rd.loopPerfect;
     rep.warnings = warnings;
     uint64_t bytes = 0;
     if (!rd.output.empty() && platform::fileSize(rd.output, bytes)) rep.bytes = bytes;
@@ -197,6 +206,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     const bool thumb = !preview && H.snapshot && H.thumbTime != -1;                     // vignette : une image, 1280 pixels au plus
     if (thumb) s.start = H.thumbTime == -2 ? s.start + s.duration / 2 : H.thumbTime;
     const bool videoMode = !preview && !H.snapshot && !sheet;
+    const int SMP = (!preview && H.snapshot && !thumb) ? std::min(100000, std::max(1, s.samples)) : 1;  // image fixe : echantillons moyennes
     const OutKind kind = outKind(s.container);
     if (!videoMode || kind == OutKind::Gif || kind == OutKind::Webp) s.depth = 8;  // 10 bits : video et sequences seulement
     if (!videoMode) s.hdr = "off";  // l'apercu et l'image fixe restent en SDR
@@ -240,6 +250,27 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     if (s.loop > 0) duration = s.loop * std::max(1.0, std::floor(s.duration / s.loop + 0.5));
     const long long N = videoMode ? std::max(1LL, std::llround(duration * s.fps)) : sheet ? (long long)H.sheetCols * H.sheetRows : 1;
     const double totalSec = N / s.fps;
+    // Courbe de temps, aller-retour et boucle par fondu : la video seulement (l'apercu et les images fixes restent au temps du shader)
+    TimeMap tm;
+    const bool crossfade = videoMode && s.loopMode == "crossfade";
+    if (videoMode) {
+        if (!TimeMap::parse(s.timemap, tm, err)) return Result::Failed;
+        if (s.loopMode == "pingpong") {
+            if (tm.hasCurve()) {
+                err = TX("error.loop_timemap");
+                return Result::Failed;
+            }
+            tm = TimeMap::pingPong(totalSec / 2);
+        }
+        tm.setSpeed(s.speed);
+        if (crossfade && !tm.identity()) {
+            err = TX("error.loop_timemap");
+            return Result::Failed;
+        }
+    }
+    const double loopFade = std::max(0.05, std::min(s.loopFade, totalSec / 2));
+    auto shaderTime = [&](double u) { return s.start + tm.at(u); };  // instant du shader pour l'instant u de la video
+    auto deltaAt = [&](long long n) { return tm.identity() ? 1.0 / s.fps : std::max(1e-6, std::fabs(tm.speedAt((double)n / s.fps)) / s.fps); };
     if (rd) {
         rd->frames = N;
         rd->fps = s.interp > 0 && videoMode ? s.interp : s.fps;
@@ -270,7 +301,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         return Result::Failed;
     }
     if (!preview && !s.outdir.empty()) platform::makeDir(s.outdir);  // sans effet si deja present
-    const std::wstring ext = thumb ? L"_thumb.png" : H.snapshot ? L".png" : sheet ? L"_sheet.png" : L"." + W(s.container);
+    const std::wstring ext = thumb ? L"_thumb" + H.thumbSuffix + L".png" : H.snapshot ? L".png" : sheet ? L"_sheet.png" : L"." + W(s.container);
     bool skipExisting = false;
     const std::wstring out = !videoMode ? outputPath(shaderPath, s.outdir, ext) : outputFile(shaderPath, s, true, &skipExisting);
     if (skipExisting) {
@@ -312,6 +343,13 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         if (s.loudnorm != 0) H.log(L"  " + TXF("log.loudnorm", s.loudnorm));
         if (B > 1) H.log(L"  " + TXF("log.motion_blur", B, s.shutter));
         if (s.loop > 0) H.log(L"  " + TXF("log.perfect_loop", s.loop, duration));
+        if (crossfade) H.log(L"  " + TXF("log.loop_crossfade", loopFade));
+        if (tm.pingpong()) H.log(L"  " + TXF("log.loop_pingpong", totalSec / 2));
+        if (!tm.identity() && !tm.pingpong()) {
+            double lo = 1, hi = 1;
+            tm.speedRange(totalSec, lo, hi);
+            H.log(L"  " + TXF("log.timemap", lo, hi));
+        }
     }
 
     // --- Shader + FBO + PBO ---------------------------------------------------
@@ -334,6 +372,12 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         bp.report(s, code, notes);
         for (const auto& n : notes) H.log(L"  " + n);
     }
+    if (videoMode && bp.any() && (crossfade || tm.pingpong() || (!tm.identity() && !tm.monotone()))) {  // l'etat des tampons ne se rejoue pas a l'envers
+        err = TX(crossfade ? "error.loop_history" : "error.timemap_history");
+        bp.release();
+        return Result::Failed;
+    }
+    if (videoMode && !tm.identity() && (hasAudio || bp.hasSound())) H.log(L"  " + TX("log.timemap_audio"));
     // Parametres (// uniform ...) : declarations injectees dans tous les programmes, valeurs reglees a chaque image
     ParamSet params;
     {
@@ -401,7 +445,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         return Result::Failed;
     }
 
-    if (B > 1) {  // accumulation flottante pour le flou de mouvement
+    if (B > 1 || crossfade || SMP > 1) {  // accumulation flottante : flou de mouvement, fondu de boucle, echantillons d'une image fixe
         present = buildPresentProgram(err, s.alpha);
         if (!present) { cleanupGL(); return Result::Failed; }
         glGenTextures(1, &accTex);
@@ -469,10 +513,10 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
 
     // Passes de tampon : memes variables que l'image, renseignees pour chaque programme
     auto setPassUniforms = [&](GLuint p, long long n) {
-        const double t = s.start + (double)n / s.fps;
+        const double t = shaderTime((double)n / s.fps);
         ogl::Uniform3f(ogl::GetUniformLocation(p, "iResolution"), (float)RW, (float)RH, 1.0f);
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iTime"), (float)t);
-        ogl::Uniform1f(ogl::GetUniformLocation(p, "iTimeDelta"), (float)(1.0 / s.fps));
+        ogl::Uniform1f(ogl::GetUniformLocation(p, "iTimeDelta"), (float)deltaAt(n));
         ogl::Uniform1i(ogl::GetUniformLocation(p, "iFrame"), (GLint)(n + s.warmup));
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iFrameRate"), (float)s.fps);
         setMouse(ogl::GetUniformLocation(p, "iMouse"), t);
@@ -492,25 +536,26 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                 H.log(L"  " + TXF("log.buffers_replay", (long long)(n + s.warmup)));
                 replayLogged = true;
             }
-            bp.step(simFrame, s.start + (double)simFrame / s.fps, RW, RH, setPassUniforms);
+            bp.step(simFrame, shaderTime((double)simFrame / s.fps), RW, RH, setPassUniforms);
         }
-        bp.step(n, s.start + (double)n / s.fps, RW, RH, setPassUniforms);
+        bp.step(n, shaderTime((double)n / s.fps), RW, RH, setPassUniforms);
         simFrame = n + 1;
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);  // retour a l'image
         ogl::UseProgram(prog);
     };
 
-    auto drawAt = [&](double t, long long n) {
+    auto drawAt = [&](double t, long long n, long long extraFrame = 0) {
         ogl::Uniform1f(uTime, (float)t);
+        if (!tm.identity()) ogl::Uniform1f(uDelta, (float)deltaAt(n));
         setMouse(uMouse, t);
-        ogl::Uniform1i(uFrame, (GLint)(n + s.warmup));
+        ogl::Uniform1i(uFrame, (GLint)(n + s.warmup + extraFrame));
         setDate(uDate, t);
         params.apply(prog, t);
         glDrawArrays(GL_TRIANGLES, 0, 3);
     };
     // Rend l'image n (temps t, facteur de fondu "fade") dans fbo ;
     // avec flou : moyenne de B sous-images etalees sur l'obturateur
-    auto renderFrame = [&](long long n, double t, float fade) {
+    auto prepareFrame = [&](long long n, double t) {
         updateChannels(chans, t, n);  // audio, video et clavier au temps exact de l'image
         setChannelTimes(chans, prog);
         if (chans.anyBuffer()) {  // le tampon le plus recent change a chaque image
@@ -518,38 +563,110 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             bp.latest(latest);
             bindChannels(chans, prog, latest);
         }
+    };
+    // Fin d'une image : post-traitement en virgule flottante (le fondu s'applique a la fin de la chaine)
+    auto finishFrame = [&](long long n, double t, float fade) {
+        if (!post.active()) return;
+        GLuint latest[5] = {0, 0, 0, 0, 0};
+        if (bp.any()) bp.latest(latest);
+        post.apply(fbo, n, t, fade, setPassUniforms, latest);
+        ogl::UseProgram(prog);
+    };
+    // Plusieurs echantillons d'un meme instant (image fixe) : iFrame different a chaque tirage, moyenne en virgule flottante ;
+    // une interruption garde ce qui est deja accumule (la moyenne est remise a l'echelle)
+    auto renderSamples = [&](long long n, double t, float fade) {
+        prepareFrame(n, t);
+        const bool pp = post.active();
+        const GLuint imgFbo = pp ? post.inputFbo() : fbo;
+        const float weight = pp ? 1.0f : fade;
+        ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, accFbo);
+        glClearColor(0, 0, 0, 0);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE);
+        ogl::Uniform1f(uWeight, weight / SMP);
+        ogl::Uniform1i(ogl::GetUniformLocation(prog, "st_premul"), s.alpha ? 1 : 0);
+        const auto t0 = std::chrono::steady_clock::now();
+        auto tLog = t0;
+        int done = 0;
+        for (int k = 0; k < SMP; k++) {
+            if (k > 0 && H.cancelled()) break;
+            drawAt(t, n, k);
+            done++;
+            if ((k & 7) == 7) glFinish();  // un tirage long ne doit pas bloquer le pilote graphique
+            const auto now = std::chrono::steady_clock::now();
+            if (now - tLog > std::chrono::milliseconds(250) || done == SMP) {
+                tLog = now;
+                const double speed = done / std::max(1e-6, std::chrono::duration<double>(now - t0).count());
+                if (H.progress) H.progress(done, SMP, speed, (SMP - done) / speed);
+            }
+        }
+        glDisable(GL_BLEND);
+        ogl::Uniform1i(ogl::GetUniformLocation(prog, "st_premul"), 0);
+        ogl::Uniform1f(uWeight, 1.0f);
+        if (done < SMP) H.log(L"  " + TXF("log.samples_partial", done, SMP));
+        else H.log(L"  " + TXF("log.samples_done", SMP));
+        ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, imgFbo);
+        ogl::UseProgram(present);
+        ogl::Uniform1f(ogl::GetUniformLocation(present, "st_scale"), (float)SMP / (float)done);
+        glBindTexture(GL_TEXTURE_2D, accTex);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        ogl::UseProgram(prog);
+        finishFrame(n, t, fade);
+    };
+    auto renderFrame = [&](long long n, double t, float fade) {
+        prepareFrame(n, t);
         // avec post-traitement, l'image va dans une texture flottante (fondu applique a la fin de la chaine)
         const bool pp = post.active();
         const GLuint imgFbo = pp ? post.inputFbo() : fbo;
         const float weight = pp ? 1.0f : fade;
-        if (B <= 1) {
+        // Tirages de l'image : sous-images du flou de mouvement (reparties sur l'obturateur, dans le temps du shader : en ralenti le flou
+        // se reduit tout seul) et, pour la boucle par fondu, deuxieme tirage une duree plus loin dont le poids monte de 0 a 1 en loopFade secondes
+        struct Draw {
+            double t;
+            float w;
+        };
+        std::vector<Draw> draws;
+        const double u = (double)n / s.fps;
+        for (int k = 0; k < B; k++) {
+            const double dk = B > 1 ? (double)k / B * s.shutter / s.fps : 0.0;
+            const double tk = t + (tm.at(u + dk) - tm.at(u));
+            const float wk = 1.0f / B;
+            if (crossfade) {
+                const double x = std::min(1.0, std::max(0.0, (u + dk) / loopFade));
+                const float m = (float)(x * x * (3.0 - 2.0 * x));
+                if (m < 1.0f) draws.push_back({tk + totalSec, wk * (1.0f - m)});  // la fin de la boucle, une duree plus loin
+                if (m > 0.0f) draws.push_back({tk, wk * m});
+            } else {
+                draws.push_back({tk, wk});
+            }
+        }
+        if (draws.size() == 1) {
             ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, imgFbo);
-            ogl::Uniform1f(uWeight, weight);
-            drawAt(t, n);
+            ogl::Uniform1f(uWeight, weight * draws[0].w);
+            drawAt(draws[0].t, n);
         } else {
             ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, accFbo);
             glClearColor(0, 0, 0, 0);
             glClear(GL_COLOR_BUFFER_BIT);
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE);
-            ogl::Uniform1f(uWeight, weight / B);
             ogl::Uniform1i(ogl::GetUniformLocation(prog, "st_premul"), s.alpha ? 1 : 0);  // alpha : somme de couleurs prémultipliées
-            for (int k = 0; k < B; k++) drawAt(t + (double)k / B * s.shutter / s.fps, n);
+            for (const Draw& d : draws) {
+                ogl::Uniform1f(uWeight, weight * d.w);
+                drawAt(d.t, n);
+            }
             glDisable(GL_BLEND);
             ogl::Uniform1i(ogl::GetUniformLocation(prog, "st_premul"), 0);
             ogl::Uniform1f(uWeight, 1.0f);
             ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, imgFbo);
             ogl::UseProgram(present);
+            ogl::Uniform1f(ogl::GetUniformLocation(present, "st_scale"), 1.0f);
             glBindTexture(GL_TEXTURE_2D, accTex);
             glDrawArrays(GL_TRIANGLES, 0, 3);
             ogl::UseProgram(prog);
         }
-        if (pp) {
-            GLuint latest[5] = {0, 0, 0, 0, 0};
-            if (bp.any()) bp.latest(latest);
-            post.apply(fbo, n, t, fade, setPassUniforms, latest);
-            ogl::UseProgram(prog);
-        }
+        finishFrame(n, t, fade);
     };
 
     // --- Apercu : une image renvoyee a l'appelant, sans ffmpeg -------------------
@@ -765,13 +882,14 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             }
             if (H.cancelled()) { aborted = true; break; }
             long long n = n0 + k;
-            double t = s.start + (double)n / s.fps;  // temps exact
+            double t = shaderTime((double)n / s.fps);  // temps exact
             if (sheet) {  // vignette k : au milieu du k-ieme intervalle de la plage rendue ; n = l'image de ce temps (les tampons y sont rejoues)
                 t = s.start + ((double)n + 0.5) * duration / (double)N;
                 n = std::llround((t - s.start) * s.fps);
             }
             advanceBuffers(n);
-            renderFrame(n, t, videoMode ? fadeAt(n) : 1.0f);
+            if (SMP > 1) renderSamples(n, t, 1.0f);
+            else renderFrame(n, t, videoMode ? fadeAt(n) : 1.0f);
 
             ogl::BindBuffer(ogl::K_PIXEL_PACK_BUFFER, pbo[k % D]);
             glReadPixels(0, 0, RW, RH, GL_RGBA, deep ? GL_UNSIGNED_SHORT : GL_UNSIGNED_BYTE, nullptr);
@@ -837,6 +955,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                     readFile(absolute ? s.lut : shaderDir + s.lut, lutBytes);
                 }
                 sigSrc += "|post:" + s.post + "|" + fnvHex(bp.postCode()) + "|" + fnvHex(lutBytes);
+                sigSrc += "|" + tm.canonical() + "|loop:" + s.loopMode + "," + std::to_string(loopFade);
                 // sortie : tout ce qui change les images ou l'encodage d'une partie
                 sigSrc += "|out:" + std::to_string(s.alpha) + s.hdr + std::to_string(s.hdrPeak) + "," + std::to_string(s.hdrFall) + "," +
                           std::to_string(s.hdrWhite) + "|" + std::to_string(s.interp) + "|" + std::to_string(OW) + "x" + std::to_string(OH) + s.scaleFilter +
@@ -928,6 +1047,18 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             if (s.container != "mp4" && s.container != "mov") H.log(L"  " + TXF("log.vr_meta_skipped", W(s.container).c_str()));
             else if (injectSphericalMetadata(out, vrMode == 2, metaErr)) H.log(L"  " + TX("log.vr_meta_done"));
             else H.log(L"  " + metaErr);
+        }
+        if (videoMode && (kind == OutKind::Video || kind == OutKind::Gif || kind == OutKind::Webp) && (s.loopMode != "none" || s.loop > 0) && !H.cancelled()) {
+            LoopCheck lc;  // la derniere image rejoint-elle la premiere aussi bien que deux images voisines se suivent ?
+            if (checkLoopSeam(ffmpeg, out, lc)) {
+                H.log(L"  " + TXF(lc.perfect ? "log.loop_check_ok" : "log.loop_check_bad", lc.seam, lc.typical));
+                if (rd) {
+                    rd->loopChecked = true;
+                    rd->loopSeam = lc.seam;
+                    rd->loopTypical = lc.typical;
+                    rd->loopPerfect = lc.perfect;
+                }
+            }
         }
         H.log(L"  " + TXF("log.ok_output", out.c_str()));
         if (H.output) H.output(out);

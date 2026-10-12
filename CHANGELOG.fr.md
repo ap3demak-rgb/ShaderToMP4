@@ -6,6 +6,17 @@
 
 Format : une section par version, la plus récente en premier. La section d'une version étiquetée est reprise dans les notes de version.
 
+## Non publié
+
+### Ajouts
+
+- Boucles sans couture sans toucher au shader : `loopmode=crossfade` (le début de la vidéo se mélange avec le shader une durée plus loin, `loopfade`) et `loopmode=pingpong` (le temps monte puis revient) ; contrôle de la couture après le rendu (dernière image contre première, dans le journal et le rapport de rendu).
+- Courbe de temps `timemap=0:0;4:1;8:5` (lisse, avec paliers et marche arrière) et `speed` constante : vrai ralenti, chaque image calculée à son instant exact du shader, flou de mouvement qui suit la vitesse ; le son n'est pas modifié.
+- Recherche de la période d'une boucle : bouton **Chercher la boucle** et `--find-loop[=secondes]` (sans rendu), la période remplit le champ **Boucle**.
+- Vignette intelligente (menu Images, `--png=best`) : les trois images les plus riches en `_thumb.png`, `_thumb2.png`, `_thumb3.png`.
+- Image fixe moyennée : `samples=N` (`--png --samples=N`) moyenne N échantillons indépendants d'un instant en virgule flottante ; une annulation garde les échantillons déjà calculés.
+- Section « Temps et boucle » de la fenêtre Sortie (Windows) et de la carte des réglages (Linux et macOS) ; sept nouveaux cas d'auto-test.
+
 ## 1.9.0 — 2026-10-12
 
 ### Ajouts

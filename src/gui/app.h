@@ -20,7 +20,7 @@ enum {
     ID_LIST = 101, ID_ADD, ID_REMOVE, ID_CLEAR, ID_START, ID_CANCEL, ID_PROG, ID_STATUS, ID_LOG,
     ID_RES = 120, ID_W, ID_H, ID_FPS, ID_DUR, ID_START_T, ID_CODEC, ID_PRESET, ID_CRF, ID_SNAP, ID_CONTAINER, ID_SS, ID_OUT, ID_BROWSE, ID_LOADP, ID_SAVEP,
     ID_BITRATE, ID_COLOR, ID_BLUR, ID_LOOP, ID_AUDIO, ID_AUDIOB, ID_FADEIN, ID_FADEOUT, ID_PAUSE, ID_FOLDER, ID_PREVIEW,
-    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_PLAY, ID_ABOUT, ID_LANG, ID_PARAMS, ID_OUTPUT, ID_FILESCOPE, ID_EDITOR
+    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_PLAY, ID_ABOUT, ID_LANG, ID_PARAMS, ID_OUTPUT, ID_FILESCOPE, ID_EDITOR, ID_FINDLOOP
 };
 enum {
     WM_APP_LOG = WM_APP + 1,  // lParam = std::wstring* (a liberer)
@@ -30,7 +30,8 @@ enum {
     WM_APP_PREVIEW,           // lParam = PreviewData* (a liberer)
     WM_APP_DL,                // telechargement de ffmpeg : wParam = pourcentage, lParam = std::wstring* (message)
     WM_APP_DLDONE,            // fin du telechargement : wParam = 1 si ok, lParam = std::wstring* (erreur)
-    WM_APP_MEDIA              // images, sons ou videos deposes sur la fenetre : lParam = std::vector<std::wstring>* (a liberer)
+    WM_APP_MEDIA,             // images, sons ou videos deposes sur la fenetre : lParam = std::vector<std::wstring>* (a liberer)
+    WM_APP_LOOP               // periode trouvee par la recherche de boucle : lParam = double* (a liberer)
 };
 constexpr int kPrevSteps = 10000;  // graduations du curseur d'apercu (de Debut a Debut + Duree)
 enum FileStatus { ST_PENDING, ST_RUNNING, ST_DONE, ST_FAILED, ST_CANCELLED };
@@ -86,7 +87,7 @@ struct App {
     FpsMeter playMeter;         // cadence reelle de l'apercu en lecture
     double snapshotAt = -1;     // image PNG au temps de l'apercu : temps du shader (secondes), -1 = au temps de debut
     bool snapshotRun = false;  // le lot en cours est une image (PNG, vignette ou planche-contact) (UI uniquement)
-    int imageKind = 0;         // 0 image PNG au temps de début, 1 vignette de couverture, 2 planche-contact
+    int imageKind = 0;         // 0 image PNG au temps de début, 1 vignette de couverture, 2 planche-contact, 3 vignette intelligente, 4 recherche de boucle
     int sheetCols = 0, sheetRows = 0;
     std::wstring snapshotPath;
     std::wstring exeDir;
@@ -165,7 +166,7 @@ void applyQuickPreset(int idx);  // 0 brouillon, 1 YouTube 1080p60, 2 4K 60, 3 v
 
 // --- jobs.cpp : rendus, apercu, telechargement ---
 void promptDownload();               // propose de telecharger ffmpeg.exe
-void startJobs(bool snapshot = false, int imageKind = 0, int cols = 0, int rows = 0, bool atPreview = false, bool selectedOnly = false, int batch = 0);  // snapshot : une image (0 PNG, 1 vignette, 2 planche cols x rows)
+void startJobs(bool snapshot = false, int imageKind = 0, int cols = 0, int rows = 0, bool atPreview = false, bool selectedOnly = false, int batch = 0);  // snapshot : une image (0 PNG, 1 vignette, 2 planche cols x rows, 3 vignette intelligente, 4 recherche de boucle)
 void showImageMenu();                // menu du bouton « Images » : PNG, vignette, planches-contact
 void updatePrevLabel();
 void runPreview();

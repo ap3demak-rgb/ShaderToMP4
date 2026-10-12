@@ -4,6 +4,7 @@
 #include "outputopts.h"
 #include "formats.h"
 #include "i18n.h"
+#include "timemap.h"
 #include "util.h"
 
 namespace {
@@ -64,6 +65,11 @@ void outputFieldsFrom(const Settings& s, OutputFields& f) {
     f.shutter = i18n::num(s.shutter);
     f.endAction = s.endaction == "folder" ? 1 : s.endaction == "sleep" ? 2 : 0;
     f.metadata = s.metadata;
+    f.loopMode = s.loopMode == "crossfade" ? 1 : s.loopMode == "pingpong" ? 2 : 0;
+    f.loopFade = i18n::num(s.loopFade);
+    f.timemap = W(s.timemap);
+    f.speed = s.speed != 1.0 ? i18n::num(s.speed) : L"";
+    f.samples = s.samples > 1 ? std::to_wstring(s.samples) : L"";
     f.variants.clear();
     for (const std::string& v : s.variants) f.variants += (f.variants.empty() ? L"" : L" ; ") + W(v);
 }
@@ -132,6 +138,25 @@ bool outputFieldsApply(const OutputFields& f, Settings& s, std::wstring& err) {
             }
             t.variants.push_back(v);
         }
+    }
+    // temps et boucle
+    {
+        t.loopMode = f.loopMode == 1 ? "crossfade" : f.loopMode == 2 ? "pingpong" : "none";
+        double fade = 0, speed = 0, samples = 0;
+        if (!number(f.loopFade, fade, 1) || fade < 0.05 || fade > 600 || !number(f.speed, speed, 1) || speed == 0 || std::fabs(speed) > 100 ||
+            !number(f.samples, samples, 1) || samples < 1 || samples > 100000 || samples != std::floor(samples)) {
+            err = TX("error.time_invalid");
+            return false;
+        }
+        std::string curve;
+        for (char c : U8(f.timemap))
+            if (!isspace((unsigned char)c)) curve += c;
+        TimeMap check;
+        if (!TimeMap::parse(curve, check, err)) return false;
+        t.loopFade = fade;
+        t.speed = speed;
+        t.samples = (int)samples;
+        t.timemap = curve;
     }
     double chunk = 0, shutter = 0, pbo = 0;
     if (!number(f.chunk, chunk, 0) || chunk < 0 || chunk > 86400 || !number(f.shutter, shutter, 0.5) || shutter < 0.01 || shutter > 1 || !number(f.pbo, pbo, 3) ||

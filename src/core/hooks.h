@@ -14,6 +14,7 @@ struct Hooks {
     bool snapshot = false;  // une seule image PNG (au temps "start") au lieu de la video
     // vignette de couverture (avec snapshot) : -1 = non, -2 = milieu de la plage rendue, sinon l'instant en secondes ; image reduite a 1280 pixels au plus
     double thumbTime = -1;
+    std::wstring thumbSuffix;  // ajoute au nom de la vignette (_thumb2.png...) : plusieurs propositions de la vignette intelligente
     // planche-contact : une image PNG de colonnes x lignes vignettes tirees a intervalles egaux sur la duree (0 = non)
     int sheetCols = 0, sheetRows = 0;
     // apercu : une image BGRA (haut en bas) au temps previewTime, renvoyee a l'appelant, sans ffmpeg

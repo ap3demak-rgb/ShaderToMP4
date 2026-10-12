@@ -6,6 +6,8 @@
 #include "gl.h"
 #include "locate.h"
 #include "montage.h"
+#include "looptools.h"
+#include "timemap.h"
 #include "batches.h"
 #include "channeldrop.h"
 #include "glslsyntax.h"
@@ -1051,6 +1053,286 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             }
             if (problem.empty() && (lit[0] != 0 || lit[1] < 30)) problem = bad("lit pixels " + std::to_string(lit[0]) + " / " + std::to_string(lit[1]));
             check("selftest.fmt_overlay", problem);
+        }
+        // --- Temps et boucle (phase 16) : courbe de temps, ralenti, boucles sans couture, recherche de periode, image fixe moyennee, vignette intelligente ---
+        {
+            // courbe de temps : points, vitesse lisse, marche arriere, aller-retour, erreurs, vitesse constante
+            {
+                std::wstring problem;
+                TimeMap tm;
+                std::wstring pe;
+                auto approx = [](double a, double b) { return std::fabs(a - b) < 1e-6; };
+                if (!TimeMap::parse("0:0;4:2;8:10", tm, pe)) problem = bad("parse " + U8(pe));
+                else if (!approx(tm.at(0), 0) || !approx(tm.at(4), 2) || !approx(tm.at(8), 10) || !tm.monotone() || tm.identity()) problem = bad("points");
+                else if (std::fabs(tm.speedAt(4 - 1e-6) - tm.speedAt(4 + 1e-6)) > 1e-3) problem = bad("speed jump at a point");
+                else if (tm.at(12) < 10) problem = bad("after the last point");
+                if (problem.empty()) {
+                    TimeMap back, hold, pp, slow;
+                    if (!TimeMap::parse("0:5;4:0", back, pe) || !approx(back.at(4), 0) || back.monotone()) problem = bad("reverse");
+                    else if (!TimeMap::parse("0:0;2:1;4:1;6:3", hold, pe) || !approx(hold.at(3), 1) || !approx(hold.speedAt(3), 0)) problem = bad("freeze");
+                    else {
+                        pp = TimeMap::pingPong(2);
+                        if (!approx(pp.at(1), 1) || !approx(pp.at(2), 2) || !approx(pp.at(3), 1) || !approx(pp.at(4), 0) || !approx(pp.at(5), 1) || pp.monotone()) problem = bad("ping-pong");
+                        slow.setSpeed(0.25);
+                        if (!approx(slow.at(4), 1) || slow.identity()) problem = bad("speed");
+                    }
+                }
+                if (problem.empty()) {  // textes refuses avec un message
+                    for (const char* badSpec : {"1;2", "0:0;0:1", "0:0", "a:b", "0:0;-1:2"}) {
+                        TimeMap t2;
+                        std::wstring e2;
+                        if (TimeMap::parse(badSpec, t2, e2) || e2.empty()) {
+                            problem = bad(std::string("accepted ") + badSpec);
+                            break;
+                        }
+                    }
+                }
+                if (problem.empty()) {  // reglages : lus du shader, ecrits dans config.ini, signature des parties
+                    Settings s1;
+                    applySetting(s1, "timemap", "0:0;4:2");
+                    applySetting(s1, "loopmode", "pingpong");
+                    applySetting(s1, "loopfade", "2.5");
+                    applySetting(s1, "speed", "0.5");
+                    applySetting(s1, "samples", "16");
+                    const std::wstring ini = outDir + sep + L"p16.ini";
+                    writeIni(ini, s1);
+                    std::string txt;
+                    readFile(ini, txt);
+                    Settings s2;
+                    parseLines(s2, txt, false);
+                    if (s2.timemap != "0:0;4:2" || s2.loopMode != "pingpong" || s2.loopFade != 2.5 || s2.speed != 0.5 || s2.samples != 16 || !sameSettings(s1, s2))
+                        problem = bad("settings round trip");
+                    else if (!isSettingKey("timemap") || !isSettingKey("loopmode") || !isSettingKey("loopfade") || !isSettingKey("speed") || !isSettingKey("samples"))
+                        problem = bad("setting keys");
+                }
+                if (problem.empty()) {  // champs de la fenetre Sortie (temps et boucle) : aller-retour avec les reglages, valeurs invalides refusees
+                    Settings so;
+                    OutputFields f;
+                    outputFieldsFrom(so, f);
+                    f.loopMode = 2;
+                    f.loopFade = L"2,5";
+                    f.timemap = L"0:0; 4:2";
+                    f.speed = L"0,5";
+                    f.samples = L"32";
+                    std::wstring oe;
+                    if (!outputFieldsApply(f, so, oe) || so.loopMode != "pingpong" || so.loopFade != 2.5 || so.timemap != "0:0;4:2" || so.speed != 0.5 || so.samples != 32)
+                        problem = bad("fields");
+                    else {
+                        for (int k = 0; k < 4 && problem.empty(); k++) {
+                            OutputFields g1 = f;
+                            if (k == 0) g1.speed = L"0";
+                            else if (k == 1) g1.loopFade = L"0.01";
+                            else if (k == 2) g1.samples = L"0";
+                            else g1.timemap = L"1;2";
+                            const Settings before = so;
+                            std::wstring ee;
+                            if (outputFieldsApply(g1, so, ee) || ee.empty() || !sameSettings(before, so)) problem = bad("invalid field accepted " + std::to_string(k));
+                        }
+                    }
+                }
+                check("selftest.fmt_timemap", problem);
+            }
+            const std::wstring ramp = put(L"p16_ramp.glsl", "void mainImage(out vec4 o, in vec2 p){ float v = clamp(iTime / 4.0, 0.0, 1.0); o = vec4(v, v, v, 1.0); }\n");
+            // niveau de gris du centre de l'image a l'instant t d'une sequence PNG, -1 si illisible
+            auto grayAt = [&](const std::wstring& pattern, double t) {
+                const std::string px = decodeRaw(pattern, L"gray", wfmt(L"-framerate 10 -ss %.2f", t));
+                return px.size() == 64 * 64 ? (int)(uint8_t)px[32 * 64 + 32] : -1;
+            };
+            auto seqSettings = [&](double duration) {
+                Settings st = base("h264", "png", 8);
+                st.duration = duration;
+                return st;
+            };
+            // vrai ralenti : chaque image est calculee a l'instant exact du shader (vitesse 0.25), le flou de mouvement suit la vitesse
+            if (formatAvailable(ffmpeg, "h264", "png")) {
+                std::wstring problem;
+                Settings st = seqSettings(2);
+                st.speed = 0.25;
+                std::wstring e;
+                std::string logText;
+                if (!renderOne(ramp, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    const std::wstring pat = sequencePattern(outputFile(ramp, st, false));
+                    const int a = grayAt(pat, 1.0), b = grayAt(pat, 1.1), c = grayAt(pat, 1.9);  // temps shader 0.25, 0.275, 0.475
+                    if (std::abs(a - 16) > 2 || std::abs(b - 17) > 2 || std::abs(c - 30) > 2 || a == b) problem = bad("frames " + std::to_string(a) + "," + std::to_string(b) + "," + std::to_string(c));
+                }
+                if (problem.empty()) {  // flou : 4 sous-images sur un obturateur plein, pente 2.5 par seconde
+                    const std::wstring fast = put(L"p16_fast.glsl", "void mainImage(out vec4 o, in vec2 p){ float v = clamp(iTime * 2.5, 0.0, 1.0); o = vec4(v, v, v, 1.0); }\n");
+                    int got[2] = {0, 0};
+                    for (int k = 0; k < 2 && problem.empty(); k++) {
+                        Settings sb = seqSettings(0.5);
+                        sb.blur = 4;
+                        sb.shutter = 1.0;
+                        sb.speed = k ? 0.25 : 1.0;
+                        if (!renderOne(fast, sb, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                        else got[k] = grayAt(sequencePattern(outputFile(fast, sb, false)), 0.0);
+                    }
+                    if (problem.empty() && (std::abs(got[0] - 24) > 3 || std::abs(got[1] - 6) > 3)) problem = bad("blur " + std::to_string(got[0]) + "," + std::to_string(got[1]));
+                }
+                check("selftest.fmt_slowmo", problem);
+            }
+            // boucle par fondu : la derniere image rejoint la premiere ; couture controlee sur la video et dans le rapport
+            if (formatAvailable(ffmpeg, "h264", "png") && formatAvailable(ffmpeg, "h264", "mp4")) {
+                std::wstring problem;
+                Settings st = seqSettings(4);
+                st.loopMode = "crossfade";
+                st.loopFade = 1.0;
+                std::wstring e;
+                std::string logText;
+                if (!renderOne(ramp, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    const std::wstring pat = sequencePattern(outputFile(ramp, st, false));
+                    const int f0 = grayAt(pat, 0.0), f5 = grayAt(pat, 0.5), f10 = grayAt(pat, 1.0), f20 = grayAt(pat, 2.0), f39 = grayAt(pat, 3.9);
+                    if (std::abs(f0 - 255) > 2 || std::abs(f5 - 143) > 3 || std::abs(f10 - 64) > 2 || std::abs(f20 - 128) > 2 || std::abs(f39 - 249) > 3)
+                        problem = bad("frames " + std::to_string(f0) + "," + std::to_string(f5) + "," + std::to_string(f10) + "," + std::to_string(f20) + "," + std::to_string(f39));
+                }
+                for (int withLoop = 1; withLoop >= 0 && problem.empty(); withLoop--) {  // avec le fondu : couture invisible ; sans : la rampe saute de 249 a 0
+                    Settings sv = base("h264", "mp4", 8);
+                    sv.duration = 4;
+                    sv.loopMode = withLoop ? "crossfade" : "none";
+                    sv.loop = withLoop ? 0 : 4;  // le controle de couture se lance aussi avec une periode donnee
+                    sv.report = "json";
+                    sv.crf = 18;
+                    if (!renderOne(ramp, sv, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else {
+                        const std::wstring file = outputFile(ramp, sv, false);
+                        LoopCheck lc;
+                        if (!checkLoopSeam(ffmpeg, file, lc)) problem = bad("seam check");
+                        else if (lc.perfect != (withLoop == 1)) problem = bad("seam " + std::to_string(lc.seam) + " vs " + std::to_string(lc.typical));
+                        else {
+                            std::string js;
+                            readFile(file.substr(0, file.find_last_of(L'.')) + L".report.json", js);
+                            if (js.find(withLoop ? "\"perfect\": true" : "\"perfect\": false") == std::string::npos) problem = bad("report loop");
+                        }
+                    }
+                }
+                check("selftest.fmt_loopcross", problem);
+            }
+            // aller-retour : le temps monte puis redescend ; les passes a historique le refusent, avancer seulement est accepte
+            if (formatAvailable(ffmpeg, "h264", "png")) {
+                std::wstring problem;
+                Settings st = seqSettings(4);
+                st.loopMode = "pingpong";
+                std::wstring e;
+                std::string logText;
+                if (!renderOne(ramp, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    const std::wstring pat = sequencePattern(outputFile(ramp, st, false));
+                    const int g0 = grayAt(pat, 0.0), g10 = grayAt(pat, 1.0), g20 = grayAt(pat, 2.0), g30 = grayAt(pat, 3.0), g39 = grayAt(pat, 3.9);
+                    if (std::abs(g0) > 2 || std::abs(g10 - 64) > 2 || std::abs(g20 - 128) > 2 || std::abs(g30 - 64) > 2 || std::abs(g39 - 6) > 3)
+                        problem = bad("frames " + std::to_string(g0) + "," + std::to_string(g10) + "," + std::to_string(g20) + "," + std::to_string(g30) + "," + std::to_string(g39));
+                }
+                if (problem.empty()) {
+                    const std::wstring hist = put(L"p16_hist.glsl", "// iChannel0=bufferA\nvoid mainImage(out vec4 o, in vec2 p){ o = texture(iChannel0, p / iResolution.xy); }\n");
+                    put(L"p16_hist.bufferA.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(0.25, 0.5, 0.75, 1.0); }\n");
+                    struct Case {
+                        const char* mode;
+                        const char* curve;
+                        bool ok;
+                    };
+                    for (const Case& c : {Case{"pingpong", "", false}, Case{"none", "0:2;2:0", false}, Case{"crossfade", "", false}, Case{"none", "0:0;2:1", true}}) {
+                        Settings sh = seqSettings(1);
+                        sh.loopMode = c.mode;
+                        sh.timemap = c.curve;
+                        std::wstring e2;
+                        std::string log2;
+                        const bool ran = renderOne(hist, sh, e2, log2);
+                        if (ran != c.ok) {
+                            problem = bad(std::string("passes ") + c.mode + " " + c.curve + (ran ? " accepted" : " refused"));
+                            break;
+                        }
+                        if (!ran && e2 != TX(std::string(c.mode) == "crossfade" ? "error.loop_history" : "error.timemap_history")) {
+                            problem = bad("passes message");
+                            break;
+                        }
+                    }
+                }
+                check("selftest.fmt_pingpong", problem);
+            }
+            // recherche de periode : shader periodique (2.5 s), image fixe, rampe sans retour
+            {
+                std::wstring problem;
+                const std::wstring periodic = put(L"p16_periodic.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(0.5 + 0.5 * sin(6.2831853 * iTime / 2.5 + p.x * 0.05), 0.5 + 0.5 * cos(6.2831853 * iTime / 2.5 + p.y * 0.05), 0.3, 1.0); }\n");
+                const std::wstring still = put(L"p16_still.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(p.x / iResolution.x, 0.4, 0.2, 1.0); }\n");
+                Settings sp = base("h264", "png", 8);
+                sp.duration = 8;
+                Hooks H;
+                H.log = [](const std::wstring&) {};
+                LoopFound lf;
+                std::wstring e;
+                if (!findLoop(periodic, exeDir, sp, 0, H, lf, e)) problem = bad("search " + U8(e));
+                else if (!lf.found || lf.quality != 2 || std::fabs(lf.period - 2.5) > 0.02) problem = bad("period " + std::to_string(lf.period) + " q" + std::to_string(lf.quality));
+                else if (!findLoop(still, exeDir, sp, 0, H, lf, e) || !lf.isStatic) problem = bad("static");
+                else {
+                    sp.duration = 6;
+                    if (!findLoop(ramp, exeDir, sp, 0, H, lf, e) || lf.found) problem = bad("ramp loop " + std::to_string(lf.period));
+                }
+                check("selftest.fmt_loopfind", problem);
+            }
+            // image fixe moyennee : le bruit baisse avec le nombre d'echantillons ; une interruption garde le resultat partiel a la bonne echelle
+            if (formatAvailable(ffmpeg, "h264", "png")) {
+                std::wstring problem;
+                const std::wstring noisy = put(L"p16_noisy.glsl", "void mainImage(out vec4 o, in vec2 p){ float r = fract(sin(float(iFrame) * 12.9898 + p.x * 78.233 + p.y * 37.719) * 43758.5453); o = vec4(vec3(r), 1.0); }\n");
+                auto spread = [&](const std::string& px, double& mean) {  // moyenne et ecart type des niveaux de gris
+                    double s1 = 0, s2 = 0;
+                    for (unsigned char c : px) {
+                        s1 += c;
+                        s2 += (double)c * c;
+                    }
+                    const double n = (double)px.size();
+                    mean = s1 / n;
+                    return std::sqrt(std::max(0.0, s2 / n - mean * mean));
+                };
+                double sd[3] = {0, 0, 0}, mean[3] = {0, 0, 0};
+                std::string partialLog;
+                for (int k = 0; k < 3 && problem.empty(); k++) {
+                    Settings ss = seqSettings(1);
+                    ss.samples = k == 0 ? 1 : k == 1 ? 64 : 100000;
+                    std::atomic<bool> stop{false};
+                    Hooks Hs;
+                    Hs.snapshot = true;
+                    Hs.log = [&](const std::wstring& l) { partialLog += U8(l) + "\n"; };
+                    if (k == 2) {  // interrompu apres le premier releve de progression
+                        Hs.cancel = &stop;
+                        Hs.progress = [&](long long, long long, double, double) { stop = true; };
+                    }
+                    std::wstring e2;
+                    if (convertFile(noisy, exeDir, ss, Hs, e2) != Result::Ok) problem = e2.empty() ? TX("selftest.render_failed") : e2;
+                    else {
+                        const std::string px = decodeRaw(outputPath(noisy, ss.outdir, L".png"), L"gray", L"");
+                        if (px.size() != 64 * 64) problem = bad("image size " + std::to_string(px.size()));
+                        else sd[k] = spread(px, mean[k]);
+                    }
+                }
+                if (problem.empty()) {
+                    if (sd[0] < 55 || sd[1] > sd[0] / 3 || std::fabs(mean[1] - 128) > 8 || std::fabs(mean[2] - 128) > 10 || sd[2] > sd[0])
+                        problem = bad("spread " + std::to_string(sd[0]) + "," + std::to_string(sd[1]) + "," + std::to_string(sd[2]) + " mean " + std::to_string(mean[1]) + "," + std::to_string(mean[2]));
+                }
+                check("selftest.fmt_samples", problem);
+            }
+            // vignette intelligente : le noir des deux premieres secondes ne gagne pas, trois propositions distinctes dans la partie riche
+            {
+                std::wstring problem;
+                const std::wstring half = put(L"p16_half.glsl",
+                                              "void mainImage(out vec4 o, in vec2 p){ vec2 u = p / iResolution.xy; vec3 c = 0.5 + 0.5 * cos(6.2831853 * (u.x * 3.0 + u.y * 2.0 + vec3(0.0, 0.33, 0.67) + iTime * 0.1));"
+                                              " c *= 0.6 + 0.4 * sin(u.x * 40.0) * sin(u.y * 30.0); o = vec4(iTime < 2.0 ? vec3(0.02) : c, 1.0); }\n");
+                Settings sp = base("h264", "png", 8);
+                sp.duration = 4;
+                Hooks H;
+                H.log = [](const std::wstring&) {};
+                std::vector<BestFrame> best;
+                std::wstring e;
+                if (!findBestFrames(half, exeDir, sp, 24, 3, H, best, e) || best.size() != 3) problem = bad("frames " + std::to_string(best.size()) + " " + U8(e));
+                else {
+                    for (size_t i = 0; i < best.size() && problem.empty(); i++) {
+                        if (best[i].t < 2.0) problem = bad("black frame chosen " + std::to_string(best[i].t));
+                        for (size_t j = i + 1; j < best.size(); j++)
+                            if (std::fabs(best[i].t - best[j].t) < 0.1) problem = bad("not distinct");
+                    }
+                    if (problem.empty() && best[0].score < best[1].score) problem = bad("order");
+                }
+                check("selftest.fmt_smartthumb", problem);
+            }
         }
     }
     // Canaux dynamiques et cubemap par fichiers : audio (spectre), video (images au bon temps), six faces de couleurs distinctes

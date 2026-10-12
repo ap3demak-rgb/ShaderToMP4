@@ -6,6 +6,17 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
+## Unreleased
+
+### Added
+
+- Seamless loops without touching the shader: `loopmode=crossfade` (the start of the video blends with the shader one duration later, `loopfade`) and `loopmode=pingpong` (the time goes up then comes back); a seam check after the render (last frame against first, in the log and the render report).
+- Time curve `timemap=0:0;4:1;8:5` (smooth, with freezes and reverse) and constant `speed`: real slow motion, every frame computed at its exact shader time, motion blur following the speed; the sound is not changed.
+- Loop period search: **Find the loop** button and `--find-loop[=seconds]` (no render), the period fills the **Loop** field.
+- Smart thumbnail (Images menu, `--png=best`): the three richest frames as `_thumb.png`, `_thumb2.png`, `_thumb3.png`.
+- Averaged still image: `samples=N` (`--png --samples=N`) averages N independent samples of one instant in floating point; a cancel keeps the samples already computed.
+- “Time and loop” section of the Output window (Windows) and of the settings card (Linux and macOS); seven new self-test cases.
+
 ## 1.9.0 — 2026-10-12
 
 ### Added

@@ -18,6 +18,9 @@ struct RenderReport {
     double waitSeconds = 0;             // temps passe par le rendu a attendre l'encodeur
     uint64_t bytes = 0;                 // taille du fichier produit
     std::string codec, container, encoder;
+    bool loopChecked = false;           // controle de la couture d'une video en boucle (looptools.h)
+    double loopSeam = 0, loopTypical = 0;
+    bool loopPerfect = false;
     std::vector<std::wstring> warnings;
 };
 
