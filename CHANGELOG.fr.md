@@ -16,6 +16,7 @@ Format : une section par version, la plus récente en premier. La section d'une 
 - Texte sur la vidéo : `title`, `credit`, `titledur` avec drawtext de ffmpeg ; le journal d'un import Shadertoy donne la ligne de crédit à ajouter.
 - Montage : un fichier `nom.montage` enchaîne plusieurs shaders avec des transitions coupe, fondu, fondu enchaîné ou balayage (clips rendus par parties reprenables, puis joints par ffmpeg).
 - Ligne de commande : `--sheet=4x3` (planche-contact) et `--thumb[=secondes]` (vignette de couverture).
+- Fenêtre « Sortie » (Windows, bouton de l'en-tête) et section correspondante de la carte des réglages (Linux et macOS) pour la transparence, le HDR, la taille et le filtre de sortie, l'interpolation, le volume sonore, le titre et le crédit ; le bouton « Image PNG » devient « Images » : image PNG, vignette de couverture ou planche-contact (3×2, 4×3, 5×4, 6×5).
 
 - Paramètres animés : `// uniform float vitesse = 1.0 [0..5]` (types float, int, bool, vec2, vec3, vec4, color) déclare un uniform réglable, disponible dans toutes les passes ; valeurs enregistrées par shader dans `params/`, images clés `// key vitesse=0:1.0 ; 4:3.0` (linéaire, lissée ou constante), `--param=nom=valeur` en ligne de commande, et paramètres qui suivent le son (`audio.level`, `audio.bass`, `audio.mid`, `audio.treble`).
 - Fenêtre « Paramètres et post-traitement » sous Windows (bouton de l'en-tête) et les mêmes contrôles en bas de la carte des réglages sous Linux et macOS ; l'aperçu en lecture reprend les valeurs tout de suite.

@@ -38,6 +38,11 @@ struct Fields {
     bool postOn[8] = {false, false, false, false, false, false, false, false};  // effets de post-traitement (ordre de postEffectInfos())
     float postAmt[8] = {0, 0, 0, 0, 0, 0, 0, 0};                                 // leur quantité
     char lut[512] = "";                                                           // LUT couleur .cube
+    // Sortie : transparence, HDR, taille, interpolation, volume sonore, titre et credit (core/outputopts)
+    bool alpha = false;
+    int hdr = 0, scaleFilter = 0;  // hdr : 0 aucun, 1 HDR10 (PQ), 2 HLG
+    char hdrPeak[16] = "1000", hdrFall[16] = "400", hdrWhite[16] = "203", scale[32] = "", interp[16] = "", loudnorm[16] = "";
+    char title[256] = "", credit[256] = "", titleDur[16] = "3";
 };
 
 struct LogLine {
@@ -73,7 +78,7 @@ public:
     void saveQueue() const;  // shaders pas encore rendus : queue.txt, retrouves a la reouverture
 
     // --- Actions ---
-    void startJobs(bool snapshot);
+    void startJobs(bool snapshot, int imageKind = 0, int cols = 0, int rows = 0);  // snapshot : une image (0 PNG, 1 vignette, 2 planche cols x rows)
     void runPreview();
     void togglePause();
     // Apercu en temps reel (lecture) : demarre / arrete, suit le curseur et le shader selectionne
@@ -124,6 +129,7 @@ private:
 
     std::atomic<bool> running_{false}, cancel_{false}, pause_{false};
     bool snapshotRun_ = false;
+    int imageKind_ = 0, sheetCols_ = 0, sheetRows_ = 0;
 public:
     bool attention = false;  // un lot vient de finir : la fenetre demande l'attention (barre des taches / Dock)
 private:

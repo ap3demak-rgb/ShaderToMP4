@@ -6,6 +6,7 @@
 #include "gl.h"
 #include "locate.h"
 #include "montage.h"
+#include "outputopts.h"
 #include "overlay.h"
 #include "params.h"
 #include "passes.h"
@@ -698,6 +699,45 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                 if (!left || !right) problem = bad("checkerboard / color");
             }
             check("selftest.fmt_alpha_preview", problem);
+        }
+        {  // champs de la fenetre « Sortie » : aller-retour avec Settings, valeurs invalides refusees sans rien modifier
+            std::wstring problem, e;
+            Settings s0;
+            s0.width = 1280;
+            s0.height = 720;
+            OutputFields f;
+            outputFieldsFrom(s0, f);
+            f.alpha = true;
+            f.hdr = 1;
+            f.hdrWhite = L"150";
+            f.scale = L"2x";
+            f.scaleFilter = 4;
+            f.interp = L"60";
+            f.loudnorm = L"-16";
+            f.title = L"Titre";
+            f.titleDur = L"4,5";
+            Settings s1 = s0;
+            if (!outputFieldsApply(f, s1, e) || !s1.alpha || s1.hdr != "pq" || s1.hdrWhite != 150 || s1.scale != "2x" || s1.scaleFilter != "neighbor" ||
+                s1.interp != 60 || s1.loudnorm != -16 || s1.title != L"Titre" || s1.titleDur != 4.5) {
+                problem = bad("apply");
+            } else {
+                OutputFields back;
+                outputFieldsFrom(s1, back);
+                Settings s2 = s0;
+                if (!outputFieldsApply(back, s2, e) || s2.scale != s1.scale || s2.interp != s1.interp || s2.title != s1.title || s2.loudnorm != s1.loudnorm)
+                    problem = bad("round trip");
+            }
+            for (int k = 0; k < 5 && problem.empty(); k++) {
+                OutputFields v = f;
+                if (k == 0) v.scale = L"abc";
+                else if (k == 1) v.hdrPeak = L"5";
+                else if (k == 2) v.interp = L"999";
+                else if (k == 3) v.loudnorm = L"3";
+                else v.titleDur = L"0";
+                Settings s3 = s0;
+                if (outputFieldsApply(v, s3, e) || s3.alpha || s3.title != s0.title || e.empty()) problem = bad("invalid " + std::to_string(k));
+            }
+            check("selftest.fmt_outputopts", problem);
         }
         // planche-contact 3x2 et vignette : le rouge suit iTime (duree 6 s), chaque vignette est tiree au milieu de son intervalle (0.5, 1.5, ... 5.5 s)
         if (formatAvailable(ffmpeg, "h264", "png")) {

@@ -5,6 +5,7 @@
 #include "core/ffmpeg_download.h"
 #include "core/formats.h"
 #include "core/locate.h"
+#include "core/outputopts.h"
 #include "core/params.h"
 #include "core/postfx.h"
 #include "core/presets.h"
@@ -270,7 +271,15 @@ void drawShaders(App& a, float height) {
         fit(buttonWidth("ui.btn.folder", true));
         if (button("ui.btn.folder", "folder", 0, any, 0, "ui.tip.folder")) m.openOutputFolder();
         fit(buttonWidth("ui.btn.png", true));
-        if (button("ui.btn.png", "image", 0, !run && any, 0, "ui.tip.png")) m.startJobs(true);
+        if (button("ui.btn.png", "image", 0, !run && any, 0, "ui.tip.png")) ImGui::OpenPopup("##images");
+        if (ImGui::BeginPopup("##images")) {  // image PNG, vignette de couverture ou planche-contact (grille au choix)
+            if (ImGui::Selectable(T("ui.menu.png").c_str())) m.startJobs(true, 0);
+            if (ImGui::Selectable(T("ui.menu.thumb").c_str())) m.startJobs(true, 1);
+            ImGui::Separator();
+            for (int i = 0; i < kSheetGridCount; i++)
+                if (ImGui::Selectable(TXF8("ui.menu.sheet", kSheetGrids[i][0], kSheetGrids[i][1]).c_str())) m.startJobs(true, 2, kSheetGrids[i][0], kSheetGrids[i][1]);
+            ImGui::EndPopup();
+        }
     }
     endCard();
 }
@@ -540,6 +549,81 @@ void drawPostfx(App& a) {
     ImGui::PopID();
 }
 
+// --- Sortie : transparence, HDR, taille, interpolation, volume sonore, texte sur la video (core/outputopts) -------------------
+void drawOutput(App& a) {
+    Fields& f = a.model.f;
+    const float colX = S(190);  // les libelles de cette section sont plus longs que ceux de la carte : champs decales
+    const float width = std::max(S(80), ImGui::GetContentRegionAvail().x - colX - S(110));
+    auto row = [&](const char* key) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(colv(pal::MUTED), "%s", T(key).c_str());
+        ImGui::SameLine(colX);
+    };
+    auto section = [&](const char* key) {
+        ImGui::Dummy(ImVec2(0, S(6)));
+        ImGui::TextColored(colv(pal::ACCENT), "%s", T(key).c_str());
+        ImGui::Separator();
+    };
+    auto note = [&](const char* key) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(colv(pal::FAINT), "%s", T(key).c_str());
+        ImGui::PopTextWrapPos();
+    };
+    const std::vector<std::string> offOn = {T("ui.output.off"), T("ui.output.on")};
+
+    section("ui.output.sec_alpha");
+    row("ui.output.alpha");
+    int al = f.alpha ? 1 : 0;
+    if (comboList("##alpha", &al, offOn, width)) f.alpha = al == 1;
+    note("ui.output.hint_alpha");
+
+    section("ui.output.sec_hdr");
+    row("ui.output.hdr");
+    comboList("##hdr", &f.hdr, {T("ui.output.off"), "HDR10 (PQ)", "HLG"}, width);
+    ImGui::BeginDisabled(f.hdr == 0);
+    row("ui.output.white");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##hdrwhite", f.hdrWhite, sizeof(f.hdrWhite));
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(f.hdr != 1);
+    row("ui.output.peak");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##hdrpeak", f.hdrPeak, sizeof(f.hdrPeak));
+    row("ui.output.fall");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##hdrfall", f.hdrFall, sizeof(f.hdrFall));
+    ImGui::EndDisabled();
+    note("ui.output.hint_hdr");
+
+    section("ui.output.sec_size");
+    row("ui.output.scale");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##scale", f.scale, sizeof(f.scale));
+    row("ui.output.filter");
+    std::vector<std::string> filters;
+    for (int i = 0; i < kScaleFilterCount; i++) filters.push_back(T(scaleFilterLabelKey(i)));
+    comboList("##scalefilter", &f.scaleFilter, filters, width);
+    row("ui.output.interp");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##interp", f.interp, sizeof(f.interp));
+    row("ui.output.loudnorm");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##loudnorm", f.loudnorm, sizeof(f.loudnorm));
+    note("ui.output.hint_size");
+
+    section("ui.output.sec_text");
+    row("ui.output.text_title");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##title", f.title, sizeof(f.title));
+    row("ui.output.credit");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##credit", f.credit, sizeof(f.credit));
+    row("ui.output.titledur");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##titledur", f.titleDur, sizeof(f.titleDur));
+    note("ui.output.hint_text");
+}
+
 void drawSettings(App& a, float height) {
     Model& m = a.model;
     Fields& f = m.f;
@@ -745,6 +829,7 @@ void drawSettings(App& a, float height) {
             });
         ImGui::PopID();
         drawPostfx(a);
+        drawOutput(a);
         drawParams(a);
         ImGui::EndChild();
 

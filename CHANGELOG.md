@@ -16,6 +16,7 @@ Format: one section per version, newest first. The section of a tagged version i
 - Text on the video: `title`, `credit`, `titledur` with ffmpeg's drawtext; the log of a Shadertoy import gives the credit line to add.
 - Montage: a `name.montage` file chains several shaders with cut, fade, crossfade or wipe transitions (clips rendered in resumable parts, then joined by ffmpeg).
 - Command line: `--sheet=4x3` (contact sheet) and `--thumb[=seconds]` (cover thumbnail).
+- “Output” window (Windows, header button) and matching section of the settings card (Linux and macOS) for transparency, HDR, output size and filter, interpolation, loudness, title and credit; the “PNG image” button becomes “Images”: PNG image, cover thumbnail or contact sheet (3×2, 4×3, 5×4, 6×5).
 
 - Animated parameters: `// uniform float speed = 1.0 [0..5]` (types float, int, bool, vec2, vec3, vec4, color) declares an adjustable uniform available in every pass; values saved per shader in `params/`, keyframes `// key speed=0:1.0 ; 4:3.0` (linear, smooth or constant), `--param=name=value` on the command line, and parameters that follow the sound (`audio.level`, `audio.bass`, `audio.mid`, `audio.treble`).
 - “Parameters and post-processing” window on Windows (header button) and the same controls at the bottom of the settings card on Linux and macOS; the live preview picks the values up at once.

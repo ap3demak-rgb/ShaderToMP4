@@ -9,6 +9,7 @@
 #include "core/queue.h"
 #include "core/shadertoy_import.h"
 #include "core/gl.h"
+#include "core/outputopts.h"
 #include "core/i18n.h"
 #include "core/postfx.h"
 #include "core/render.h"
@@ -126,6 +127,20 @@ void Model::fromSettings(const Settings& s) {
             f.postAmt[e.index] = (float)e.amount;
         }
     copyTo(f.lut, sizeof(f.lut), U8(s.lut));
+    OutputFields o;
+    outputFieldsFrom(s, o);
+    f.alpha = o.alpha;
+    f.hdr = o.hdr;
+    f.scaleFilter = o.scaleFilter;
+    copyTo(f.hdrPeak, sizeof(f.hdrPeak), U8(o.hdrPeak));
+    copyTo(f.hdrFall, sizeof(f.hdrFall), U8(o.hdrFall));
+    copyTo(f.hdrWhite, sizeof(f.hdrWhite), U8(o.hdrWhite));
+    copyTo(f.scale, sizeof(f.scale), U8(o.scale));
+    copyTo(f.interp, sizeof(f.interp), U8(o.interp));
+    copyTo(f.loudnorm, sizeof(f.loudnorm), U8(o.loudnorm));
+    copyTo(f.title, sizeof(f.title), U8(o.title));
+    copyTo(f.credit, sizeof(f.credit), U8(o.credit));
+    copyTo(f.titleDur, sizeof(f.titleDur), U8(o.titleDur));
 }
 
 bool Model::toSettings(Settings& s, std::wstring& err) const {
@@ -174,7 +189,20 @@ bool Model::toSettings(Settings& s, std::wstring& err) const {
             s.post += b;
         }
     s.lut = W(f.lut);
-    return true;
+    OutputFields o;  // transparence, HDR, taille, interpolation, volume, texte : meme validation que la fenetre Windows
+    o.alpha = f.alpha;
+    o.hdr = f.hdr;
+    o.scaleFilter = f.scaleFilter;
+    o.hdrPeak = W(f.hdrPeak);
+    o.hdrFall = W(f.hdrFall);
+    o.hdrWhite = W(f.hdrWhite);
+    o.scale = W(f.scale);
+    o.interp = W(f.interp);
+    o.loudnorm = W(f.loudnorm);
+    o.title = W(f.title);
+    o.credit = W(f.credit);
+    o.titleDur = W(f.titleDur);
+    return outputFieldsApply(o, s, err);
 }
 
 void Model::applyQuickPreset(int idx) {
@@ -343,7 +371,12 @@ void Model::runJobsThread(std::vector<std::pair<int, std::wstring>> jobs) {
     H.log = postLog;
     H.cancel = &cancel_;
     H.pause = &pause_;
-    H.snapshot = snapshotRun_;
+    H.snapshot = snapshotRun_ && imageKind_ != 2;  // la planche-contact n'est pas une image fixe pour le moteur
+    if (snapshotRun_ && imageKind_ == 1) H.thumbTime = -2;  // vignette : milieu de la plage
+    if (snapshotRun_ && imageKind_ == 2) {
+        H.sheetCols = sheetCols_;
+        H.sheetRows = sheetRows_;
+    }
     if (previewRun) {
         H.previewFrame = [this](int w, int h, std::vector<uint8_t>&& px) {
             Event e;
@@ -416,7 +449,7 @@ void Model::startFfmpegDownload() {
     });
 }
 
-void Model::startJobs(bool snapshot) {
+void Model::startJobs(bool snapshot, int imageKind, int cols, int rows) {
     if (running()) return;
     stopPlay();
     if (ffmpegMissing()) {
@@ -457,10 +490,13 @@ void Model::startJobs(bool snapshot) {
     pause_ = false;
     running_ = true;
     snapshotRun_ = snapshot;
+    imageKind_ = snapshot ? imageKind : 0;
+    sheetCols_ = cols;
+    sheetRows_ = rows;
     previewRun = false;
     progress = 0;
     progressFailed = false;
-    if (snapshot) snapshotPath_ = outputPath(jobs[0].second, cur.outdir, L".png");
+    if (snapshot) snapshotPath_ = outputPath(jobs[0].second, cur.outdir, imageKind == 1 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : L".png");
     setStatus(TX(snapshot ? "status.rendering_image" : "status.rendering"));
     worker_ = std::thread(&Model::runJobsThread, this, std::move(jobs));
 }

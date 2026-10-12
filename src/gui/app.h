@@ -17,7 +17,7 @@ enum {
     ID_LIST = 101, ID_ADD, ID_REMOVE, ID_CLEAR, ID_START, ID_CANCEL, ID_PROG, ID_STATUS, ID_LOG,
     ID_RES = 120, ID_W, ID_H, ID_FPS, ID_DUR, ID_START_T, ID_CODEC, ID_PRESET, ID_CRF, ID_SNAP, ID_CONTAINER, ID_SS, ID_OUT, ID_BROWSE, ID_LOADP, ID_SAVEP,
     ID_BITRATE, ID_COLOR, ID_BLUR, ID_LOOP, ID_AUDIO, ID_AUDIOB, ID_FADEIN, ID_FADEOUT, ID_PAUSE, ID_FOLDER, ID_PREVIEW,
-    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_PLAY, ID_ABOUT, ID_LANG, ID_PARAMS
+    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_PLAY, ID_ABOUT, ID_LANG, ID_PARAMS, ID_OUTPUT
 };
 enum {
     WM_APP_LOG = WM_APP + 1,  // lParam = std::wstring* (a liberer)
@@ -58,7 +58,7 @@ struct App {
     HBRUSH brCard = nullptr, brField = nullptr;
     HWND chips[5] = {nullptr, nullptr, nullptr, nullptr, nullptr};  // preselections rapides
     HWND tip = nullptr;
-    HWND bAbout = nullptr, bLang = nullptr, bParams = nullptr;  // en-tête : À propos, langue, paramètres et post-traitement
+    HWND bAbout = nullptr, bLang = nullptr, bParams = nullptr, bOutput = nullptr;  // en-tête : À propos, langue, paramètres et post-traitement, sortie
     int chipRight = 0;                       // bord droit de la pastille de version (à gauche des boutons de l'en-tête)
     struct Card {
         RECT r;
@@ -78,7 +78,9 @@ struct App {
     std::atomic<bool> running{false}, cancel{false}, pause{false};
     bool previewRun = false;   // le lot en cours est un apercu (UI uniquement)
     double previewTime = 0;
-    bool snapshotRun = false;  // le lot en cours est une image PNG (UI uniquement)
+    bool snapshotRun = false;  // le lot en cours est une image (PNG, vignette ou planche-contact) (UI uniquement)
+    int imageKind = 0;         // 0 image PNG au temps de début, 1 vignette de couverture, 2 planche-contact
+    int sheetCols = 0, sheetRows = 0;
     std::wstring snapshotPath;
     std::wstring exeDir;
     Settings base;
@@ -131,7 +133,8 @@ void applyQuickPreset(int idx);  // 0 brouillon, 1 YouTube 1080p60, 2 4K 60, 3 v
 
 // --- jobs.cpp : rendus, apercu, telechargement ---
 void promptDownload();               // propose de telecharger ffmpeg.exe
-void startJobs(bool snapshot = false);
+void startJobs(bool snapshot = false, int imageKind = 0, int cols = 0, int rows = 0);  // snapshot : une image (0 PNG, 1 vignette, 2 planche cols x rows)
+void showImageMenu();                // menu du bouton « Images » : PNG, vignette, planches-contact
 void updatePrevLabel();
 void runPreview();
 void openFolder();
@@ -143,4 +146,5 @@ void saveWindowPlacement(HWND wnd);
 std::string readSavedLanguage();  // langue mémorisée dans window.ini ("" si aucune)
 void showAbout(HWND parent);      // fenêtre « À propos » (about.cpp)
 void showParams(HWND parent);     // fenêtre « Paramètres et post-traitement » (params_dialog.cpp)
+void showOutput(HWND parent);     // fenêtre « Sortie » : alpha, HDR, taille, interpolation, volume, texte (output_dialog.cpp)
 void setDropHot(bool hot);  // illumine / eteint la zone de depot (fondu)
