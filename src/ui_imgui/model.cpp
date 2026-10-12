@@ -620,6 +620,7 @@ void Model::runJobsThread(std::vector<std::pair<int, std::wstring>> jobs) {
         postDone();
         return;
     }
+    double estLow = 0, estMid = 0, estHigh = 0;  // estimation de la file : somme des fichiers
     for (size_t i = 0; i < jobs.size(); i++) {
         const int idx = jobs[i].first;
         if (cancel_) {
@@ -683,6 +684,9 @@ void Model::runJobsThread(std::vector<std::pair<int, std::wstring>> jobs) {
         } else if (snapshotRun_ && imageKind_ == 8) {  // estimation du temps de rendu
             Estimate est;
             if (estimateRender(jobs[i].second, exeDir, run, H, est, e)) {
+                estLow += est.secLow;
+                estMid += est.secMid;
+                estHigh += est.secHigh;
                 const std::wstring text = describeEstimate(est);
                 size_t pos = 0;
                 while (pos < text.size()) {
@@ -741,6 +745,8 @@ void Model::runJobsThread(std::vector<std::pair<int, std::wstring>> jobs) {
         else if (r == Result::Cancelled) postLog(L"  " + TX("log.cancelled"));
         postFile(idx, r == Result::Ok ? ST_DONE : r == Result::Cancelled ? ST_CANCELLED : ST_FAILED);
     }
+    if (snapshotRun_ && imageKind_ == 8 && jobs.size() > 1 && estMid > 0)
+        postLog(L"  " + TXF("log.estimate.total", formatDuration(estMid).c_str(), formatDuration(estLow).c_str(), formatDuration(estHigh).c_str()));
     destroyGLContext(gl);
     postDone();
 }
@@ -812,7 +818,10 @@ void Model::startJobs(bool snapshot, int imageKind, int cols, int rows, bool atP
         return;
     }
     std::vector<std::pair<int, std::wstring>> jobs;
-    if (snapshot) {
+    if (snapshot && imageKind == 8) {  // estimation : tous les fichiers pas encore faits, le total est donne a la fin
+        for (size_t i = 0; i < paths.size(); i++)
+            if (state[i] != ST_DONE) jobs.push_back({(int)i, paths[i]});
+    } else if (snapshot) {
         if (paths.empty()) return;
         const int sel = std::min(std::max(0, selected), (int)paths.size() - 1);
         jobs.push_back({sel, paths[sel]});

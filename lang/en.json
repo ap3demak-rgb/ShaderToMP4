@@ -400,6 +400,8 @@
   "log.duration.hm": "%lld h %02lld min",
   "log.duration.ms": "%lld min %02lld s",
   "log.duration.s": "%lld s",
+  "log.check.pattern": "Regular stripe patterns (at least 5 light / dark pairs) over a large part of the screen for %.1f s, from %.2f s. Risk for pattern-sensitive viewers (indicative, not a guarantee).",
+  "log.check.mediump_sim": "Half-precision simulation: around %.0f s the clock input would be off by up to %.3f s and the picture would differ by %.1f / 255 from the exact one (a normal frame step differs by %.1f).",
   "log.compat_vr": "mainVR (VR shader): rendered as a 360° equirectangular video, mono (the width should be twice the height).",
   "log.vr_stereo": "mainVR (VR shader): rendered as a 360° equirectangular video, stereo with the left eye on top (the width should equal the height).",
   "log.vr_aspect": "The size %dx%d does not fit a 360° video: use a ratio of %ls (e.g. 4096x2048 for mono, 4096x4096 for stereo).",

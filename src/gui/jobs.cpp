@@ -60,6 +60,7 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
         PostMessageW(g.wnd, WM_APP_DONE, 0, 0);
         return;
     }
+    double estLow = 0, estMid = 0, estHigh = 0;  // estimation de la file : somme des fichiers
     for (size_t i = 0; i < jobs.size(); i++) {
         const int idx = jobs[i].first;
         if (g.cancel) {
@@ -106,6 +107,9 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
         } else if (g.snapshotRun && g.imageKind == 8) {  // estimation du temps de rendu
             Estimate est;
             if (estimateRender(jobs[i].second, g.exeDir, run, H, est, e)) {
+                estLow += est.secLow;
+                estMid += est.secMid;
+                estHigh += est.secHigh;
                 const std::wstring text = describeEstimate(est);
                 size_t pos = 0;
                 while (pos < text.size()) {
@@ -156,6 +160,8 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
         PostMessageW(g.wnd, WM_APP_FILE, (WPARAM)idx,
                      r == Result::Ok ? ST_DONE : r == Result::Cancelled ? ST_CANCELLED : ST_FAILED);
     }
+    if (g.snapshotRun && g.imageKind == 8 && jobs.size() > 1 && estMid > 0)
+        postLog(L"  " + TXF("log.estimate.total", formatDuration(estMid).c_str(), formatDuration(estLow).c_str(), formatDuration(estHigh).c_str()));
     destroyGLContext(gl);
     PostMessageW(g.wnd, WM_APP_DONE, 0, 0);
 }
@@ -219,7 +225,10 @@ void startJobs(bool snapshot, int imageKind, int cols, int rows, bool atPreview,
     }
     if (g.running) return;
     std::vector<std::pair<int, std::wstring>> jobs;
-    if (snapshot) {  // une image du fichier selectionne (sinon du premier)
+    if (snapshot && imageKind == 8) {  // estimation : tous les fichiers pas encore faits, le total est donne a la fin
+        for (size_t i = 0; i < g.paths.size(); i++)
+            if (g.state[i] != ST_DONE) jobs.push_back({(int)i, g.paths[i]});
+    } else if (snapshot) {  // une image du fichier selectionne (sinon du premier)
         if (g.paths.empty()) return;
         int sel = (int)SendMessageW(g.list, LVM_GETNEXTITEM, (WPARAM)-1, LVNI_SELECTED);
         if (sel < 0) sel = 0;

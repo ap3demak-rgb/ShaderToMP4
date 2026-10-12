@@ -1777,17 +1777,23 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                     CheckReport r;
                     CheckOptions all;
                     if (!runChecks(flashing, exeDir, cs, all, quiet, r, e) || !find(r, "flash") || r.maxFlashes < 4) problem = bad("flash " + std::to_string(r.maxFlashes) + " " + U8(e));
-                    else if (!runChecks(gentle, exeDir, cs, all, quiet, r, e) || find(r, "flash") || find(r, "red_flash")) problem = bad("gentle shader flagged");
+                    else if (!runChecks(gentle, exeDir, cs, all, quiet, r, e) || find(r, "flash") || find(r, "red_flash") || find(r, "pattern")) problem = bad("gentle shader flagged");
                     else if (!runChecks(redFlash, exeDir, cs, all, quiet, r, e) || !find(r, "red_flash")) problem = bad("red flash missed");
                     else if (!runChecks(broken, exeDir, cs, all, quiet, r, e) || !find(r, "nan") || r.suspectLines.empty() || r.mapFile.empty() || !fileExists(r.mapFile)) problem = bad("nan " + std::to_string(r.issues.size()));
                     else if (std::none_of(r.suspectLines.begin(), r.suspectLines.end(), [](const std::wstring& l) { return l.find(L"3") != std::wstring::npos; })) problem = bad("suspect line");  // la racine carree est a la ligne 3
                     else if (!runChecks(dark, exeDir, cs, all, quiet, r, e) || !find(r, "black") || find(r, "black")->severity < 1) problem = bad("black frames");
                     else if (!runChecks(noisy, exeDir, cs, all, quiet, r, e) || !find(r, "flicker")) problem = bad("flicker");
                     else if (!runChecks(fine, exeDir, cs, all, quiet, r, e) || !find(r, "aliasing")) problem = bad("aliasing");
+                    else if (!runChecks(put(L"p18_stripes.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(vec3(step(0.5, fract(p.x / 8.0))), 1.0); }\n"), exeDir, cs, all, quiet, r, e) || !find(r, "pattern")) problem = bad("stripe pattern");
                     else {  // portabilite : demi-precision de l'horloge (shader qui lit iTime, duree au-dela de 17 s), rapports ecrits
                         Settings longRun = cs;
                         longRun.duration = 30;
+                        Settings farRun = cs;  // tres loin de zero : l'horloge arrondie en demi-precision se voit
+                        farRun.start = 1000;
+                        farRun.duration = 3;
                         if (!runChecks(gentle, exeDir, longRun, all, quiet, r, e) || !find(r, "mediump") || find(r, "mediump")->severity != 0) problem = bad("mediump note");
+                        else if (!runChecks(gentle, exeDir, farRun, all, quiet, r, e) || !find(r, "mediump_sim")) problem = bad("mediump simulation");
+                        else if (std::fabs(roundToHalf(1000.3) - 1000.5) > 1e-9 || std::fabs(roundToHalf(0.1) - 0.0999755859375) > 1e-12) problem = bad("half rounding");
                         else {
                             runChecks(redFlash, exeDir, cs, all, quiet, r, e);
                             const std::wstring stem = outDir + sep + L"p18_report";

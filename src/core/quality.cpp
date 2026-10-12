@@ -13,6 +13,53 @@ namespace {
 
 double toLinear(double c) { return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4); }
 
+// Nombre d'inversions de luminance (creux a crete d'au moins `delta`) le long d'une ligne de n valeurs espacees de `step`
+int zigzag(const float* v, int n, int step, float delta) {
+    float lo = v[0], hi = v[0], ext = v[0];
+    int dir = 0, trans = 0;
+    for (int i = 1; i < n; i++) {
+        const float x = v[(size_t)i * step];
+        if (dir == 0) {
+            if (x > lo + delta) {
+                dir = 1;
+                ext = x;
+            } else if (x < hi - delta) {
+                dir = -1;
+                ext = x;
+            } else {
+                lo = std::min(lo, x);
+                hi = std::max(hi, x);
+            }
+        } else if (dir == 1) {
+            if (x > ext) ext = x;
+            else if (x < ext - delta) {
+                dir = -1;
+                ext = x;
+                trans++;
+            }
+        } else {
+            if (x < ext) ext = x;
+            else if (x > ext + delta) {
+                dir = 1;
+                ext = x;
+                trans++;
+            }
+        }
+    }
+    return trans;
+}
+
+// Motif regulier de bandes : au moins cinq paires claires / sombres (10 inversions) sur au moins le quart des lignes (ou des colonnes)
+bool hasStripes(const std::vector<float>& L, int w, int h) {
+    int rows = 0, cols = 0;
+    for (int k = 0; k < 8; k++) {
+        const int y = std::min(h - 1, (int)((k + 0.5) * h / 8)), x = std::min(w - 1, (int)((k + 0.5) * w / 8));
+        if (zigzag(&L[(size_t)y * w], w, 1, 0.2f) >= 10) rows++;
+        if (zigzag(&L[(size_t)x], h, w, 0.2f) >= 10) cols++;
+    }
+    return rows >= 2 || cols >= 2;
+}
+
 float clean(float v) { return std::isfinite(v) ? std::min(1.0f, std::max(0.0f, v)) : 0.0f; }
 
 // Une image reduite a ce qui sert a l'analyse
@@ -110,6 +157,14 @@ void scanSuspects(const std::wstring& shaderPath, std::vector<std::wstring>& out
 
 }  // namespace
 
+double roundToHalf(double v) {
+    if (v == 0 || !std::isfinite(v)) return v;
+    int e = 0;
+    std::frexp(v, &e);                        // v = m * 2^e, m dans [0.5, 1)
+    const double quantum = std::ldexp(1.0, e - 11);  // 11 chiffres significatifs (10 stockes)
+    return std::nearbyint(v / quantum) * quantum;
+}
+
 FrameStats analyseFrame(const float* rgba, int w, int h) {
     FrameStats st;
     const int n = w * h;
@@ -197,6 +252,8 @@ bool runChecks(const std::wstring& shaderPath, const std::wstring& exeDir, const
     std::vector<float> frame;
     Px cur, prev, prev2;
     std::vector<Tr> lum, red;
+    long long stripeFrames = 0;
+    double firstStripes = -1;
     long long nanFrames = 0, infFrames = 0, blackFrames = 0, whiteFrames = 0, burntFrames = 0, flickerFrames = 0, glitchFrames = 0, pairs = 0;
     double firstNan = -1, firstInf = -1, firstBlack = -1, firstWhite = -1, firstBurnt = -1, firstFlicker = -1, firstGlitch = -1;
     double worstNan = 0, worstInf = 0, worstBurnt = 0;
@@ -248,6 +305,10 @@ bool runChecks(const std::wstring& shaderPath, const std::wstring& exeDir, const
             }
         }
         toPx(frame.data(), n, cur);
+        if (opt.flash && hasStripes(cur.disp, probe.width(), probe.height())) {
+            stripeFrames++;
+            if (firstStripes < 0) firstStripes = t;
+        }
         if (i >= 1 && opt.flash) {
             long long changed = 0, redChanged = 0, becameRed = 0, lostRed = 0;
             double sum = 0;
@@ -303,6 +364,7 @@ bool runChecks(const std::wstring& shaderPath, const std::wstring& exeDir, const
         if (first >= 0) add("flash", 1, first, rep.maxFlashes, (long long)lum.size(), TXF("log.check.flash", rep.maxFlashes, first));
         rep.maxRedFlashes = worstFlashRate(red, dt, first);
         if (first >= 0) add("red_flash", 1, first, rep.maxRedFlashes, (long long)red.size(), TXF("log.check.red", rep.maxRedFlashes, first));
+        if (stripeFrames * dt >= 1.0 || (stripeFrames > 0 && stripeFrames * 2 >= N)) add("pattern", 1, firstStripes, stripeFrames * dt, stripeFrames, TXF("log.check.pattern", stripeFrames * dt, firstStripes));
     }
     if (opt.defects) {
         if (nanFrames) add("nan", 1, firstNan, worstNan, nanFrames, TXF("log.check.nan", nanFrames, firstNan, worstNan));
@@ -401,7 +463,37 @@ bool runChecks(const std::wstring& shaderPath, const std::wstring& exeDir, const
                 }
             }
         const double tHalf = 512.0 / ps.fps;  // la demi-precision (10 bits de mantisse) pas plus fin que la moitie d'une image
-        if (tHalf < ps.start + ps.duration) add("mediump", 0, tHalf, tHalf, 0, TXF("log.check.mediump", tHalf, ps.fps));
+        if (tHalf < ps.start + ps.duration) {
+            add("mediump", 0, tHalf, tHalf, 0, TXF("log.check.mediump", tHalf, ps.fps));
+            // Simulation : iTime et iResolution arrondis en demi-precision, l'image est comparee a l'exacte, puis a l'image suivante (le pas normal)
+            const double lo = std::max(ps.start, tHalf), hi = ps.start + ps.duration;
+            double dq = 0, ds = 0, worstErr = 0, worstT = lo;
+            std::vector<float> a, b, c;
+            auto rgbDiff = [&](const std::vector<float>& x, const std::vector<float>& y) {
+                double d = 0;
+                for (int p = 0; p < n * 4; p += 4)
+                    for (int k = 0; k < 3; k++) d += std::fabs(clean(x[(size_t)p + k]) - clean(y[(size_t)p + k]));
+                return d / (3.0 * n);
+            };
+            int cnt = 0;
+            for (int k = 0; k < 5; k++) {
+                const double t = lo + (k + 0.5) * (hi - lo) / 5.0;
+                probe.setHalfInputs(false);
+                if (!probe.frameAtF(t, a) || !probe.frameAtF(t + 1.0 / ps.fps, c)) break;
+                probe.setHalfInputs(true);
+                const bool got = probe.frameAtF(t, b);
+                probe.setHalfInputs(false);
+                if (!got) break;
+                dq += rgbDiff(a, b);
+                ds += rgbDiff(a, c);
+                cnt++;
+                if (std::fabs(roundToHalf(t) - t) > worstErr) {
+                    worstErr = std::fabs(roundToHalf(t) - t);
+                    worstT = t;
+                }
+            }
+            if (cnt > 0 && ds / cnt > 0.002 && dq > ds) add("mediump_sim", 1, worstT, 255.0 * dq / cnt, 0, TXF("log.check.mediump_sim", worstT, worstErr, 255.0 * dq / cnt, 255.0 * ds / cnt));
+        }
     }
     std::stable_sort(rep.issues.begin(), rep.issues.end(), [](const CheckIssue& a, const CheckIssue& b) { return a.severity > b.severity; });
     return true;

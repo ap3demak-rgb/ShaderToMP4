@@ -379,6 +379,8 @@
   "log.duration.hm": "%lld 小时 %02lld 分钟",
   "log.duration.ms": "%lld 分钟 %02lld 秒",
   "log.duration.s": "%lld 秒",
+  "log.check.pattern": "大面积出现规则条纹图案（至少 5 对明暗），持续 %.1f 秒，从 %.2f 秒起。对图案敏感的观众有风险（仅供参考，不是保证）。",
+  "log.check.mediump_sim": "半精度模拟：在 %.0f 秒附近，时钟输入最多偏差 %.3f 秒，图像与精确结果相差 %.1f / 255（正常的一帧间隔相差 %.1f）。",
   "log.compat_vr": "mainVR（VR 着色器）：渲染为 360° 等距柱状视频，单眼（宽度应为高度的两倍）。",
   "log.vr_stereo": "mainVR（VR 着色器）：渲染为 360° 等距柱状视频，立体，左眼在上（宽度应等于高度）。",
   "log.vr_aspect": "尺寸 %dx%d 不适合 360° 视频：请使用 %ls 的比例（例如单眼 4096x2048，立体 4096x4096）。",

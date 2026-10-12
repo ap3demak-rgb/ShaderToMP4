@@ -400,6 +400,8 @@
   "log.duration.hm": "%lld h %02lld min",
   "log.duration.ms": "%lld min %02lld s",
   "log.duration.s": "%lld s",
+  "log.check.pattern": "Motivi regolari di strisce (almeno 5 coppie chiare / scure) su gran parte dello schermo per %.1f s, da %.2f s. Rischio per le persone sensibili a questi motivi (indicativo, non una garanzia).",
+  "log.check.mediump_sim": "Simulazione in mezza precisione: intorno a %.0f s l'ingresso dell'orologio sarebbe sbagliato fino a %.3f s e l'immagine differirebbe di %.1f / 255 da quella esatta (un normale passo di un fotogramma differisce di %.1f).",
   "log.compat_vr": "mainVR (shader VR): renderizzato come video 360° equirettangolare, mono (la larghezza deve essere il doppio dell'altezza).",
   "log.vr_stereo": "mainVR (shader VR): renderizzato come video 360° equirettangolare, stereo con l'occhio sinistro in alto (la larghezza deve essere uguale all'altezza).",
   "log.vr_aspect": "La dimensione %dx%d non è adatta a un video 360°: usare un rapporto di %ls (ad es. 4096x2048 in mono, 4096x4096 in stereo).",

@@ -386,6 +386,8 @@
   "log.duration.hm": "%lld u %02lld min",
   "log.duration.ms": "%lld min %02lld s",
   "log.duration.s": "%lld s",
+  "log.check.pattern": "Regelmatige streeppatronen (minstens 5 lichte / donkere paren) over een groot deel van het scherm gedurende %.1f s, vanaf %.2f s. Risico voor patroongevoelige kijkers (indicatief, geen garantie).",
+  "log.check.mediump_sim": "Simulatie met halve precisie: rond %.0f s zou de klokinvoer tot %.3f s afwijken en het beeld zou %.1f / 255 van het exacte verschillen (een normale beeldstap verschilt %.1f).",
   "log.compat_vr": "mainVR (VR-shader): gerenderd als 360°-equirectangulaire video, mono (de breedte moet twee keer de hoogte zijn).",
   "log.vr_stereo": "mainVR (VR-shader): gerenderd als 360°-equirectangulaire video, stereo met het linkeroog boven (de breedte moet gelijk zijn aan de hoogte).",
   "log.vr_aspect": "De afmeting %dx%d past niet bij een 360°-video: gebruik een verhouding van %ls (bv. 4096x2048 voor mono, 4096x4096 voor stereo).",

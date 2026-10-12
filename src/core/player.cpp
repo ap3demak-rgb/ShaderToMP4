@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "player.h"
+#include "quality.h"
 #include "channels.h"
 #include "compat.h"
 #include "dateinput.h"
@@ -38,6 +39,7 @@ struct Rig {
     ChannelSet chans;
     Settings s;
     int w = 0, h = 0;
+    bool halfInputs = false;  // iTime et iResolution arrondis en demi-precision (simulation de mediump)
     bool f32 = false;  // cible RGBA32F (sonde de controle : NaN et infinis visibles)
     long long simFrame = 0;
     GLint uRes = -1, uTime = -1, uDelta = -1, uFrame = -1, uRate = -1, uMouse = -1, uDate = -1, uSR = -1, uWeight = -1;
@@ -169,6 +171,11 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
 void setUniforms(const Rig& r, GLuint p, long long n, double t) {
     int eyeW = r.w, eyeH = r.h;
     if (p == r.prog) vrEyeSize(r.vr, r.w, r.h, eyeW, eyeH);
+    if (r.halfInputs) {
+        eyeW = (int)roundToHalf(eyeW);
+        eyeH = (int)roundToHalf(eyeH);
+        t = roundToHalf(t);
+    }
     ogl::Uniform3f(ogl::GetUniformLocation(p, "iResolution"), (float)eyeW, (float)eyeH, 1.0f);
     ogl::Uniform1f(ogl::GetUniformLocation(p, "st_ipd"), (float)r.s.vrIpd);
     ogl::Uniform1f(ogl::GetUniformLocation(p, "iTime"), (float)t);
@@ -386,6 +393,7 @@ bool ShaderProbe::tileCosts(double t, int cols, int rows, int repeats, std::vect
 
 int ShaderProbe::width() const { return impl_->rig.w; }
 int ShaderProbe::height() const { return impl_->rig.h; }
+void ShaderProbe::setHalfInputs(bool on) { impl_->rig.halfInputs = on; }
 bool ShaderProbe::hasHistory() const { return impl_->open && impl_->rig.bp.any(); }
 const Settings& ShaderProbe::settings() const { return impl_->rig.s; }
 
