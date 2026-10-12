@@ -6,7 +6,7 @@
 
 ShaderToMP4 est distribué sous la **Licence Publique Générale GNU v3.0 ou ultérieure** (`GPL-3.0-or-later`, voir [COPYING](COPYING)). Ce document liste tous les composants tiers utilisés par le programme, avec leur licence et la raison pour laquelle elle est compatible avec la GPL-3.0. **Aucun composant ne peut être ajouté au projet sans une entrée ici.**
 
-Dernière revue : ShaderToMP4 1.8.0 (aucun nouveau composant tiers n'est livré ; Mesa ne sert qu'aux tests de l'intégration continue et n'est pas distribué).
+Dernière revue : ShaderToMP4 1.9.0 (aucun nouveau composant tiers n'est livré ; Mesa ne sert qu'aux tests de l'intégration continue et n'est pas distribué).
 
 ## 1. Code compilé dans le programme
 
@@ -29,7 +29,7 @@ Dernière revue : ShaderToMP4 1.8.0 (aucun nouveau composant tiers n'est livré 
 | **FFmpeg** build statique de BtbN ([github.com/BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds), `linux64-gpl` et `linuxarm64-gpl`) | Encodage vidéo / audio sous Linux | Comme ci-dessus : **non inclus**, téléchargé à la demande (SHA-256 vérifié avec le fichier publié avec le build) et exécuté comme processus séparé. Sous macOS rien n'est téléchargé : l'utilisateur installe ffmpeg (Homebrew) ou le place à côté de l'application. | GPL v3 (libx264 et libx265 activées). | Compatible : GPL v3, aucun code combiné. |
 | **`curl`, `tar` et `xz`** (Linux, macOS) | Téléchargement HTTPS et extraction d'archives | Fournis par le système d'exploitation et lancés comme programmes séparés ; **non redistribués**. | Licence curl / GPL | Non distribués avec le programme. |
 | **Composants système de Windows** : Direct2D, DirectWrite, Direct3D 11, DXGI, OpenGL (pilote graphique), WinInet, CryptoAPI, Shell, Common Controls, RichEdit, glisser-déposer OLE, progression de la barre des tâches (ITaskbarList3) | Interface, rendu, téléchargement, empreintes | Fournis par Windows et le pilote graphique ; **non redistribués**. | Licence Microsoft Windows / licence du pilote graphique | Couverts par la définition des « bibliothèques système » de la GPL-3.0 : ils font partie du système d'exploitation sur lequel le programme s'exécute. |
-| **Composants système de Linux et macOS** : bibliothèques clientes X11 / Wayland, OpenGL (Mesa ou pilote graphique, frameworks Apple OpenGL / CoreFoundation), bibliothèque C, `libstdc++` (liée statiquement sous Linux), `libgcc` | Fenêtre, rendu, services système | Fournis par le système d'exploitation ; **non redistribués** (les parties du runtime GCC liées statiquement relèvent de l'exception GCC Runtime Library Exception). | Licences système diverses | Couverts par la définition des « bibliothèques système » de la GPL-3.0 et l'exception du runtime GCC. |
+| **Composants système de Linux et macOS** : bibliothèques clientes X11 / Wayland, OpenGL (Mesa ou pilote graphique, frameworks Apple OpenGL / CoreFoundation), `libEGL` (chargée à l'exécution seulement quand il n'y a pas de serveur d'affichage), les polices CJK du système lues à l'exécution pour le japonais et le chinois (Noto Sans CJK, WenQuanYi, PingFang...), bibliothèque C, `libstdc++` (liée statiquement sous Linux), `libgcc` | Fenêtre, rendu, services système | Fournis par le système d'exploitation ; **non redistribués** (les parties du runtime GCC liées statiquement relèvent de l'exception GCC Runtime Library Exception). | Licences système diverses | Couverts par la définition des « bibliothèques système » de la GPL-3.0 et l'exception du runtime GCC. |
 | **Polices (Windows)** : Segoe UI (interface), Cascadia Mono (journal) | Texte | Fournies par Windows ; **non redistribuées**, non embarquées. Cascadia Mono est remplacée par une police système si elle est absente. | Licences de polices Microsoft / SIL OFL 1.1 (Cascadia) | Non distribuées avec le programme : aucune obligation de licence n'est transmise. |
 
 ## 3. Outils servant à compiler le programme (non distribués)
@@ -47,7 +47,7 @@ Dernière revue : ShaderToMP4 1.8.0 (aucun nouveau composant tiers n'est livré 
 | Logo et icône de l'application (`res/icons/logo.svg`, `res/app.ico`) | Création originale pour ShaderToMP4 | GPL-3.0-or-later |
 | Icônes de l'interface (`res/icons/*.svg`), aussi utilisées par l'interface Linux / macOS | Dessins originaux faits pour le projet dans un style de traits géométriques (grille 24 × 24, trait de 2 px). Ce sont des pictogrammes simples et génériques (flèches, dossiers, œil, lecture...) qui ne sont pas copiés d'un jeu d'icônes. | GPL-3.0-or-later |
 | Shaders d'exemple et de test (`examples/`, `tests/`) | Code original du projet | GPL-3.0-or-later |
-| Fichiers de langue (`lang/*.json` : anglais, français, allemand, espagnol, italien, portugais) | Textes originaux du projet | GPL-3.0-or-later |
+| Fichiers de langue (`lang/*.json` : anglais, français, allemand, espagnol, italien, portugais, néerlandais, japonais, chinois) | Textes originaux du projet | GPL-3.0-or-later |
 | Captures d'écran et bannière (`docs/`) | Produites à partir du programme lui-même | GPL-3.0-or-later |
 
 ## 5. Règles pour les futurs composants

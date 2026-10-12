@@ -7,6 +7,30 @@
 #include "common.h"
 #include "settings.h"
 
+// Cadence reelle de l'apercu : images recues par seconde, mesuree sur des fenetres d'au moins une demi-seconde.
+class FpsMeter {
+public:
+    void reset() { count_ = 0; fps_ = 0; start_ = Clock::now(); }
+    void tick() {
+        const auto now = Clock::now();
+        if (count_ == 0) start_ = now;
+        count_++;
+        const double dt = std::chrono::duration<double>(now - start_).count();
+        if (dt >= 0.5) {
+            fps_ = (count_ - 1) / dt;
+            count_ = 1;
+            start_ = now;
+        }
+    }
+    double fps() const { return fps_; }
+
+private:
+    using Clock = std::chrono::steady_clock;
+    Clock::time_point start_ = Clock::now();
+    int count_ = 0;
+    double fps_ = 0;
+};
+
 class PreviewPlayer {
 public:
     PreviewPlayer();

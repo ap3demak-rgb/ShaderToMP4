@@ -15,6 +15,7 @@
 #include "platform/platform.h"
 #include "platform/posix/glfw_bridge.h"
 #include "ui_imgui/dock.h"
+#include "ui_imgui/editor_imgui.h"
 #include "ui_imgui/file_browser.h"
 #include "ui_imgui/icons.h"
 #include "ui_imgui/model.h"
@@ -38,6 +39,7 @@ struct App {
     FileBrowser browser;
     unsigned previewTex = 0;
     bool showAbout = false;
+    bool fontsDirty = false;  // la langue change : japonais et chinois demandent une autre police, l'atlas est refait avant l'image suivante
     std::wstring lastDir;
     std::vector<std::wstring> drops;
 };
@@ -212,7 +214,9 @@ void drawHeader(App& a, GLFWwindow* win) {
             std::string name = l;
             for (auto& c : name) c = (char)toupper((unsigned char)c);
             if (ImGui::Selectable(name.c_str(), l == code)) {
+                const std::string before = lower(i18n::language());
                 i18n::setLanguage(l);
+                if (l == "ja" || l == "zh" || before == "ja" || before == "zh") a.fontsDirty = true;
                 saveLanguage(a.model.exeDir, l);
                 a.model.refreshTexts();
             }
@@ -228,7 +232,7 @@ void drawShaders(App& a, float height) {
     if (beginCard("##shaders", "ui.card.shaders", "film", ImVec2(0, height), count)) {
         const float rowH = ImGui::GetFrameHeight() + S(4);
         float rowsW = 0;  // les boutons passent sur deux lignes si la carte est trop étroite (langues aux libellés longs)
-        for (const char* k : {"ui.btn.add", "ui.btn.remove", "ui.btn.clear", "ui.btn.folder", "ui.btn.png"})
+        for (const char* k : {"ui.btn.add", "ui.btn.remove", "ui.btn.clear", "ui.btn.folder", "ui.btn.edit", "ui.btn.png"})
             rowsW += buttonWidth(k, true) + ImGui::GetStyle().ItemSpacing.x;
         const int btnRows = rowsW > ImGui::GetContentRegionAvail().x ? 2 : 1;
         ImGui::BeginChild("##list", ImVec2(0, -(rowH * btnRows + ImGui::GetStyle().ItemSpacing.y * btnRows + S(4))), ImGuiChildFlags_None);
@@ -245,10 +249,39 @@ void drawShaders(App& a, float height) {
         }
         for (int i = 0; i < (int)m.paths.size(); i++) {
             ImGui::PushID(i);
-            if (ImGui::Selectable(baseName(m.paths[i]).c_str(), i == m.selected, ImGuiSelectableFlags_None, ImVec2(0, ImGui::GetTextLineHeight() + S(6))))
+            if (ImGui::Selectable((batchOf(m.batches, m.paths[i]) ? "[" + std::to_string(batchOf(m.batches, m.paths[i])) + "] " + baseName(m.paths[i]) : baseName(m.paths[i])).c_str(), i == m.selected, ImGuiSelectableFlags_None, ImVec2(0, ImGui::GetTextLineHeight() + S(6))))
                 if (!run) m.selected = i;
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
                 ImGui::SetTooltip("%s", U8(m.paths[i]).c_str());
+            }
+            if (ImGui::BeginPopupContextItem("##itemmenu")) {  // clic droit : priorite, rendre cette seule entree, retirer
+                if (!run) m.selected = i;
+                ImGui::BeginDisabled(run);
+                if (ImGui::Selectable(T("ui.menu.move_top").c_str())) m.moveSelected(0);
+                if (ImGui::Selectable(T("ui.menu.move_up").c_str())) m.moveSelected(-1);
+                if (ImGui::Selectable(T("ui.menu.move_down").c_str())) m.moveSelected(1);
+                ImGui::Separator();
+                if (ImGui::Selectable(T("ui.menu.edit").c_str())) openEditor(m);
+                if (ImGui::Selectable(T("ui.menu.render_selection").c_str())) m.startJobs(false, 0, 0, 0, false, true);
+                if (ImGui::Selectable(T("ui.menu.reset_state").c_str())) m.resetSelectedState();
+                if (ImGui::BeginMenu(T("ui.menu.batch").c_str())) {  // lots : numeroter le shader, puis rendre un lot
+                    for (int n = 1; n <= kBatchCount; n++)
+                        if (ImGui::MenuItem(TXF8("ui.menu.batch_set", n).c_str())) m.setBatch(n);
+                    if (ImGui::MenuItem(T("ui.menu.batch_none").c_str())) m.setBatch(0);
+                    ImGui::EndMenu();
+                }
+                for (int n = 1; n <= kBatchCount; n++) {
+                    int count = 0;
+                    for (const auto& p : m.paths) count += batchOf(m.batches, p) == n;
+                    if (count > 0 && ImGui::Selectable(TXF8("ui.menu.batch_render", n, count).c_str())) m.startJobs(false, 0, 0, 0, false, false, n);
+                }
+                ImGui::BeginDisabled(!m.fileScopeOn());
+                if (ImGui::Selectable(T("ui.menu.write_shader").c_str())) m.writeScopeIntoShader();
+                ImGui::EndDisabled();
+                ImGui::Separator();
+                if (ImGui::Selectable(T("ui.btn.remove").c_str())) m.removeSelected();
+                ImGui::EndDisabled();
+                ImGui::EndPopup();
             }
             const std::string st = U8(m.stateText[i]);
             const ImVec2 mx = ImGui::GetItemRectMax(), mn = ImGui::GetItemRectMin();
@@ -270,10 +303,13 @@ void drawShaders(App& a, float height) {
         if (button("ui.btn.clear", "clear", 0, !run && any, 0, "ui.tip.clear")) m.clearList();
         fit(buttonWidth("ui.btn.folder", true));
         if (button("ui.btn.folder", "folder", 0, any, 0, "ui.tip.folder")) m.openOutputFolder();
+        fit(buttonWidth("ui.btn.edit", true));
+        if (button("ui.btn.edit", "edit", 0, any, 0, "ui.tip.editor_btn")) openEditor(m);
         fit(buttonWidth("ui.btn.png", true));
         if (button("ui.btn.png", "image", 0, !run && any, 0, "ui.tip.png")) ImGui::OpenPopup("##images");
         if (ImGui::BeginPopup("##images")) {  // image PNG, vignette de couverture ou planche-contact (grille au choix)
             if (ImGui::Selectable(T("ui.menu.png").c_str())) m.startJobs(true, 0);
+            if (ImGui::Selectable(T("ui.menu.png_now").c_str())) m.startJobs(true, 0, 0, 0, true);
             if (ImGui::Selectable(T("ui.menu.thumb").c_str())) m.startJobs(true, 1);
             ImGui::Separator();
             for (int i = 0; i < kSheetGridCount; i++)
@@ -312,7 +348,8 @@ void drawPreview(App& a, float height) {
         if (!parseSeconds(W(m.f.start), st)) st = 0;
         if (!parseSeconds(W(m.f.dur), du)) du = 0;
         const double t = st + m.f.previewPos * du;
-        const std::string timeText = TXF8("ui.preview_time", i18n::fixed(t, 2).c_str());
+        const std::string timeText = m.playing() ? TXF8("ui.preview_play", i18n::fixed(t, 2).c_str(), (long long)std::llround((t - st) * m.base.fps), i18n::fixed(m.playMeter.fps(), 0).c_str())
+                                                 : TXF8("ui.preview_time", i18n::fixed(t, 2).c_str());
         ImGui::AlignTextToFramePadding();
         ImGui::TextColored(colv(pal::MUTED), "%s", timeText.c_str());
         ImGui::SameLine();
@@ -622,7 +659,42 @@ void drawOutput(App& a) {
     ImGui::SetNextItemWidth(width);
     ImGui::InputText("##titledur", f.titleDur, sizeof(f.titleDur));
     note("ui.output.hint_text");
+
+    section("ui.output.sec_files");
+    row("ui.output.name");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##name", f.name, sizeof(f.name));
+    row("ui.output.exists");
+    comboList("##exists", &f.exists, {T("ui.output.exists_overwrite"), T("ui.output.exists_number"), T("ui.output.exists_skip")}, width);
+    row("ui.output.metadata");
+    int meta = f.metadata ? 1 : 0;
+    if (comboList("##metadata", &meta, offOn, width)) f.metadata = meta == 1;
+    row("ui.output.variants");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##variants", f.variants, sizeof(f.variants));
+    row("ui.output.endaction");
+    comboList("##endaction", &f.endAction, {T("ui.output.end_none"), T("ui.output.end_folder"), T("ui.output.end_sleep")}, width);
+    note("ui.output.hint_files");
+
+    section("ui.output.sec_engine");
+    row("ui.output.chunk");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##chunk", f.chunk, sizeof(f.chunk));
+    row("ui.output.pbo");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##pbo", f.pbo, sizeof(f.pbo));
+    row("ui.output.shutter");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##shutter", f.shutter, sizeof(f.shutter));
+    note("ui.output.hint_engine");
 }
+
+// Reglage impose par le shader selectionne : le champ est grise (il montre la valeur du shader)
+struct Lock {
+    bool on;
+    explicit Lock(bool b) : on(b) { if (on) ImGui::BeginDisabled(); }
+    ~Lock() { if (on) ImGui::EndDisabled(); }
+};
 
 void drawSettings(App& a, float height) {
     Model& m = a.model;
@@ -630,6 +702,9 @@ void drawSettings(App& a, float height) {
     const bool run = m.running();
     if (beginCard("##settings", "ui.card.settings", "sliders", ImVec2(0, height))) {
         ImGui::BeginDisabled(run);
+        // « ce shader seul » : les champs valent pour le shader selectionne uniquement (jobs/), un second clic rend les reglages generaux
+        if (button("ui.btn.file_scope", "sliders", m.fileScopeOn() ? 1 : 0, !m.paths.empty(), 0, "ui.tip.file_scope")) m.toggleFileScope();
+        ImGui::SameLine();
         const char* chips[4][2] = {{"ui.chip.draft", "ui.tip.chip_draft"}, {"ui.chip.youtube", "ui.tip.chip_youtube"},
                                    {"ui.chip.4k60", "ui.tip.chip_4k60"}, {"ui.chip.vertical", "ui.tip.chip_vertical"}};
         for (int i = 0; i < 4; i++) {
@@ -681,57 +756,87 @@ void drawSettings(App& a, float height) {
         for (int i = 0; i < kResCount; i++)
             if (kRes[i].w == f.w && kRes[i].h == f.h) resIdx = i;
         label("ui.lbl.resolution");
-        if (comboList("##res", &resIdx, resItems(), full * 0.46f) && resIdx < kResCount) {
-            f.w = kRes[resIdx].w;
-            f.h = kRes[resIdx].h;
+        {
+            Lock lk(m.isForced("width") || m.isForced("height"));
+            if (comboList("##res", &resIdx, resItems(), full * 0.46f) && resIdx < kResCount) {
+                f.w = kRes[resIdx].w;
+                f.h = kRes[resIdx].h;
+            }
         }
         tip("ui.tip.resolution");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(full * 0.24f);
-        ImGui::InputInt("##w", &f.w, 0, 0);
+        {
+            Lock lk(m.isForced("width"));
+            ImGui::InputInt("##w", &f.w, 0, 0);
+        }
         tip("ui.tip.width");
         ImGui::SameLine(0, S(4));
         ImGui::AlignTextToFramePadding();
         ImGui::TextColored(colv(pal::MUTED), "%s", T("ui.lbl.times").c_str());
         ImGui::SameLine(0, S(4));
         ImGui::SetNextItemWidth(full * 0.24f);
-        ImGui::InputInt("##h", &f.h, 0, 0);
+        {
+            Lock lk(m.isForced("height"));
+            ImGui::InputInt("##h", &f.h, 0, 0);
+        }
         tip("ui.tip.height");
 
         label("ui.lbl.fps");
-        comboInput("fps", f.fps, sizeof(f.fps), {"24", "25", "30", "50", "60", "120"}, full * 0.46f);
+        {
+            Lock lk(m.isForced("fps"));
+            comboInput("fps", f.fps, sizeof(f.fps), {"24", "25", "30", "50", "60", "120"}, full * 0.46f);
+        }
         tip("ui.tip.fps");
         ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
         ImGui::TextColored(colv(pal::MUTED), "%s", T("ui.lbl.smoothing").c_str());
         tip("ui.tip.smoothing");
         ImGui::SameLine();
-        comboList("##ss", &f.ss, {"1x", "2x", "3x", "4x"}, full * 0.20f);
+        {
+            Lock lk(m.isForced("ss"));
+            comboList("##ss", &f.ss, {"1x", "2x", "3x", "4x"}, full * 0.20f);
+        }
         tip("ui.tip.smoothing");
 
         label("ui.lbl.duration");
         ImGui::SetNextItemWidth(full * 0.46f);
-        ImGui::InputText("##dur", f.dur, sizeof(f.dur));
+        {
+            Lock lk(m.isForced("duration"));
+            ImGui::InputText("##dur", f.dur, sizeof(f.dur));
+        }
         tip("ui.tip.duration");
         label("ui.lbl.start");
         ImGui::SetNextItemWidth(full * 0.46f);
-        ImGui::InputText("##start", f.start, sizeof(f.start));
+        {
+            Lock lk(m.isForced("start"));
+            ImGui::InputText("##start", f.start, sizeof(f.start));
+        }
         tip("ui.tip.start_time");
 
         label("ui.lbl.codec");
-        comboList("##codec", &f.codec, formatLabels(m, true), full * 0.46f);
+        {
+            Lock lk(m.isForced("codec"));
+            comboList("##codec", &f.codec, formatLabels(m, true), full * 0.46f);
+        }
         tip("ui.tip.codec");
         ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
         ImGui::TextColored(colv(pal::MUTED), "%s", T("ui.lbl.preset").c_str());
         ImGui::SameLine();
         std::vector<std::string> presets(kPresetNames, kPresetNames + 9);
-        comboList("##preset", &f.preset, presets, full * 0.30f);
+        {
+            Lock lk(m.isForced("preset"));
+            comboList("##preset", &f.preset, presets, full * 0.30f);
+        }
         tip("ui.tip.preset");
 
         label("ui.lbl.quality");
         ImGui::SetNextItemWidth(full * 0.46f);
-        ImGui::SliderInt("##crf", &f.crf, 0, 35);
+        {
+            Lock lk(m.isForced("crf"));
+            ImGui::SliderInt("##crf", &f.crf, 0, 35);
+        }
         tip("ui.tip.quality");
         ImGui::SameLine();
         const char* hint = f.crf == 0 ? "ui.crf.lossless" : f.crf <= 12 ? "ui.crf.near_perfect" : f.crf <= 18 ? "ui.crf.very_good" : f.crf <= 23 ? "ui.crf.good" : "ui.crf.reduced";
@@ -739,11 +844,17 @@ void drawSettings(App& a, float height) {
         ImGui::TextColored(colv(pal::MUTED), "%s", T(hint).c_str());
 
         label("ui.lbl.container");
-        comboList("##container", &f.container, formatLabels(m, false), full * 0.46f);
+        {
+            Lock lk(m.isForced("container"));
+            comboList("##container", &f.container, formatLabels(m, false), full * 0.46f);
+        }
         tip("ui.tip.container");
 
         label("ui.lbl.depth");
-        comboList("##depth", &f.depth, {"8", "10"}, full * 0.30f);
+        {
+            Lock lk(m.isForced("depth"));
+            comboList("##depth", &f.depth, {"8", "10"}, full * 0.30f);
+        }
         tip("ui.tip.depth");
 
         label("ui.lbl.estimate");
@@ -752,6 +863,7 @@ void drawSettings(App& a, float height) {
             std::wstring e;
             std::string est;
             if (m.toSettings(cur, e)) {
+                applyOverrides(cur, m.forced);  // l'estimation suit ce que le shader imposera
                 std::wstring dir = cur.outdir;
                 if (dir.empty() && !m.paths.empty()) {
                     const size_t cut = m.paths[0].find_last_of(L"\\/");
@@ -767,28 +879,43 @@ void drawSettings(App& a, float height) {
         label("ui.lbl.encoder");
         std::vector<std::string> encs;
         for (const auto& id : encoderList()) encs.push_back(encoderName(id));
-        comboList("##encoder", &f.encoder, encs, full * 0.66f);
+        {
+            Lock lk(m.isForced("encoder"));
+            comboList("##encoder", &f.encoder, encs, full * 0.66f);
+        }
         tip("ui.tip.encoder");
 
         label("ui.lbl.bitrate");
         ImGui::SetNextItemWidth(full * 0.30f);
-        ImGui::InputInt("##bitrate", &f.bitrate, 0, 0);
+        {
+            Lock lk(m.isForced("bitrate"));
+            ImGui::InputInt("##bitrate", &f.bitrate, 0, 0);
+        }
         tip("ui.tip.bitrate");
         ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
         ImGui::TextColored(colv(pal::FAINT), "%s", T("ui.cue.bitrate").c_str());
 
         label("ui.lbl.color");
-        comboList("##color", &f.color, {T("ui.color.bt709tv"), T("ui.color.bt709pc"), T("ui.color.srgb"), T("ui.color.bt601")}, full * 0.66f);
+        {
+            Lock lk(m.isForced("color"));
+            comboList("##color", &f.color, {T("ui.color.bt709tv"), T("ui.color.bt709pc"), T("ui.color.srgb"), T("ui.color.bt601")}, full * 0.66f);
+        }
         tip("ui.tip.color");
 
         label("ui.lbl.blur");
-        comboList("##blur", &f.blur, {T("ui.opt.none"), "4", "8", "16"}, full * 0.30f);
+        {
+            Lock lk(m.isForced("blur"));
+            comboList("##blur", &f.blur, {T("ui.opt.none"), "4", "8", "16"}, full * 0.30f);
+        }
         tip("ui.tip.blur");
 
         label("ui.lbl.loop");
         ImGui::SetNextItemWidth(full * 0.30f);
-        ImGui::InputText("##loop", f.loop, sizeof(f.loop));
+        {
+            Lock lk(m.isForced("loop"));
+            ImGui::InputText("##loop", f.loop, sizeof(f.loop));
+        }
         tip("ui.tip.loop");
         ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
@@ -796,38 +923,50 @@ void drawSettings(App& a, float height) {
 
         label("ui.lbl.fade_in");
         ImGui::SetNextItemWidth(full * 0.22f);
-        ImGui::InputText("##fi", f.fadein, sizeof(f.fadein));
+        {
+            Lock lk(m.isForced("fadein"));
+            ImGui::InputText("##fi", f.fadein, sizeof(f.fadein));
+        }
         tip("ui.tip.fade_in");
         ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
         ImGui::TextColored(colv(pal::MUTED), "%s", T("ui.lbl.fade_out").c_str());
         ImGui::SameLine();
         ImGui::SetNextItemWidth(full * 0.22f);
-        ImGui::InputText("##fo", f.fadeout, sizeof(f.fadeout));
+        {
+            Lock lk(m.isForced("fadeout"));
+            ImGui::InputText("##fo", f.fadeout, sizeof(f.fadeout));
+        }
         tip("ui.tip.fade_out");
 
         label("ui.lbl.audio");
         ImGui::SetNextItemWidth(full - buttonWidth("ui.btn.browse", false) - S(8));
-        ImGui::InputTextWithHint("##audio", T("ui.cue.audio").c_str(), f.audio, sizeof(f.audio));
-        tip("ui.tip.audio");
-        ImGui::SameLine();
-        if (button("ui.btn.browse", nullptr, 0, true, 0, "ui.tip.audio_browse"))
-            openBrowser(a, BrowseMode::OpenFile, "dialog.audio_files", {L".mp3", L".wav", L".flac", L".ogg", L".m4a", L".aac"}, L"",
-                        [&a](const std::vector<std::wstring>& r) {
-                            if (!r.empty()) snprintf(a.model.f.audio, sizeof(a.model.f.audio), "%s", U8(r[0]).c_str());
-                        });
+        {
+            Lock lk(m.isForced("audio"));
+            ImGui::InputTextWithHint("##audio", T("ui.cue.audio").c_str(), f.audio, sizeof(f.audio));
+            tip("ui.tip.audio");
+            ImGui::SameLine();
+            if (button("ui.btn.browse", nullptr, 0, true, 0, "ui.tip.audio_browse"))
+                openBrowser(a, BrowseMode::OpenFile, "dialog.audio_files", {L".mp3", L".wav", L".flac", L".ogg", L".m4a", L".aac"}, L"",
+                            [&a](const std::vector<std::wstring>& r) {
+                                if (!r.empty()) snprintf(a.model.f.audio, sizeof(a.model.f.audio), "%s", U8(r[0]).c_str());
+                            });
+        }
 
         label("ui.lbl.output");
         ImGui::SetNextItemWidth(full - buttonWidth("ui.btn.browse", false) - S(8));
-        ImGui::InputTextWithHint("##out", T("ui.cue.output").c_str(), f.outdir, sizeof(f.outdir));
-        tip("ui.tip.output");
-        ImGui::SameLine();
-        ImGui::PushID("outbrowse");
-        if (button("ui.btn.browse", nullptr, 0, true, 0, "ui.tip.output_browse"))
-            openBrowser(a, BrowseMode::PickFolder, "dialog.out_folder", {}, L"", [&a](const std::vector<std::wstring>& r) {
-                if (!r.empty()) snprintf(a.model.f.outdir, sizeof(a.model.f.outdir), "%s", U8(r[0]).c_str());
-            });
-        ImGui::PopID();
+        {
+            Lock lk(m.isForced("outdir"));
+            ImGui::InputTextWithHint("##out", T("ui.cue.output").c_str(), f.outdir, sizeof(f.outdir));
+            tip("ui.tip.output");
+            ImGui::SameLine();
+            ImGui::PushID("outbrowse");
+            if (button("ui.btn.browse", nullptr, 0, true, 0, "ui.tip.output_browse"))
+                openBrowser(a, BrowseMode::PickFolder, "dialog.out_folder", {}, L"", [&a](const std::vector<std::wstring>& r) {
+                    if (!r.empty()) snprintf(a.model.f.outdir, sizeof(a.model.f.outdir), "%s", U8(r[0]).c_str());
+                });
+            ImGui::PopID();
+        }
         drawPostfx(a);
         drawOutput(a);
         drawParams(a);
@@ -959,6 +1098,39 @@ void drawDialogs(App& a) {
         }
         ImGui::EndPopup();
     }
+    if (!m.pendingMedia.empty() && !ImGui::IsPopupOpen("##media")) ImGui::OpenPopup("##media");
+    ImGui::SetNextWindowPos(ImVec2(vp.x * 0.5f, vp.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(S(440), 0));
+    if (ImGui::BeginPopupModal("##media", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar)) {
+        // image, son ou video deposes : choix du canal ; le choix ecrit la ligne `// iChannelN=...` dans le shader selectionne
+        if (m.pendingMedia.empty()) {
+            ImGui::CloseCurrentPopup();
+        } else {
+            const std::wstring file = m.pendingMedia.front();
+            const size_t cut = file.find_last_of(L"\\/");
+            ImGui::PushFont(fontBold);
+            ImGui::TextUnformatted(TXF8("ui.menu.drop_title", (cut == std::wstring::npos ? file : file.substr(cut + 1)).c_str()).c_str());
+            ImGui::PopFont();
+            ImGui::Spacing();
+            bool done = false;
+            for (int i = 0; i < 4 && !done; i++) {
+                if (i) ImGui::SameLine();
+                ImGui::PushID(i);
+                if (button(("=" + TXF8("ui.menu.drop_channel", i)).c_str(), nullptr, 0, true)) {
+                    m.applyMedia(file, i);
+                    done = true;
+                }
+                ImGui::PopID();
+            }
+            if (!done && classifyDropped(file) == DropKind::Sound && button("ui.menu.drop_soundtrack", nullptr, 0, true)) {
+                m.applyMedia(file, -1);
+                done = true;
+            }
+            if (!done && (button("ui.btn.cancel", nullptr, 2, true) || ImGui::IsKeyPressed(ImGuiKey_Escape))) done = true;
+            if (done) m.pendingMedia.erase(m.pendingMedia.begin());
+        }
+        ImGui::EndPopup();
+    }
     ImGui::SetNextWindowPos(ImVec2(vp.x * 0.5f, vp.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(S(460), 0));
     if (ImGui::BeginPopupModal("##ask", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar)) {
@@ -983,11 +1155,12 @@ void drawDialogs(App& a) {
 void drawFrame(App& a, GLFWwindow* win) {
     Model& m = a.model;
     const bool popup = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
-    if (!popup) {  // raccourcis (désactivés pendant une fenêtre modale)
+    if (!popup && !editorOpen()) {  // raccourcis (désactivés pendant une fenêtre modale et dans l'éditeur : Suppr y efface du texte)
         const bool ctrl = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper;
         if (ctrl && ImGui::IsKeyPressed(ImGuiKey_O, false) && !m.running())
             openBrowser(a, BrowseMode::OpenFiles, "dialog.shaders", {L".glsl", L".txt", L".json", L".montage"}, L"", [&a](const std::vector<std::wstring>& r) { a.model.addFiles(r); });
         if (ctrl && ImGui::IsKeyPressed(ImGuiKey_P, false)) m.runPreview();
+        if (ctrl && ImGui::IsKeyPressed(ImGuiKey_E, false) && !editorOpen()) openEditor(m);
         if (ImGui::IsKeyPressed(ImGuiKey_F1, false)) a.showAbout = true;
         if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) m.startJobs(false);
         if (ImGui::IsKeyPressed(ImGuiKey_F6, false)) m.togglePause();
@@ -1026,6 +1199,7 @@ void drawFrame(App& a, GLFWwindow* win) {
     drawBottom(a);
     drawAbout(a);
     drawDialogs(a);
+    drawEditor(a.model);
     a.browser.draw();
     ImGui::End();
     ImGui::PopStyleVar();
@@ -1113,6 +1287,8 @@ int runGui(const std::wstring& exeDir, const std::vector<std::wstring>& files) {
 #endif
 
     App app(exeDir);
+    app.model.batches = loadBatches(exeDir);
+    app.model.logHook = editorNoteLog;  // les erreurs du compilateur se marquent dans l'éditeur
     g_app = &app;
     glfwSetDropCallback(win, onDrop);
     app.model.appendLog(std::wstring(APP_NAME_WSTR) + L" " + APP_VER_WSTR);
@@ -1147,7 +1323,7 @@ int runGui(const std::wstring& exeDir, const std::vector<std::wstring>& files) {
         }
         if (shot && frameNo == 5 && g_shotAbout) app.showAbout = true;
         if (!app.drops.empty()) {
-            app.model.addFiles(app.drops);
+            app.model.dropFiles(app.drops);
             app.drops.clear();
         }
         app.model.pump();
@@ -1158,6 +1334,11 @@ int runGui(const std::wstring& exeDir, const std::vector<std::wstring>& files) {
                 lastPct = pct;
                 setDockProgress(pct < 0 ? -1.0f : pct / 100.0f);
             }
+        }
+        if (app.fontsDirty) {
+            app.fontsDirty = false;
+            ImGui_ImplOpenGL3_DestroyFontsTexture();
+            setupFonts(metrics.ui, metrics.fb);  // recree le texte japonais / chinois avec une police du systeme (NewFrame refait la texture)
         }
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();

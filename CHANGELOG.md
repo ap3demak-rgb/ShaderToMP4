@@ -6,7 +6,7 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
-## Unreleased
+## 1.9.0 — 2026-10-12
 
 ### Added
 
@@ -16,6 +16,18 @@ Format: one section per version, newest first. The section of a tagged version i
 - Text on the video: `title`, `credit`, `titledur` with ffmpeg's drawtext; the log of a Shadertoy import gives the credit line to add.
 - Montage: a `name.montage` file chains several shaders with cut, fade, crossfade or wipe transitions (clips rendered in resumable parts, then joined by ffmpeg).
 - Command line: `--sheet=4x3` (contact sheet) and `--thumb[=seconds]` (cover thumbnail).
+- Editor for the selected shader and its passes (Buffer A–D, Common, Cubemap A, Sound, Post): tabs, one-click creation of a missing pass, line numbers, GLSL colouring on Windows, compiler errors marked from the log, `Ctrl+S` writes the file and reloads the preview.
+- Settings for one shader only (“This shader only”, kept in `jobs/`, optionally written into the shader as `// key=value` comments); fields greyed out and showing the shader's value when a `// key=value` comment imposes the setting.
+- Queue: move up / down / to the top (`Alt+Up` / `Alt+Down`), render only the selection, mark as pending, right-click menu on both interfaces.
+- Dropping an image, a sound or a video on the window writes `// iChannelN=…` (or the soundtrack) in the selected shader.
+- Preview: frame number and real frame rate while playing; PNG image at the preview time.
+- “Advanced” page of the Output window: file name template, existing file rule, metadata, end-of-batch action, parts, GPU read queue, blur shutter.
+- Render report (`report=json|text`): time, speed, bottleneck, size and warnings next to each video.
+- Command line: `--watch` looks in sub-folders with a `profile.ini` per folder, `--watch-move` (done/ and failed/), `--log=file`; `--benchmark --compare=previous.json --max-drop=N` (exit code 5); continuous integration compares the benchmark with the previous run.
+- Linux: headless rendering through EGL when there is no display server (render farm, container, CI), with a CI step that runs the self-test that way.
+- Accessibility checked with NVDA: names, roles and values are now also given through MSAA (icon-only buttons, the width and FPS fields, the shaders list, sliders with their value, the progress bar); the editor switches tabs with `Ctrl+Tab` and `Ctrl+1..9`; windows moved to a monitor of another scale are laid out again and kept inside the screen.
+- Dutch, Japanese and Simplified Chinese interfaces (`lang/nl.json`, `ja.json`, `zh.json`); on Linux and macOS a system CJK font is loaded for Japanese and Chinese.
+- Batches: number shaders 1 to 4 and render one batch; settings of one shader now cover the Output window and the variants; GLSL colouring in the Linux / macOS editor; accessible names for the icon buttons and the new fields; the editor follows a change of screen scale.
 - “Output” window (Windows, header button) and matching section of the settings card (Linux and macOS) for transparency, HDR, output size and filter, interpolation, loudness, title and credit; the “PNG image” button becomes “Images”: PNG image, cover thumbnail or contact sheet (3×2, 4×3, 5×4, 6×5).
 
 - Animated parameters: `// uniform float speed = 1.0 [0..5]` (types float, int, bool, vec2, vec3, vec4, color) declares an adjustable uniform available in every pass; values saved per shader in `params/`, keyframes `// key speed=0:1.0 ; 4:3.0` (linear, smooth or constant), `--param=name=value` on the command line, and parameters that follow the sound (`audio.level`, `audio.bass`, `audio.mid`, `audio.treble`).

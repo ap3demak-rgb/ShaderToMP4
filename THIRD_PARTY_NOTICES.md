@@ -6,7 +6,7 @@
 
 ShaderToMP4 is distributed under the **GNU General Public License v3.0 or later** (`GPL-3.0-or-later`, see [COPYING](COPYING)). This document lists every third-party component the program uses, with its license and why it is compatible with the GPL-3.0. **No component may be added to the project without an entry here.**
 
-Last review: ShaderToMP4 1.8.0 (no new third-party component is shipped; Mesa is used by the continuous integration tests only and is not distributed).
+Last review: ShaderToMP4 1.9.0 (no new third-party component is shipped; Mesa is used by the continuous integration tests only and is not distributed).
 
 ## 1. Code compiled into the program
 
@@ -29,7 +29,7 @@ Last review: ShaderToMP4 1.8.0 (no new third-party component is shipped; Mesa is
 | **FFmpeg** static build by BtbN ([github.com/BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds), `linux64-gpl` and `linuxarm64-gpl`) | Video / audio encoding on Linux | Same as above: **not included**, downloaded on request (SHA-256 checked against the file published with the build) and run as a separate process. On macOS nothing is downloaded: the user installs ffmpeg (Homebrew) or places it next to the application. | GPL v3 (libx264 and libx265 enabled). | Compatible: GPL v3, no code combined. |
 | **`curl`, `tar` and `xz`** (Linux, macOS) | HTTPS download and archive extraction | Provided by the operating system and run as separate programs; **not redistributed**. | curl license / GPL | Not distributed with the program. |
 | **Windows system components**: Direct2D, DirectWrite, Direct3D 11, DXGI, OpenGL (graphics driver), WinInet, CryptoAPI, Shell, Common Controls, RichEdit, OLE drag and drop, taskbar progress (ITaskbarList3) | Interface, rendering, download, hashing | Provided by Windows and the graphics driver; **not redistributed**. | Microsoft Windows license / graphics driver license | Covered by the GPL-3.0 "System Libraries" definition: they are part of the operating system the program runs on. |
-| **System components of Linux and macOS**: X11 / Wayland client libraries, OpenGL (Mesa or the graphics driver, Apple OpenGL / CoreFoundation frameworks), the C library, `libstdc++` (linked statically on Linux), `libgcc` | Window, rendering, system services | Provided by the operating system; **not redistributed** (the GCC runtime parts that are linked statically fall under the GCC Runtime Library Exception). | Various system licenses | Covered by the GPL-3.0 "System Libraries" definition and the GCC Runtime Library Exception. |
+| **System components of Linux and macOS**: X11 / Wayland client libraries, OpenGL (Mesa or the graphics driver, Apple OpenGL / CoreFoundation frameworks), `libEGL` (loaded at run time only when there is no display server), the system CJK fonts read at run time for Japanese and Chinese (Noto Sans CJK, WenQuanYi, PingFang...), the C library, `libstdc++` (linked statically on Linux), `libgcc` | Window, rendering, system services | Provided by the operating system; **not redistributed** (the GCC runtime parts that are linked statically fall under the GCC Runtime Library Exception). | Various system licenses | Covered by the GPL-3.0 "System Libraries" definition and the GCC Runtime Library Exception. |
 | **Fonts (Windows)**: Segoe UI (interface), Cascadia Mono (log) | Text | Provided by Windows; **not redistributed**, not embedded. Cascadia Mono falls back to a system font when absent. | Microsoft font licenses / SIL OFL 1.1 (Cascadia) | Not distributed with the program, so no license obligation is transferred. |
 
 ## 3. Tools used to build the program (not distributed)
@@ -47,7 +47,7 @@ Last review: ShaderToMP4 1.8.0 (no new third-party component is shipped; Mesa is
 | Logo and application icon (`res/icons/logo.svg`, `res/app.ico`) | Original artwork created for ShaderToMP4 | GPL-3.0-or-later |
 | Interface icons (`res/icons/*.svg`), also used by the Linux / macOS interface | Original drawings made for the project in a geometric stroke style (24 × 24 grid, 2 px stroke). They are simple, generic pictograms (arrows, folders, eye, play...) and are not copied from an icon set. | GPL-3.0-or-later |
 | Example and test shaders (`examples/`, `tests/`) | Original code of the project | GPL-3.0-or-later |
-| Language files (`lang/*.json`: English, French, German, Spanish, Italian, Portuguese) | Original texts of the project | GPL-3.0-or-later |
+| Language files (`lang/*.json`: English, French, German, Spanish, Italian, Portuguese, Dutch, Japanese, Chinese) | Original texts of the project | GPL-3.0-or-later |
 | Screenshots and banner (`docs/`) | Produced from the program itself | GPL-3.0-or-later |
 
 ## 5. Rules for future components

@@ -33,6 +33,7 @@ void applyStyle();
 void setupFonts(float uiScale, float fbScale);
 extern ImFont* fontRegular;
 extern ImFont* fontBold;
+extern ImFont* fontMono;  // police a chasse fixe de l'editeur (celle de Dear ImGui : ASCII)
 
 void icon(const char* name, float size, unsigned color = pal::TEXT, float alpha = 1.0f);  // icône seule, alignée sur la ligne de texte
 bool beginCard(const char* id, const char* titleKey, const char* iconName, ImVec2 size, const std::string& rightText = "");   // à terminer par endCard()

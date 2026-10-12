@@ -65,7 +65,9 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
             PostMessageW(g.wnd, WM_APP_PROGRESS, (WPARAM)idx, (LPARAM) new ProgressInfo{n, total, speed, remaining});
         };
         std::wstring e;
-        Result r = convertFile(jobs[i].second, g.exeDir, g.base, H, e);
+        Settings run = settingsForFile(g.runBase, g.exeDir, jobs[i].second);  // reglages generaux + ceux de ce shader
+        if (g.snapshotRun && g.snapshotAt >= 0) run.start = g.snapshotAt;  // image PNG au temps de l'apercu
+        Result r = convertFile(jobs[i].second, g.exeDir, run, H, e);
         if (r == Result::Failed) postLog(L"  " + TXF("log.error", e.c_str()));
         else if (r == Result::Cancelled) postLog(L"  " + TX("log.cancelled"));
         PostMessageW(g.wnd, WM_APP_FILE, (WPARAM)idx,
@@ -79,6 +81,7 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
 void showImageMenu() {
     HMENU m = CreatePopupMenu();
     AppendMenuW(m, MF_STRING, 1, TX("ui.menu.png").c_str());
+    AppendMenuW(m, MF_STRING, 3, TX("ui.menu.png_now").c_str());
     AppendMenuW(m, MF_STRING, 2, TX("ui.menu.thumb").c_str());
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     for (int i = 0; i < kSheetGridCount; i++)
@@ -89,6 +92,7 @@ void showImageMenu() {
     DestroyMenu(m);
     if (cmd == 1) startJobs(true, 0);
     else if (cmd == 2) startJobs(true, 1);
+    else if (cmd == 3) startJobs(true, 0, 0, 0, true);
     else if (cmd >= 10 && cmd < 10 + kSheetGridCount) startJobs(true, 2, kSheetGrids[cmd - 10][0], kSheetGrids[cmd - 10][1]);
 }
 
@@ -113,7 +117,7 @@ void promptDownload() {
     });
 }
 
-void startJobs(bool snapshot, int imageKind, int cols, int rows) {
+void startJobs(bool snapshot, int imageKind, int cols, int rows, bool atPreview, bool selectedOnly, int batch) {
     stopPlayer();
     if (!g.running && !ffmpegPresent(g.exeDir)) {
         promptDownload();
@@ -127,8 +131,16 @@ void startJobs(bool snapshot, int imageKind, int cols, int rows) {
         if (sel < 0) sel = 0;
         jobs.push_back({sel, g.paths[sel]});
     } else {
+        std::vector<char> chosen(g.paths.size(), selectedOnly || batch > 0 ? 0 : 1);  // « rendre la selection » ou un lot : seulement ceux-la
+        if (batch > 0)
+            for (size_t k = 0; k < g.paths.size(); k++) chosen[k] = batchOf(g.batches, g.paths[k]) == batch;
+        if (selectedOnly) {
+            int k = -1;
+            while ((k = (int)SendMessageW(g.list, LVM_GETNEXTITEM, (WPARAM)k, LVNI_SELECTED)) != -1 && k < (int)chosen.size()) chosen[(size_t)k] = 1;
+        }
         for (size_t i = 0; i < g.paths.size(); i++) {
-            if (g.state[i] == ST_DONE) continue;
+            if (!chosen[i]) continue;
+            if (!selectedOnly && batch == 0 && g.state[i] == ST_DONE) continue;
             g.state[i] = ST_PENDING;
             setItemText((int)i, 1, statusText(ST_PENDING));
             jobs.push_back({(int)i, g.paths[i]});
@@ -143,11 +155,14 @@ void startJobs(bool snapshot, int imageKind, int cols, int rows) {
     }
     g.base = cur;
     saveSettings();
+    flushFileScope();  // les reglages propres au shader courant sont lus sur le disque par le thread de rendu
+    g.runBase = generalSettings();
     g.cancel = false;
     g.running = true;
     updateButtons();
     SendMessageW(g.prog, PBM_SETPOS, 0, 0);
     g.snapshotRun = snapshot;
+    g.snapshotAt = snapshot && atPreview ? cur.start + SendMessageW(g.trkPrev, TBM_GETPOS, 0, 0) / (double)kPrevSteps * cur.duration : -1;
     g.imageKind = snapshot ? imageKind : 0;
     g.sheetCols = cols;
     g.sheetRows = rows;
@@ -167,7 +182,10 @@ void updatePrevLabel() {
     if (!parseSeconds(getText(g.edDur), dur)) dur = 0;
     refreshPrevMarks(start, dur);
     double t = start + SendMessageW(g.trkPrev, TBM_GETPOS, 0, 0) / (double)kPrevSteps * dur;
-    SetWindowTextW(g.lblPrev, TXF("ui.preview_time", i18n::fixed(t, 2).c_str()).c_str());
+    if (g.player && g.player->running())  // en lecture : numero de l'image et cadence reelle
+        SetWindowTextW(g.lblPrev, TXF("ui.preview_play", i18n::fixed(t, 2).c_str(), (long long)std::llround((t - start) * g.base.fps), i18n::fixed(g.playMeter.fps(), 0).c_str()).c_str());
+    else
+        SetWindowTextW(g.lblPrev, TXF("ui.preview_time", i18n::fixed(t, 2).c_str()).c_str());
 }
 
 static int selectedOrFirst() {
@@ -222,6 +240,7 @@ void startPlayer() {
     const int sel = selectedOrFirst();
     const double t0 = cur.start + SendMessageW(g.trkPrev, TBM_GETPOS, 0, 0) / (double)kPrevSteps * cur.duration;
     g.previewPending = 0;
+    g.playMeter.reset();
     g.playerPath = g.paths[sel];
     g.player.reset(new PreviewPlayer);
     g.player->start(g.paths[sel], g.exeDir, cur, t0,

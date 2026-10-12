@@ -6,7 +6,10 @@
 #include "common.h"
 #include "core/settings.h"
 #include "core/formats.h"
+#include "core/batches.h"
+#include "core/channeldrop.h"
 #include "core/endaction.h"
+#include "core/filesettings.h"
 #include "core/locate.h"
 #include "core/player.h"
 #include "core/queue.h"
@@ -17,7 +20,7 @@ enum {
     ID_LIST = 101, ID_ADD, ID_REMOVE, ID_CLEAR, ID_START, ID_CANCEL, ID_PROG, ID_STATUS, ID_LOG,
     ID_RES = 120, ID_W, ID_H, ID_FPS, ID_DUR, ID_START_T, ID_CODEC, ID_PRESET, ID_CRF, ID_SNAP, ID_CONTAINER, ID_SS, ID_OUT, ID_BROWSE, ID_LOADP, ID_SAVEP,
     ID_BITRATE, ID_COLOR, ID_BLUR, ID_LOOP, ID_AUDIO, ID_AUDIOB, ID_FADEIN, ID_FADEOUT, ID_PAUSE, ID_FOLDER, ID_PREVIEW,
-    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_PLAY, ID_ABOUT, ID_LANG, ID_PARAMS, ID_OUTPUT
+    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_PLAY, ID_ABOUT, ID_LANG, ID_PARAMS, ID_OUTPUT, ID_FILESCOPE, ID_EDITOR
 };
 enum {
     WM_APP_LOG = WM_APP + 1,  // lParam = std::wstring* (a liberer)
@@ -26,7 +29,8 @@ enum {
     WM_APP_DONE,              // fin du lot (le thread peut etre joint)
     WM_APP_PREVIEW,           // lParam = PreviewData* (a liberer)
     WM_APP_DL,                // telechargement de ffmpeg : wParam = pourcentage, lParam = std::wstring* (message)
-    WM_APP_DLDONE             // fin du telechargement : wParam = 1 si ok, lParam = std::wstring* (erreur)
+    WM_APP_DLDONE,            // fin du telechargement : wParam = 1 si ok, lParam = std::wstring* (erreur)
+    WM_APP_MEDIA              // images, sons ou videos deposes sur la fenetre : lParam = std::vector<std::wstring>* (a liberer)
 };
 constexpr int kPrevSteps = 10000;  // graduations du curseur d'apercu (de Debut a Debut + Duree)
 enum FileStatus { ST_PENDING, ST_RUNNING, ST_DONE, ST_FAILED, ST_CANCELLED };
@@ -58,7 +62,8 @@ struct App {
     HBRUSH brCard = nullptr, brField = nullptr;
     HWND chips[5] = {nullptr, nullptr, nullptr, nullptr, nullptr};  // preselections rapides
     HWND tip = nullptr;
-    HWND bAbout = nullptr, bLang = nullptr, bParams = nullptr, bOutput = nullptr;  // en-tête : À propos, langue, paramètres et post-traitement, sortie
+    HWND bFileScope = nullptr;  // « ce shader seul » : les champs de la carte des reglages valent pour le shader selectionne uniquement
+    HWND bAbout = nullptr, bLang = nullptr, bParams = nullptr, bOutput = nullptr, bEditor = nullptr;  // en-tête : À propos, langue, paramètres et post-traitement, sortie
     int chipRight = 0;                       // bord droit de la pastille de version (à gauche des boutons de l'en-tête)
     struct Card {
         RECT r;
@@ -78,12 +83,25 @@ struct App {
     std::atomic<bool> running{false}, cancel{false}, pause{false};
     bool previewRun = false;   // le lot en cours est un apercu (UI uniquement)
     double previewTime = 0;
+    FpsMeter playMeter;         // cadence reelle de l'apercu en lecture
+    double snapshotAt = -1;     // image PNG au temps de l'apercu : temps du shader (secondes), -1 = au temps de debut
     bool snapshotRun = false;  // le lot en cours est une image (PNG, vignette ou planche-contact) (UI uniquement)
     int imageKind = 0;         // 0 image PNG au temps de début, 1 vignette de couverture, 2 planche-contact
     int sheetCols = 0, sheetRows = 0;
     std::wstring snapshotPath;
     std::wstring exeDir;
     Settings base;
+    std::vector<Override> forced;  // reglages imposes par le shader selectionne : affiches grises a la place de ceux de la fenetre
+    // Reglages propres au shader selectionne : pendant qu'ils sont actifs, g.base les contient (les champs les montrent) et `general` garde les
+    // reglages generaux ; ils sont enregistres dans jobs/ quand on change de shader, au rendu et a la fermeture.
+    struct FileScope {
+        bool on = false;
+        std::wstring path;   // shader dont les reglages propres sont actifs
+        std::wstring shown;  // shader dont l'etat est affiche (suit la selection)
+        Settings general;
+    } fileScope;
+    BatchMap batches;  // numero de lot (1 a 4) des shaders de la liste ; jobs/batches.txt
+    Settings runBase;  // reglages generaux du lot en cours (le thread de rendu n'en lit pas d'autres)
 };
 extern App g;
 
@@ -97,8 +115,12 @@ void updateButtons();
 // --- file_list.cpp : liste des shaders ---
 void addFiles(const std::vector<std::wstring>& files);
 void removeSelected();
+void moveSelected(int mode);  // priorite : -1 monte, +1 descend, 0 passe en tete (les shaders selectionnes)
+void setBatchOfSelected(int n);  // lot des shaders selectionnes (0 = aucun)
+void showListMenu();          // menu contextuel de la liste : priorite, rendre la selection, retirer
 void clearAll();
 void browseFiles();
+void dropMedia(const std::vector<std::wstring>& files);  // image / son / video deposes : choix du canal, ecrit `// iChannelN=...` dans le shader selectionne
 
 // --- settings_panel.cpp : panneau "Reglages video" ---
 struct ResPreset {
@@ -119,8 +141,18 @@ void stopPlayer();
 void followSelection();     // la lecture suit le shader selectionne
 void updatePlayButton();
 void saveQueueNow();         // file d'attente (shaders pas encore rendus) dans queue.txt
-void updateForced();        // reglages imposes par le shader selectionne (// cle=valeur)
+void updateForced();        // reglages imposes par le shader selectionne (// cle=valeur) : champs affiches grises avec la valeur du shader
+bool isForced(const char* key);     // ce reglage est-il impose par le shader selectionne ?
+bool controlForced(HWND c);         // ce champ de la fenetre est-il grise parce que le shader impose le reglage ?
+void enableSettingsControls();      // active / grise les champs : ni pendant un rendu, ni quand le shader impose le reglage
 void updateEstimate();      // taille estimee du fichier, sous le preset
+std::wstring selectedShaderPath();   // shader selectionne dans la liste (le premier sinon), "" si la liste est vide
+Settings generalSettings();          // reglages generaux : g.base sans les reglages propres au shader
+void flushFileScope();               // enregistre les reglages propres au shader courant (jobs/)
+void syncFileScope();                // la selection a change : quitte l'etat du shader precedent, prend celui du nouveau
+void toggleFileScope();              // bouton « ce shader seul » : active, ou rend les reglages generaux et efface ceux du shader
+void writeScopeIntoShader();         // ecrit les reglages propres au shader en commentaires dans le shader (demande de l'utilisateur)
+void updateFileScopeButton();
 void showPresetMenu();      // menu « Plus » : preselections integrees et fichiers presets/*.ini
 void settingsToUI(const Settings& s);
 bool uiToSettings(Settings& s, std::wstring& err);  // false + message si une valeur est invalide
@@ -133,7 +165,7 @@ void applyQuickPreset(int idx);  // 0 brouillon, 1 YouTube 1080p60, 2 4K 60, 3 v
 
 // --- jobs.cpp : rendus, apercu, telechargement ---
 void promptDownload();               // propose de telecharger ffmpeg.exe
-void startJobs(bool snapshot = false, int imageKind = 0, int cols = 0, int rows = 0);  // snapshot : une image (0 PNG, 1 vignette, 2 planche cols x rows)
+void startJobs(bool snapshot = false, int imageKind = 0, int cols = 0, int rows = 0, bool atPreview = false, bool selectedOnly = false, int batch = 0);  // snapshot : une image (0 PNG, 1 vignette, 2 planche cols x rows)
 void showImageMenu();                // menu du bouton « Images » : PNG, vignette, planches-contact
 void updatePrevLabel();
 void runPreview();
@@ -146,5 +178,8 @@ void saveWindowPlacement(HWND wnd);
 std::string readSavedLanguage();  // langue mémorisée dans window.ini ("" si aucune)
 void showAbout(HWND parent);      // fenêtre « À propos » (about.cpp)
 void showParams(HWND parent);     // fenêtre « Paramètres et post-traitement » (params_dialog.cpp)
+void showEditor(HWND parent);     // éditeur du shader sélectionné et de ses passes (editor.cpp)
+bool editorIsOpen();
+void editorNoteLog(const std::wstring& line);  // erreur « fichier:ligne: message » du journal, marquée dans l'éditeur
 void showOutput(HWND parent);     // fenêtre « Sortie » : alpha, HDR, taille, interpolation, volume, texte (output_dialog.cpp)
 void setDropHot(bool hot);  // illumine / eteint la zone de depot (fondu)

@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "ui_controls.h"
+#include "accessible.h"
+#include <oleacc.h>
 #include "ui_render.h"
 #include "ui_theme.h"
 #include <dwmapi.h>
@@ -146,6 +148,14 @@ void sliderPaint(HWND h, Slider* s) {
     EndPaint(h, &ps);
 }
 
+// Lecteurs d'ecran (MSAA) : role, valeur et evenement de changement de valeur d'un curseur ou d'une barre de progression
+void accSync(HWND h, long role, int pos, int lo, int hi) {
+    setAccessibleRole(h, role);
+    const int pct = hi > lo ? (pos - lo) * 100 / (hi - lo) : 0;
+    setAccessibleValue(h, role == ROLE_SYSTEM_PROGRESSBAR ? std::to_wstring(pct) + L" %" : std::to_wstring(pos));
+    NotifyWinEvent(EVENT_OBJECT_VALUECHANGE, h, OBJID_CLIENT, CHILDID_SELF);
+}
+
 LRESULT CALLBACK sliderProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     Slider* s = (Slider*)GetWindowLongPtrW(h, GWLP_USERDATA);
     switch (msg) {
@@ -162,10 +172,12 @@ LRESULT CALLBACK sliderProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             s->min = (short)LOWORD(lp);
             s->max = (short)HIWORD(lp);
             s->pos = std::min(s->max, std::max(s->min, s->pos));
+            accSync(h, ROLE_SYSTEM_SLIDER, s->pos, s->min, s->max);
             if (wp) InvalidateRect(h, nullptr, FALSE);
             return 0;
         case TBM_SETPOS:
             s->pos = std::min(s->max, std::max(s->min, (int)lp));
+            accSync(h, ROLE_SYSTEM_SLIDER, s->pos, s->min, s->max);
             if (wp) InvalidateRect(h, nullptr, FALSE);
             return 0;
         case TBM_GETPOS: return s->pos;
@@ -181,6 +193,7 @@ LRESULT CALLBACK sliderProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             SetCapture(h);
             s->drag = true;
             s->pos = sliderFromX(h, s, (short)LOWORD(lp));
+            accSync(h, ROLE_SYSTEM_SLIDER, s->pos, s->min, s->max);
             InvalidateRect(h, nullptr, FALSE);
             sliderNotify(h, TB_THUMBTRACK);
             return 0;
@@ -198,6 +211,7 @@ LRESULT CALLBACK sliderProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 int p = sliderFromX(h, s, (short)LOWORD(lp));
                 if (p != s->pos) {
                     s->pos = p;
+                    accSync(h, ROLE_SYSTEM_SLIDER, s->pos, s->min, s->max);
                     InvalidateRect(h, nullptr, FALSE);
                     sliderNotify(h, TB_THUMBTRACK);
                 }
@@ -232,6 +246,7 @@ LRESULT CALLBACK sliderProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             p = std::min(s->max, std::max(s->min, p));
             if (p != s->pos) {
                 s->pos = p;
+                accSync(h, ROLE_SYSTEM_SLIDER, s->pos, s->min, s->max);
                 InvalidateRect(h, nullptr, FALSE);
                 sliderNotify(h, TB_THUMBTRACK);
                 sliderNotify(h, TB_ENDTRACK);
@@ -267,6 +282,7 @@ LRESULT CALLBACK progressProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case PBM_SETPOS: {
             int old = p->pos;
             p->pos = std::min(p->max, std::max(p->min, (int)wp));
+            if (p->pos != old) accSync(h, ROLE_SYSTEM_PROGRESSBAR, p->pos, p->min, p->max);
             InvalidateRect(h, nullptr, FALSE);
             return old;
         }
@@ -322,6 +338,13 @@ void setupButton(HWND btn, int iconId, BtnStyle style, unsigned bgColor) {
     s.style = style;
     s.bg = bgColor;
     SetWindowSubclass(btn, btnProc, 1, 0);
+}
+
+void setButtonStyle(HWND btn, BtnStyle style) {
+    auto it = g_buttons.find(btn);
+    if (it == g_buttons.end() || it->second.style == style) return;
+    it->second.style = style;
+    InvalidateRect(btn, nullptr, FALSE);
 }
 
 void drawButton(const DRAWITEMSTRUCT* d, UINT dpi) {

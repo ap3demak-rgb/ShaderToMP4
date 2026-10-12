@@ -5,6 +5,7 @@
 #include "core/i18n.h"
 #include "core/util.h"
 #include "platform/platform.h"
+#include "ui_controls.h"
 
 // --- Panneau de reglages video ---
 const ResPreset kRes[] = {
@@ -67,9 +68,39 @@ void updateCrfLabel() {
     SetWindowTextW(g.lblCrf, wfmt(L"%d  -  %ls", c, TX(hint).c_str()).c_str());
 }
 
-void settingsToUI(const Settings& s) {
-    g.base.post = s.post;  // post-traitement : reglé dans la fenêtre « Paramètres », pas dans ce panneau
-    g.base.lut = s.lut;
+bool isForced(const char* key) { return isOverridden(g.forced, key); }
+
+bool controlForced(HWND c) {
+    if (c == g.cmbRes) return isForced("width") || isForced("height");
+    if (c == g.edW) return isForced("width");
+    if (c == g.edH) return isForced("height");
+    if (c == g.cmbFps) return isForced("fps");
+    if (c == g.edDur) return isForced("duration");
+    if (c == g.edStart) return isForced("start");
+    if (c == g.cmbCodec) return isForced("codec");
+    if (c == g.cmbPreset) return isForced("preset");
+    if (c == g.trkCrf) return isForced("crf");
+    if (c == g.cmbContainer) return isForced("container");
+    if (c == g.cmbDepth) return isForced("depth");
+    if (c == g.cmbSS) return isForced("ss");
+    if (c == g.edOut || c == g.bBrowse) return isForced("outdir");
+    if (c == g.edBitrate) return isForced("bitrate");
+    if (c == g.cmbColor) return isForced("color");
+    if (c == g.cmbBlur) return isForced("blur");
+    if (c == g.edLoop) return isForced("loop");
+    if (c == g.edAudio || c == g.bAudio) return isForced("audio");
+    if (c == g.edFadeIn) return isForced("fadein");
+    if (c == g.edFadeOut) return isForced("fadeout");
+    if (c == g.cmbEncoder) return isForced("encoder");
+    return false;
+}
+
+// Les champs montrent les valeurs du shader (grises) pour les reglages qu'il impose ; les valeurs de la fenetre restent dans g.base
+void settingsToUI(const Settings& real) {
+    g.base.post = real.post;  // post-traitement : reglé dans la fenêtre « Paramètres », pas dans ce panneau
+    g.base.lut = real.lut;
+    Settings s = real;
+    applyOverrides(s, g.forced);
     SetWindowTextW(g.edW, std::to_wstring(s.width).c_str());
     SetWindowTextW(g.edH, std::to_wstring(s.height).c_str());
     SetWindowTextW(g.cmbFps, i18n::num(s.fps).c_str());
@@ -95,59 +126,74 @@ void settingsToUI(const Settings& s) {
     updateCrfLabel();
 }
 
+// Lit les champs dans `s`. Les reglages imposes par le shader (champs gris) ne sont ni lus ni verifies : `s` garde la valeur de la fenetre.
 bool uiToSettings(Settings& s, std::wstring& err) {
+    const bool fW = isForced("width"), fH = isForced("height");
     int w = _wtoi(getText(g.edW).c_str()), h = _wtoi(getText(g.edH).c_str());
-    if (w < 16 || w > 16384 || h < 16 || h > 16384) { err = TX("error.res_invalid"); return false; }
-    std::wstring ft = getText(g.cmbFps);
-    for (auto& c : ft)
-        if (c == L',') c = L'.';
-    wchar_t* end = nullptr;
-    double fps = wcstod(ft.c_str(), &end);
-    if (end == ft.c_str() || *end != 0 || fps <= 0 || fps > 240) { err = TX("error.fps_invalid"); return false; }
-    double dur = 0, start = 0;
-    if (!parseSeconds(getText(g.edDur), dur) || dur <= 0) { err = TX("error.duration_invalid"); return false; }
-    if (!parseSeconds(getText(g.edStart), start)) { err = TX("error.start_invalid"); return false; }
-    s.width = w;
-    s.height = h;
+    if ((!fW && (w < 16 || w > 16384)) || (!fH && (h < 16 || h > 16384))) { err = TX("error.res_invalid"); return false; }
+    double fps = s.fps, dur = s.duration, start = s.start;
+    if (!isForced("fps")) {
+        std::wstring ft = getText(g.cmbFps);
+        for (auto& c : ft)
+            if (c == L',') c = L'.';
+        wchar_t* end = nullptr;
+        fps = wcstod(ft.c_str(), &end);
+        if (end == ft.c_str() || *end != 0 || fps <= 0 || fps > 240) { err = TX("error.fps_invalid"); return false; }
+    }
+    if (!isForced("duration") && (!parseSeconds(getText(g.edDur), dur) || dur <= 0)) { err = TX("error.duration_invalid"); return false; }
+    if (!isForced("start") && !parseSeconds(getText(g.edStart), start)) { err = TX("error.start_invalid"); return false; }
+    double lp = s.loop, fi = s.fadein, fo = s.fadeout;
+    if (!isForced("loop") && !parseSeconds(getText(g.edLoop), lp)) { err = TX("error.loop_invalid"); return false; }
+    if ((!isForced("fadein") && !parseSeconds(getText(g.edFadeIn), fi)) || (!isForced("fadeout") && !parseSeconds(getText(g.edFadeOut), fo))) {
+        err = TX("error.fade_invalid");
+        return false;
+    }
+    int br = s.bitrate;
+    if (!isForced("bitrate")) {
+        br = _wtoi(getText(g.edBitrate).c_str());
+        if (br < 0 || br > 500000) { err = TX("error.bitrate_invalid"); return false; }
+    }
+    if (!fW) s.width = w;
+    if (!fH) s.height = h;
     s.fps = fps;
     s.duration = dur;
     s.start = start;
-    s.crf = (int)SendMessageW(g.trkCrf, TBM_GETPOS, 0, 0);
-    int ps = (int)SendMessageW(g.cmbPreset, CB_GETCURSEL, 0, 0);
-    s.preset = "";
-    for (const wchar_t* c = kPresets[ps < 0 ? 6 : ps]; *c; c++) s.preset += (char)*c;
-    s.codec = codecAt((int)SendMessageW(g.cmbCodec, CB_GETCURSEL, 0, 0)).id;
-    s.container = containerAt((int)SendMessageW(g.cmbContainer, CB_GETCURSEL, 0, 0)).id;
-    s.depth = SendMessageW(g.cmbDepth, CB_GETCURSEL, 0, 0) == 1 ? 10 : 8;
-    s.ss = std::max(0, (int)SendMessageW(g.cmbSS, CB_GETCURSEL, 0, 0)) + 1;
-    {
-        std::wstring od(GetWindowTextLengthW(g.edOut) + 1, L'\0');
+    s.loop = lp;
+    s.fadein = fi;
+    s.fadeout = fo;
+    s.bitrate = br;
+    if (!isForced("crf")) s.crf = (int)SendMessageW(g.trkCrf, TBM_GETPOS, 0, 0);
+    if (!isForced("preset")) {
+        int ps = (int)SendMessageW(g.cmbPreset, CB_GETCURSEL, 0, 0);
+        s.preset = "";
+        for (const wchar_t* c = kPresets[ps < 0 ? 6 : ps]; *c; c++) s.preset += (char)*c;
+    }
+    if (!isForced("codec")) s.codec = codecAt((int)SendMessageW(g.cmbCodec, CB_GETCURSEL, 0, 0)).id;
+    if (!isForced("container")) s.container = containerAt((int)SendMessageW(g.cmbContainer, CB_GETCURSEL, 0, 0)).id;
+    if (!isForced("depth")) s.depth = SendMessageW(g.cmbDepth, CB_GETCURSEL, 0, 0) == 1 ? 10 : 8;
+    if (!isForced("ss")) s.ss = std::max(0, (int)SendMessageW(g.cmbSS, CB_GETCURSEL, 0, 0)) + 1;
+    if (!isForced("outdir")) {
+        std::wstring od(GetWindowTextLengthW(g.edOut) + 1, L' ');
         od.resize(GetWindowTextW(g.edOut, &od[0], (int)od.size()));
         while (!od.empty() && (od.back() == L' ' || od.back() == L'\\')) od.pop_back();
         s.outdir = od;
     }
-    {
-        double lp = 0, fi = 0, fo = 0;
-        if (!parseSeconds(getText(g.edLoop), lp)) { err = TX("error.loop_invalid"); return false; }
-        if (!parseSeconds(getText(g.edFadeIn), fi) || !parseSeconds(getText(g.edFadeOut), fo)) {
-            err = TX("error.fade_invalid");
-            return false;
-        }
-        int br = _wtoi(getText(g.edBitrate).c_str());
-        if (br < 0 || br > 500000) { err = TX("error.bitrate_invalid"); return false; }
-        s.bitrate = br;
-        s.loop = lp;
-        s.fadein = fi;
-        s.fadeout = fo;
+    if (!isForced("color")) {
         static const char* kColors[] = {"bt709", "bt709full", "srgb", "bt601"};
         int ci = (int)SendMessageW(g.cmbColor, CB_GETCURSEL, 0, 0);
         s.color = kColors[ci < 0 || ci > 3 ? 0 : ci];
+    }
+    if (!isForced("blur")) {
         static const int kBlurs[] = {1, 4, 8, 16};
         int bi = (int)SendMessageW(g.cmbBlur, CB_GETCURSEL, 0, 0);
         s.blur = kBlurs[bi < 0 || bi > 3 ? 0 : bi];
-        std::wstring au(GetWindowTextLengthW(g.edAudio) + 1, L'\0');
+    }
+    if (!isForced("audio")) {
+        std::wstring au(GetWindowTextLengthW(g.edAudio) + 1, L' ');
         au.resize(GetWindowTextW(g.edAudio, &au[0], (int)au.size()));
         s.audio = au;
+    }
+    if (!isForced("encoder")) {
         static const char* kEncs[] = {"cpu", "auto", "nvenc", "amf", "qsv"};
         int ei = (int)SendMessageW(g.cmbEncoder, CB_GETCURSEL, 0, 0);
         s.encoder = kEncs[ei < 0 || ei > 4 ? 0 : ei];
@@ -155,7 +201,118 @@ bool uiToSettings(Settings& s, std::wstring& err) {
     return true;
 }
 
-void saveSettings() { writeIni(g.exeDir + L"config.ini", g.base); }
+// config.ini ne recoit jamais les reglages propres a un shader
+void saveSettings() { writeIni(g.exeDir + L"config.ini", generalSettings()); }
+
+std::wstring selectedShaderPath() {
+    if (g.paths.empty() || !g.list) return L"";
+    int sel = ListView_GetNextItem(g.list, -1, LVNI_SELECTED);
+    if (sel < 0 || sel >= (int)g.paths.size()) sel = 0;
+    return g.paths[(size_t)sel];
+}
+
+Settings generalSettings() {
+    Settings s = g.base;
+    if (g.fileScope.on) copyMainSettings(s, g.fileScope.general);  // les autres reglages (post-traitement, sortie...) restent communs
+    return s;
+}
+
+void flushFileScope() {
+    if (!g.fileScope.on) return;
+    Settings cur = g.base;
+    std::wstring e;
+    if (uiToSettings(cur, e)) g.base = cur;
+    saveFileSettings(g.exeDir, g.fileScope.path, diffMainSettings(g.fileScope.general, g.base));
+}
+
+// Sort de l'etat « reglages propres » : g.base retrouve les reglages generaux (les champs communs modifies entre-temps sont gardes)
+static void leaveFileScope(bool deleteSettings) {
+    if (!g.fileScope.on) return;
+    if (deleteSettings) removeFileSettings(g.exeDir, g.fileScope.path);
+    else saveFileSettings(g.exeDir, g.fileScope.path, diffMainSettings(g.fileScope.general, g.base));
+    Settings back = g.base;
+    copyMainSettings(back, g.fileScope.general);
+    g.base = back;
+    g.fileScope.on = false;
+    g.fileScope.path.clear();
+}
+
+static void enterFileScope(const std::wstring& path, const std::vector<Override>& list) {
+    g.fileScope.general = g.base;
+    applyFileOverrides(g.base, list);
+    g.fileScope.on = true;
+    g.fileScope.path = path;
+}
+
+void updateFileScopeButton() {
+    if (!g.bFileScope) return;
+    ui::setButtonStyle(g.bFileScope, g.fileScope.on ? ui::BtnStyle::Primary : ui::BtnStyle::Chip);
+    EnableWindow(g.bFileScope, !g.running && !g.paths.empty());
+}
+
+// A appeler quand la selection a pu changer (avant de recalculer les reglages imposes).
+void syncFileScope() {
+    const std::wstring cur = selectedShaderPath();
+    if (cur == g.fileScope.shown) return;
+    // ce qui a ete saisi pour l'ancien shader est garde avant de changer d'etat
+    Settings capture = g.base;
+    std::wstring e;
+    if (uiToSettings(capture, e)) g.base = capture;
+    leaveFileScope(false);
+    g.fileScope.shown = cur;
+    if (!cur.empty() && fileSettingsExist(g.exeDir, cur)) enterFileScope(cur, loadFileSettings(g.exeDir, cur));
+    updateFileScopeButton();
+}
+
+void toggleFileScope() {
+    if (g.running) return;
+    const std::wstring cur = selectedShaderPath();
+    if (cur.empty()) return;
+    Settings capture = g.base;
+    std::wstring e;
+    if (uiToSettings(capture, e)) g.base = capture;
+    if (g.fileScope.on) {
+        leaveFileScope(true);  // rendre les reglages generaux et effacer ceux du shader
+    } else {
+        enterFileScope(cur, {});
+        saveFileSettings(g.exeDir, cur, {});  // le fichier marque l'etat « reglages propres », meme sans difference
+    }
+    g.fileScope.shown = cur;
+    settingsToUI(g.base);
+    updateFileScopeButton();
+    updateEstimate();
+    updateForced();
+}
+
+void writeScopeIntoShader() {
+    if (!g.fileScope.on || g.running) return;
+    Settings cur = g.base;
+    std::wstring err;
+    if (!uiToSettings(cur, err)) {
+        MessageBoxW(g.wnd, err.c_str(), TX("dialog.invalid_settings").c_str(), MB_ICONWARNING);
+        return;
+    }
+    g.base = cur;
+    const std::vector<Override> list = diffMainSettings(g.fileScope.general, g.base);
+    if (list.empty()) {
+        MessageBoxW(g.wnd, TX("dialog.nothing_to_write").c_str(), TX("dialog.profile_title").c_str(), MB_ICONINFORMATION);
+        return;
+    }
+    const std::wstring path = g.fileScope.path;
+    if (MessageBoxW(g.wnd, TXF("dialog.write_shader_confirm", (int)list.size(), path.c_str()).c_str(), TX("dialog.profile_title").c_str(), MB_YESNO | MB_ICONQUESTION) != IDYES)
+        return;
+    if (!writeSettingsIntoShader(path, list, err)) {
+        MessageBoxW(g.wnd, err.c_str(), TX("dialog.profile_title").c_str(), MB_ICONWARNING);
+        return;
+    }
+    appendLog(TXF("log.settings_written", (int)list.size(), path.c_str()));
+    leaveFileScope(true);  // ces reglages sont maintenant des commentaires du shader : le fichier jobs/ ne sert plus
+    g.fileScope.shown = path;
+    g.forced.clear();      // relus par updateForced : le shader impose maintenant ces valeurs
+    settingsToUI(g.base);
+    updateFileScopeButton();
+    updateForced();
+}
 
 void browseOutDir() {
     BROWSEINFOW bi{};
@@ -233,7 +390,9 @@ void applyQuickPreset(int idx) {
     std::wstring e;
     if (!uiToSettings(s, e)) s = g.base;  // une valeur invalide dans la fenetre : on repart des derniers reglages valides
     applyBuiltinPreset(idx, s);
+    g.base = s;  // les reglages que le shader impose gardent la valeur du preset pour les autres shaders
     settingsToUI(s);
+    updateEstimate();
 }
 
 // Menu « Plus » : preselections integrees supplementaires, puis fichiers presets/*.ini du dossier de l'application
@@ -271,6 +430,7 @@ void updateEstimate() {
         SetWindowTextW(g.lblEst, L"");
         return;
     }
+    applyOverrides(s, g.forced);  // l'estimation suit ce que le shader imposera
     std::wstring dir = s.outdir;
     if (dir.empty() && !g.paths.empty()) {
         const size_t cut = g.paths[0].find_last_of(L"\\/");

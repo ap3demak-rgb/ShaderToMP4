@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.8.0-FF5A96?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.9.0-FF5A96?style=flat-square">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-0078D4?style=flat-square">
   <img alt="Portable" src="https://img.shields.io/badge/portable-no%20installer-3DDC97?style=flat-square">
   <img alt="Languages" src="https://img.shields.io/badge/languages-6-7C6CFF?style=flat-square">
@@ -128,6 +128,8 @@ The [`examples`](examples) folder contains four shaders ready to convert: plasma
 | **Pause** / **Resume** | `F6` | Suspend the render (paused time is not counted in the speed) |
 | **Cancel** | `Esc` | Stop the render; finished parts are kept |
 | **Images** | | Menu: a PNG image at the “Start” time, a cover thumbnail (middle of the range) or a contact sheet (3×2 to 6×5); the file is opened |
+| **Edit** (pencil icon in the header; the **Edit** button under the list on Linux and macOS) | `Ctrl+E` | Open the editor of the selected shader and its passes (see “Editor and passes”) |
+| **This shader only** | | The fields of the settings card apply to the selected shader alone (see “Queue order, settings of one shader, dropped media”) |
 | **Preview** and slider | `Ctrl+P` | Show a frame of the shader at a chosen time, without ffmpeg |
 | **Play** / **Stop** | | Play the shader in real time at preview size (up to 640 px), loop over the range, jump with the slider; the preview reloads by itself when the shader or one of its pass files changes on disk |
 | **Remove** | `Del` (in the list) | Remove the selected shaders |
@@ -140,6 +142,35 @@ The [`examples`](examples) folder contains four shaders ready to convert: plasma
 `Tab` moves from one setting to the next. All text of the interface has a contrast of at least 4.5:1 against its background (WCAG AA), checked automatically for both interfaces.
 
 **Queue kept between sessions**: the shaders that are not rendered yet (waiting, failed, cancelled or interrupted) are noted in `queue.txt` next to the program and put back in the list the next time you open it without files (the log says so; press Start). Finished shaders are forgotten, and so is a file that no longer exists.
+
+</details>
+
+<details>
+<summary><b>Queue order, settings of one shader, dropped media</b></summary>
+
+**Queue order.** Right-click a shader (on Windows also `Alt+Up` / `Alt+Down`): *Move to the top of the queue*, *Move up*, *Move down*, *Render only the selection* (the other shaders are left as they are), *Edit the shader…*, *Mark as pending* (a finished or failed shader is rendered again at the next Start), *Remove*. The order is kept in `queue.txt`. **Batches**: *Batch ▸ Put in batch 1 to 4* numbers the selected shaders (`[2]` shows in front of their name, kept in `jobs/batches.txt`), and *Render batch N* renders only that group, finished shaders included.
+
+**Settings for one shader.** The settings card normally applies to every shader. The **This shader only** button (next to the title of the card) makes the fields apply to the selected shader alone: they are kept in the `jobs/` folder next to the program (one small `.ini` per shader), the shader file is not touched and the other shaders keep the general settings. This covers the settings card **and** the Output window (transparency, HDR, size, text, file name, parts, variants...), except the end-of-batch action. Press the button again to go back to the general settings (the shader's own settings are deleted). The right-click entry *Write the settings into the shader* turns them into `// key=value` comments at the top of the shader file (after a confirmation on Windows): it is the only way the program ever modifies a shader, and only when you ask. Priority: general settings, then the shader's own settings, then the `// key=value` comments of the shader.
+
+**Settings imposed by the shader.** When the selected shader imposes a setting with a `// key=value` comment, the field shows the shader's value, greyed out, instead of the window's value (which is kept for the other shaders); the size estimate follows what the shader will do.
+
+**Dropping media.** Drop an image, a sound or a video on the window: a menu asks for the channel, and the line `// iChannel0=tex/wood.png` (`audio:file.wav` for a sound, `video:clip.mp4` for a video; a path relative to the shader when the file is next to it) is written in the comments of the selected shader. For a sound the menu also offers the soundtrack (`// audio=…`). Shader files dropped on the window are still added to the list.
+
+**Preview.** While the shader plays, the time label also shows the frame number and the real frame rate of the preview (`t = 1.23 s · #37 · 58 fps`); the Images menu has *PNG image at the preview time*.
+
+</details>
+
+<details>
+<summary><b>Editor and passes</b></summary>
+
+Open it with the pencil icon in the header (Windows), the **Edit** button under the list (Linux and macOS), `Ctrl+E` or the right-click menu of the list.
+
+- **One tab per file of the shader**: Image (the shader itself), Buffer A–D, Common, Cubemap A, Sound and Post. A tab marked `+` does not exist yet: one click creates the file next to the shader (`name.bufferA.glsl`…) with a minimal code that compiles, and opens it.
+- **Windows**: GLSL colouring (comments, `// key=value` directives, keywords, types, functions, Shadertoy uniforms, numbers, `#` lines), line numbers, undo. **Linux and macOS**: the same tabs, line numbers and colours (the text field is drawn transparent and the same text is drawn again over it, coloured; the editor uses the font built into Dear ImGui, so only ASCII characters are drawn).
+- **`Ctrl+S`** writes the file in its own folder (never elsewhere; it is written aside then renamed, so never half-written; line endings and byte order mark are kept) and reloads the preview. The compiler errors come back in the log as `file:line: message` and are marked in the editor: red underlined line, dot in the margin, message under the editor. When the live preview is playing it reloads by itself.
+- Closing asks whether to save the modified tabs. A render started meanwhile uses what is on disk.
+
+<p align="center"><img src="docs/screenshots/en/editor.png" alt="The shader editor on Windows" width="620"></p>
 
 </details>
 
@@ -192,6 +223,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 | (shader comments, config.ini) | `vr`, `vripd` | `mainVR` shader as a 360° video: `auto` (default), `off`, `mono`, `stereo`; distance between the eyes of the stereo render (see “Shadertoy compatibility”) |
 | (shader comments, config.ini) | `warmup` | frames simulated before the first one (0 to 3600, 0 by default): the buffers (Buffer A–D, Cubemap A) are warmed up, and `iFrame` starts at N (frame 0 has `iFrame` = N, `iTime` is unchanged). Useful for feedback effects that need time to settle; `iTime` of the warm-up frames is `start − N/fps`, so it can be negative |
 | (config.ini only) | `pbo` | depth of the GPU read-back queue (2 to 8, 3 by default) |
+| (shader comments, config.ini, `--report=`) | `report` | `json` or `text`: a render report is written next to each video (see “Output”); `off` by default |
 
 </details>
 
@@ -320,7 +352,32 @@ plasma.glsl 8 crossfade 1.5
 
 A clip line is a path (relative to the `.montage`; in quotes if it has spaces), an optional duration, then the transition that leads *into* this clip from the previous one (ignored for the first): `cut`, `fade` (through black), `crossfade` or `wipe`, with its length. Add the file to the list or on the command line like a shader. Each clip is rendered like a shader, **in parts that can resume** (a clip that is already rendered with the same settings is reused after an interruption), into a `name.clips` folder next to the video, as ProRes HQ (or lossless H.264 if this ffmpeg has no ProRes); then ffmpeg joins them with the transitions (`xfade`, `acrossfade`) and writes the final video with your codec. Size, frame rate, `scale`, `interp`, `title`, `credit`, fades and `loudnorm` are applied to the montage as a whole, not to each clip; the `audio` setting is one soundtrack over the whole montage, otherwise the sound of each clip (a Sound pass) is joined with silence for the clips that have none. Limits: video containers only, no alpha, no HDR, no preview or single image of a montage, and a `// audio=` comment or `// duration=` comment inside a clip is replaced by the montage.
 
+**Advanced page.** The **Advanced…** button of the Output window (Linux and macOS: the end of its section) opens the settings that used to exist only in `config.ini`: file name template (`name`), what to do when the file exists (`exists`: overwrite, number, skip), container metadata (`metadata`), the variants (`variants`: `720p:width=1280|height=720 ; 360p:width=640|height=360`), the end-of-batch action (`endaction`: nothing, show the folder, sleep after 15 s), the length of the resumable parts (`chunk`), the depth of the GPU read-back queue (`pbo`) and the motion-blur shutter (`shutter`).
+
+**Render report** (`report=json` or `report=text`, or `--report=json` on the command line). After each render (successful, failed or cancelled) a file `name.report.json` (or `.report.txt`, in your language) is written next to the video with the shader, the output file, the status and the error, the size and the number of frames, the video duration, the total render time, the frames per second of the render loop, the **bottleneck** (the renderer waited for the encoder more than 30 % of the time: the encoder; otherwise the GPU, with the percentage), the file size, the codec / container / encoder, and the warnings the log showed. Montages and single images have no report.
+
 **Contact sheet and cover thumbnail** (the **Images** button: PNG image, cover thumbnail, or a 3×2, 4×3, 5×4 or 6×5 sheet; or on the command line). `--sheet=4x3` writes `name_sheet.png`, a grid of 4 × 3 thumbnails taken at the middle of 12 equal intervals of the rendered range (at most 100 tiles, 1920 pixels wide in all); `--thumb` writes `name_thumb.png`, one image from the middle of the range, or `--thumb=2.5` at second 2.5, 1280 pixels wide at most. Both work with buffers (the history is replayed) and with the post-processing.
+
+</details>
+
+<details>
+<summary><b>Features by version</b></summary>
+
+Taken from [CHANGELOG.md](CHANGELOG.md), which has the details; the list is checked against it by `scripts/check-repo.ps1`.
+
+| Version | Main additions |
+|---|---|
+| 1.9.0 | Transparency, HDR10 / HLG, output size, interpolation, loudness, title and credit, montage, contact sheets; animated parameters and post-processing; Output window; editor with passes; settings of one shader, batches, queue order, dropped media; render report; advanced watch folder and benchmark comparison; EGL headless rendering; Dutch, Japanese and Chinese |
+| 1.8.0 | Animated `iMouse` and `iDate`, simulated keyboard, buffers with their own size, `mainVR` 360° videos, Shadertoy volume files, `warmup` |
+| 1.7.0 | Sound pass (`mainSound`) |
+| 1.6.1 | German, Spanish, Italian and Portuguese fully translated |
+| 1.6.0 | Cubemaps, 3D textures, audio and video channels, Cubemap A pass, offline import of a Shadertoy JSON export |
+| 1.5.1 | Accessible names for fields, lists and sliders; refreshed screenshots |
+| 1.5.0 | Variants, real-time preview, macOS Dock progress, GPU choice on Linux, `--dpi=` |
+| 1.4.0 | VP9, AV1, ProRes, DNxHR, GIF, WebP, image sequences, 10-bit output, size estimate, presets, textures and Buffer A–D passes, full command line, queue file, watch folder, diagnostic and benchmark, four more languages |
+| 1.3.0 | Linux (x86-64, ARM64) and macOS versions with a GLFW + Dear ImGui interface, platform layer, portable archives for the three systems |
+| 1.2.0 | GPL-3.0-or-later license, English / French interface and documentation, About window, official website, repository checks |
+| Before 1.2.0 | First public version, dark Direct2D interface |
 
 </details>
 
@@ -339,13 +396,13 @@ Videos longer than `chunk` seconds are rendered in parts, in a `<name>.parts` fo
 | `ShaderToMP4 a.glsl b.glsl` | Add the files and start rendering |
 | `ShaderToMP4 --render [options] a.glsl b.glsl` | Render without a window, same on Windows, Linux and macOS (see below) |
 | `ShaderToMP4 --diagnostic` | Print system, graphics card, OpenGL, ffmpeg and the encoders found (no path, no personal data): paste it in a bug report |
-| `ShaderToMP4 --benchmark [--seconds=N] [--quick] [--json]` | Measure frames per second at 720p, 1080p and 4K with the CPU encoder, and with the hardware one when available |
+| `ShaderToMP4 --benchmark [--seconds=N] [--quick] [--json] [--compare=previous.json --max-drop=N]` | Measure frames per second at 720p, 1080p and 4K with the CPU encoder, and with the hardware one when available. With `--compare` (a previous `--json` output) each case is compared with the same case before; exit code `5` when one is slower by more than N % (15 by default). The Linux continuous integration keeps the previous result in a cache and fails above 50 % |
 | `ShaderToMP4 --selftest [--update] [--quiet]` | Self-test (see below) |
 | `ShaderToMP4 --get-ffmpeg [--quiet]` | Download and install `ffmpeg` without opening the window (Windows and Linux) |
 | `ShaderToMP4 --version` | Print version, copyright and license |
 | `ShaderToMP4 --help` | Print the options |
 
-**Rendering without a window** (`--render`): the options are the keys of the settings table written `--key=value` (`--width=1280 --height=720 --fps=30 --duration=10 --codec=h265 --container=mp4 --crf=18 --outdir=out`), applied after `config.ini` and after `--profile=file.ini`; the `// key=value` comments of a shader still take priority, as in the window. `--png` renders a single image at the start time. `--thumb[=seconds]` writes a cover thumbnail and `--sheet=4x3` a contact sheet (see “Output”). `--param=name=value` (repeatable) sets a parameter declared in the shader with `// uniform`, or gives it keyframes: `--param="speed=smooth 0:1 ; 4:3"` (see “Creating”). `--watch=folder` keeps the program running and renders every `.glsl` / `.txt` that appears in the folder (once its size stops changing; pass files such as `name.bufferA.glsl` are not shaders of their own; stop with `Ctrl+C`, or use `--watch-count=N` to stop after N renders). Watching is never on by default. `--progress=json` prints one JSON object per line on the standard output: `start`, `progress` (`frame`, `frames`, `percent`, `fps`, `eta`), `log`, `done` (with the `output` file), `error`, then `end` (`ok`, `failed`); `--progress=text` prints a line every 10 %. Exit codes: `0` everything rendered, `1` a render failed, `2` invalid command line, `3` no OpenGL 3.3, `4` ffmpeg not found. On Windows the program is a window application: use `start /wait` in `cmd`, or `Start-Process -Wait -NoNewWindow` in PowerShell, to wait for it and read the exit code.
+**Rendering without a window** (`--render`): the options are the keys of the settings table written `--key=value` (`--width=1280 --height=720 --fps=30 --duration=10 --codec=h265 --container=mp4 --crf=18 --outdir=out`), applied after `config.ini` and after `--profile=file.ini`; the `// key=value` comments of a shader still take priority, as in the window. `--png` renders a single image at the start time. `--thumb[=seconds]` writes a cover thumbnail and `--sheet=4x3` a contact sheet (see “Output”). `--param=name=value` (repeatable) sets a parameter declared in the shader with `// uniform`, or gives it keyframes: `--param="speed=smooth 0:1 ; 4:3"` (see “Creating”). `--watch=folder` keeps the program running and renders every `.glsl` / `.txt` that appears in the folder (once its size stops changing; pass files such as `name.bufferA.glsl` are not shaders of their own; stop with `Ctrl+C`, or use `--watch-count=N` to stop after N renders). Watching is never on by default. It also looks in the sub-folders (not in `done/` and `failed/`): a `profile.ini` in the watched folder or in a sub-folder sets the settings of the shaders there (after `config.ini` and `--profile`, before the `--key=value` options); `--watch-move` moves every rendered shader, with its pass files, to `done/` (or `failed/` after an error) of its own folder; `--log=file` also appends everything that is displayed, with a time stamp, to a file; `--report=json|text` writes a render report next to each video. `--progress=json` prints one JSON object per line on the standard output: `start`, `progress` (`frame`, `frames`, `percent`, `fps`, `eta`), `log`, `done` (with the `output` file), `error`, then `end` (`ok`, `failed`); `--progress=text` prints a line every 10 %. Exit codes: `0` everything rendered, `1` a render failed, `2` invalid command line, `3` no OpenGL 3.3, `4` ffmpeg not found. On Linux without any display server (a render farm, a container, continuous integration) `--render`, `--selftest`, `--diagnostic` and `--benchmark` create their OpenGL context through **EGL** (Mesa's `libEGL`, loaded only when no display is found; install your distribution's Mesa EGL package, for example `libegl1` and `libegl-mesa0`). On Windows the program is a window application: use `start /wait` in `cmd`, or `Start-Process -Wait -NoNewWindow` in PowerShell, to wait for it and read the exit code.
 
 ```
 ShaderToMP4 --render --progress=json --container=webm --codec=vp9 --width=1280 --height=720 --outdir=out shader.glsl
@@ -356,7 +413,7 @@ ShaderToMP4 --render --progress=json --container=webm --codec=vp9 --width=1280 -
 <details>
 <summary><b>Languages</b></summary>
 
-All interface texts come from `lang/en.json` and `lang/fr.json`, embedded in the executable, and from the other files of the `lang` folder shipped next to it: German (`de`), Spanish (`es`), Italian (`it`) and Portuguese (`pt`). These four translations are recent and have not been reviewed by native speakers: corrections are welcome. The language follows the system by default (when a file exists for it), can be switched with the globe button, and is remembered in `window.ini`. To add or fix a language without rebuilding, put a `lang/<code>.json` file next to the executable (keys missing from it fall back to English); the globe button then cycles through every available language.
+All interface texts come from `lang/en.json` and `lang/fr.json`, embedded in the executable, and from the other files of the `lang` folder shipped next to it: German (`de`), Spanish (`es`), Italian (`it`), Portuguese (`pt`), Dutch (`nl`), Japanese (`ja`) and Simplified Chinese (`zh`). These seven translations are recent and have not been reviewed by native speakers: corrections are welcome. The language follows the system by default (when a file exists for it), can be switched with the globe button, and is remembered in `window.ini`. Japanese and Chinese need a font with those characters: Windows has one (the system falls back to it by itself); on Linux and macOS the program loads a system CJK font when one is installed (Noto Sans CJK, WenQuanYi, Droid Sans Fallback, PingFang or Hiragino...) and shows empty boxes otherwise. To add or fix a language without rebuilding, put a `lang/<code>.json` file next to the executable (keys missing from it fall back to English); the globe button then cycles through every available language.
 
 </details>
 
@@ -433,7 +490,7 @@ src/        source code: core/ (rendering engine, no UI), platform/ (the only co
             gui/ (Windows interface, Direct2D), ui_imgui/ (Linux and macOS interface, GLFW + Dear ImGui), main.cpp, main_posix.cpp
 assets/     fonts embedded in the Linux / macOS interface (Inter)
 cmake/      resource embedding for CMake builds
-lang/       interface texts: en, fr, de, es, it, pt (.json)
+lang/       interface texts: en, fr, de, es, it, pt, nl, ja, zh (.json)
 res/        manifest (DPI, theme), icon, version information, SVG icons (icons/)
 scripts/    build.bat / build.sh (build), test.bat / test.sh (self-test), package-*.{ps1,sh} (portable archives), check-repo.ps1 (repository check)
 tests/      reference shaders and their .ref images
@@ -456,10 +513,11 @@ bin/        working folder: the executable (generated), ffmpeg, config.ini
 
 ### Known limits
 
-- The Windows interface adapts to the screen DPI. Its layout was checked at 100 %, 125 %, 150 % and 200 % with `--dpi=120|144|192` (a test option that forces the scale; the behaviour when moving a window between two real monitors of different scales has not been tested). Screen readers: the fields, drop-down lists and sliders are named by their label for Windows UI Automation (checked with a UI Automation client); Narrator and NVDA themselves have not been tried.
+- The Windows interface adapts to the screen DPI, including when a window is moved between two monitors of different scales (checked on a real two-monitor PC by switching the second one to 150 % and 200 %: the main window and the editor are laid out again at the new scale and kept inside the screen; a window that had to be shrunk to fit does not grow back when moved to a bigger screen). Screen readers: checked with NVDA 2026.2 (its speech log read while tabbing through the main window and the Output window: every field, list, slider and button is announced with its name and role, the slider with its value; icon-only buttons are named by their tooltip) and with a UI Automation client; the names are given to both UI Automation and MSAA, which NVDA reads. Narrator uses UI Automation and was started with the program running, but its speech cannot be recorded, so only the names it reads were checked. In the editor, `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Ctrl+1` to `Ctrl+9` switch tabs without the mouse (`Tab` inserts a tab in the text).
 - AMD and Intel hardware encoders (AMF, QuickSync, VAAPI), and hardware AV1, have not been tested on real hardware.
 - macOS: the program is built and packaged by the continuous integration, but the hosted macOS machines have no GPU, so the window has not been run on a real Mac. Please report any problem.
 - Linux and macOS: the file dialogs are built into the program (no system dialog), and the render progress is shown in the macOS Dock (written from the documentation of the system and compiled by the continuous integration, but never run on a real Mac); on Linux there is no progress on the taskbar button (the launchers' API needs D-Bus, a library the program does not ship), the window only asks for attention at the end of a batch.
+- Linux and macOS: the editor, the Output section, the settings of one shader, the dropped-media menu and the headless rendering through EGL are compiled by the continuous integration (the ImGui code was also syntax-checked against the real sources) but their windows have not been seen on screen, and the EGL path has only run in the continuous integration. The same goes for the hardware encoders in 10 bits and for the comparison of frame interpolation with native rendering, which have only been checked on synthetic output.
 
 ## Project information
 

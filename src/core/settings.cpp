@@ -24,7 +24,7 @@ bool sameSettings(const Settings& a, const Settings& b) {
            sameChannels(a, b) && formatMouseKeys(a.mouseKeys) == formatMouseKeys(b.mouseKeys) && formatKeyPresses(a.keys) == formatKeyPresses(b.keys) && a.date == b.date && a.variants == b.variants && a.gpu == b.gpu && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
            a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.paramSpecs == b.paramSpecs && a.post == b.post && a.lut == b.lut && a.alpha == b.alpha && a.hdr == b.hdr && a.hdrPeak == b.hdrPeak &&
            a.hdrFall == b.hdrFall && a.hdrWhite == b.hdrWhite && a.interp == b.interp && a.scale == b.scale && a.scaleFilter == b.scaleFilter &&
-           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata;
+           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report;
 }
 
 // Valeur complete d'une cle qui garde ses espaces (chemin, modele de nom) : le commentaire `      ; texte` que writeIni peut
@@ -152,6 +152,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "endaction") s.endaction = (lower(v) == "folder" || lower(v) == "sleep") ? lower(v) : "none";
         else if (k == "date") s.date = lower(v) == "off" ? "" : v;
         else if (k == "chunk") s.chunk = std::stod(v);
+        else if (k == "report") s.report = lower(v) == "json" ? "json" : (lower(v) == "text" || lower(v) == "txt") ? "text" : "off";
         else if (k == "encoder") {
             std::string c = lower(v);
             s.encoder = (c == "auto" || c == "nvenc" || c == "amf" || c == "qsv") ? c : "cpu";
@@ -173,7 +174,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
 bool isSettingKey(const std::string& key) {
     static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
                                         "blur", "shutter", "loop", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
-                                        "scale", "scalefilter", "loudnorm", "title", "credit", "titledur", "chunk", "encoder", "color", "container",
+                                        "report", "scale", "scalefilter", "loudnorm", "title", "credit", "titledur", "chunk", "encoder", "color", "container",
                                         "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "key", "date", "endaction", "variant", "gpu"};
     for (const char* k : kKeys)
         if (key == k) return true;
@@ -188,9 +189,25 @@ bool isSettingKey(const std::string& key) {
 void applySetting(Settings& s, const std::string& key, const std::string& value) { applyKV(s, key, value); }
 
 std::wstring shaderOverridesOf(const std::wstring& shaderPath) {
-    std::string text;
-    if (!readFile(shaderPath, text) || text.size() >= 2 && (uint8_t)text[0] == 0xFF && (uint8_t)text[1] == 0xFE) return L"";
     std::string out;
+    for (const Override& o : shaderOverrides(shaderPath)) out += (out.empty() ? "" : ", ") + o.key + "=" + o.value;
+    return W(out);
+}
+
+bool isOverridden(const std::vector<Override>& list, const char* key) {
+    for (const Override& o : list)
+        if (o.key == key) return true;
+    return false;
+}
+
+void applyOverrides(Settings& s, const std::vector<Override>& list) {
+    for (const Override& o : list) applyKV(s, o.key, o.value);
+}
+
+std::vector<Override> shaderOverrides(const std::wstring& shaderPath) {
+    std::vector<Override> list;
+    std::string text;
+    if (!readFile(shaderPath, text) || text.size() >= 2 && (uint8_t)text[0] == 0xFF && (uint8_t)text[1] == 0xFE) return list;
     size_t pos = 0;
     while (pos <= text.size()) {
         size_t e = text.find('\n', pos);
@@ -206,9 +223,9 @@ std::wstring shaderOverridesOf(const std::wstring& shaderPath) {
         std::string val = trim(body.substr(eq + 1));
         if (key != "outdir" && key != "audio" && key != "name" && key != "mouse" && key != "key" && key != "lut" && key != "title" && key != "credit" && key.compare(0, 8, "ichannel") != 0) val = val.substr(0, val.find_first_of(" \t"));
         if (val.empty()) continue;
-        out += (out.empty() ? "" : ", ") + key + "=" + val;
+        list.push_back({key, val});
     }
-    return W(out);
+    return list;
 }
 
 void parseLines(Settings& s, const std::string& text, bool onlySlashComments) {
@@ -291,6 +308,7 @@ void writeIni(const std::wstring& path, const Settings& s) {
     put("gpu", s.gpu, "ini.gpu");
     put("endaction", s.endaction, "ini.endaction");
     put("chunk", num(s.chunk), "ini.chunk");
+    if (s.report != "off") put("report", s.report, "ini.report");
     put("warmup", std::to_string(s.warmup), "ini.warmup");
     // sortie : transparence, HDR, interpolation, mise a l'echelle, son, texte incruste (seulement ce qui est regle)
     if (s.alpha) put("alpha", "1");

@@ -57,6 +57,15 @@ void outputFieldsFrom(const Settings& s, OutputFields& f) {
     f.title = s.title;
     f.credit = s.credit;
     f.titleDur = i18n::num(s.titleDur);
+    f.name = s.name;
+    f.exists = s.exists == "number" ? 1 : s.exists == "skip" ? 2 : 0;
+    f.chunk = i18n::num(s.chunk);
+    f.pbo = std::to_wstring(s.pbo);
+    f.shutter = i18n::num(s.shutter);
+    f.endAction = s.endaction == "folder" ? 1 : s.endaction == "sleep" ? 2 : 0;
+    f.metadata = s.metadata;
+    f.variants.clear();
+    for (const std::string& v : s.variants) f.variants += (f.variants.empty() ? L"" : L" ; ") + W(v);
 }
 
 bool outputFieldsApply(const OutputFields& f, Settings& s, std::wstring& err) {
@@ -101,6 +110,38 @@ bool outputFieldsApply(const OutputFields& f, Settings& s, std::wstring& err) {
     t.titleDur = v;
     t.title = trim(f.title);
     t.credit = trim(f.credit);
+    t.name = trim(f.name);
+    t.exists = f.exists == 1 ? "number" : f.exists == 2 ? "skip" : "overwrite";
+    t.endaction = f.endAction == 1 ? "folder" : f.endAction == 2 ? "sleep" : "none";
+    t.metadata = f.metadata;
+    t.variants.clear();
+    {
+        const std::string all = U8(f.variants);
+        size_t pos = 0;
+        while (pos <= all.size()) {
+            size_t e = all.find(';', pos);
+            if (e == std::string::npos) e = all.size();
+            const std::string v = trim(all.substr(pos, e - pos));
+            pos = e + 1;
+            if (v.empty()) continue;
+            const size_t colon = v.find(':');
+            const std::string name = trim(colon == std::string::npos ? v : v.substr(0, colon));
+            if (name.empty() || (colon != std::string::npos && v.find('=', colon) == std::string::npos)) {
+                err = TXF("error.variant_invalid", W(v).c_str());
+                return false;
+            }
+            t.variants.push_back(v);
+        }
+    }
+    double chunk = 0, shutter = 0, pbo = 0;
+    if (!number(f.chunk, chunk, 0) || chunk < 0 || chunk > 86400 || !number(f.shutter, shutter, 0.5) || shutter < 0.01 || shutter > 1 || !number(f.pbo, pbo, 3) ||
+        pbo < 2 || pbo > 8 || pbo != std::floor(pbo)) {
+        err = TX("error.adv_invalid");
+        return false;
+    }
+    t.chunk = chunk;
+    t.shutter = shutter;
+    t.pbo = (int)pbo;
     s = t;
     return true;
 }

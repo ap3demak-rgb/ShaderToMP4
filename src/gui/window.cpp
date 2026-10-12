@@ -45,6 +45,8 @@ void layout() {
         MoveWindow(g.bParams, hx, hy, S(40), hh, TRUE);
         hx -= gap + S(40);
         MoveWindow(g.bOutput, hx, hy, S(40), hh, TRUE);
+        hx -= gap + S(40);
+        MoveWindow(g.bEditor, hx, hy, S(40), hh, TRUE);
         g.chipRight = hx - gap;
     }
     int y = S(64);
@@ -82,7 +84,8 @@ void layout() {
             MoveWindow(g.chips[i], cx, sc.top + S(10), S(cw[i]), S(28), TRUE);
             cx -= S(6);
         }
-        const int fl = sc.left + pad + S(200);  // entre le titre de la carte et les pastilles
+        MoveWindow(g.bFileScope, sc.left + pad + S(150), sc.top + S(10), S(136), S(28), TRUE);
+        const int fl = sc.left + pad + S(150) + S(136) + S(8);  // entre le bouton « ce shader seul » et les pastilles
         MoveWindow(g.lblForced, fl, sc.top + S(15), std::max(0, (int)(cx - fl - S(6))), S(20), TRUE);
     }
     int fx = sc.left + pad, fy = sc.top + titleH;
@@ -408,6 +411,8 @@ void createControls(HWND hw) {
     g.bLang = button(nullptr, ID_LANG, IC_GLOBE, BtnStyle::Ghost, BG);
     g.bParams = button(nullptr, ID_PARAMS, IC_SLIDERS, BtnStyle::Ghost, BG);
     g.bOutput = button(nullptr, ID_OUTPUT, IC_FILM, BtnStyle::Ghost, BG);
+    g.bEditor = button(nullptr, ID_EDITOR, IC_EDIT, BtnStyle::Ghost, BG);  // dans l'ordre de l'en-tete : l'ordre de tabulation suit la creation
+    g.bFileScope = button("ui.btn.file_scope", ID_FILESCOPE, IC_SLIDERS, BtnStyle::Chip, CARD);
     g.bAdd = button("ui.btn.add", ID_ADD, IC_ADD, BtnStyle::Secondary, BG);
     g.bRemove = button("ui.btn.remove", ID_REMOVE, IC_TRASH, BtnStyle::Secondary, BG);
     g.bClear = button("ui.btn.clear", ID_CLEAR, IC_CLEAR, BtnStyle::Secondary, BG);
@@ -532,9 +537,13 @@ void createControls(HWND hw) {
             {g.cmbPreset, "ui.lbl.preset"}, {g.trkCrf, "ui.lbl.quality"}, {g.cmbContainer, "ui.lbl.container"},
             {g.cmbEncoder, "ui.lbl.encoder"}, {g.edBitrate, "ui.lbl.bitrate"}, {g.cmbColor, "ui.lbl.color"}, {g.cmbBlur, "ui.lbl.blur"},
             {g.edLoop, "ui.lbl.loop"}, {g.cmbDepth, "ui.lbl.depth"}, {g.edAudio, "ui.lbl.audio"}, {g.edFadeIn, "ui.lbl.fade_in"},
+            {g.bAbout, "ui.tip.about"}, {g.bLang, "ui.tip.language"}, {g.bParams, "ui.tip.params_btn"}, {g.bOutput, "ui.tip.output_btn"},
+            {g.bEditor, "ui.tip.editor_btn"}, {g.bPause, "ui.tip.pause"},  // boutons a icone seule : nommes par leur info-bulle
             {g.edFadeOut, "ui.tip.fade_out"}, {g.edOut, "ui.lbl.output"}, {g.trkPrev, "ui.tip.preview_time"},
             {g.list, "ui.card.shaders"}, {g.preview, "ui.card.preview"}, {g.prog, "ui.card.progress"}};
         for (const auto& n : names) setAccessibleName(n.c, n.key);
+        // la partie saisie d'une liste modifiable (FPS) est un champ a part : nom aussi
+        if (HWND inner = FindWindowExW(g.cmbFps, nullptr, L"Edit", nullptr)) setAccessibleName(inner, "ui.lbl.fps");
     }
 
     // Info-bulles (texte demandé à l'affichage, voir TTN_GETDISPINFO)
@@ -544,7 +553,7 @@ void createControls(HWND hw) {
     SendMessageW(g.tip, TTM_SETDELAYTIME, TTDT_INITIAL, 450);
     struct Tip { HWND c; const char* key; };
     const Tip tips[] = {
-        {g.bAbout, "ui.tip.about"}, {g.bLang, "ui.tip.language"}, {g.bParams, "ui.tip.params_btn"}, {g.bOutput, "ui.tip.output_btn"},
+        {g.bAbout, "ui.tip.about"}, {g.bLang, "ui.tip.language"}, {g.bParams, "ui.tip.params_btn"}, {g.bOutput, "ui.tip.output_btn"}, {g.bFileScope, "ui.tip.file_scope"}, {g.bEditor, "ui.tip.editor_btn"},
         {g.bAdd, "ui.tip.add"}, {g.bRemove, "ui.tip.remove"}, {g.bClear, "ui.tip.clear"}, {g.bFolder, "ui.tip.folder"},
         {g.bSnap, "ui.tip.png"}, {g.bStart, "ui.tip.start"}, {g.bPause, "ui.tip.pause"}, {g.bCancel, "ui.tip.cancel"},
         {g.cmbRes, "ui.tip.resolution"}, {g.edW, "ui.tip.width"}, {g.edH, "ui.tip.height"}, {g.cmbFps, "ui.tip.fps"},
@@ -569,6 +578,7 @@ void reportMissingKeys() {
 
 // Applique la langue courante à tous les textes de la fenêtre (à la création et à chaque changement de langue)
 void applyLanguage() {
+    refreshAccessibleNames();
     for (const auto& b : g_btnKeys) SetWindowTextW(b.first, TX(b.second).c_str());
     SetWindowTextW(g.bPause, TX(g.pause ? "ui.btn.resume" : "ui.btn.pause").c_str());
     SetWindowTextW(g.bLang, langLabel().c_str());
@@ -653,6 +663,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             g.brField = CreateSolidBrush(cref(FIELD));
             ui::darkTitleBar(hw);
             createControls(hw);
+            g.batches = loadBatches(g.exeDir);
             createFonts();
             applyLanguage();
             settingsToUI(g.base);
@@ -698,8 +709,8 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_DPICHANGED: {
             g.dpi = theme::dpiOverride ? theme::dpiOverride : HIWORD(wp);
-            RECT* r = (RECT*)lp;
-            SetWindowPos(hw, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
+            const RECT r = theme::fitToWorkArea(*(RECT*)lp);
+            SetWindowPos(hw, nullptr, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE);
             createFonts();
             layout();
             return 0;
@@ -743,8 +754,12 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                 } else if (nh->code == LVN_ITEMCHANGED) {
                     updateForced();
                     followSelection();  // autre shader selectionne : la lecture suit
+                } else if (nh->code == NM_RCLICK) {
+                    showListMenu();
                 } else if (nh->code == LVN_KEYDOWN) {
-                    if (((NMLVKEYDOWN*)lp)->wVKey == VK_DELETE) removeSelected();
+                    const WORD vk = ((NMLVKEYDOWN*)lp)->wVKey;
+                    if (vk == VK_DELETE) removeSelected();
+                    else if (GetKeyState(VK_MENU) < 0 && (vk == VK_UP || vk == VK_DOWN)) moveSelected(vk == VK_UP ? -1 : 1);  // Alt+haut / Alt+bas
                 } else if (nh->code == NM_CUSTOMDRAW) {  // statut colore
                     NMLVCUSTOMDRAW* cd = (NMLVCUSTOMDRAW*)lp;
                     switch (cd->nmcd.dwDrawStage) {
@@ -794,6 +809,12 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             delete m;
             return 0;
         }
+        case WM_APP_MEDIA: {
+            std::vector<std::wstring>* files = (std::vector<std::wstring>*)lp;
+            dropMedia(*files);
+            delete files;
+            return 0;
+        }
         case WM_APP_DLDONE: {
             std::wstring* e = (std::wstring*)lp;
             if (g.worker.joinable()) g.worker.join();
@@ -819,6 +840,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             PreviewData* p = (PreviewData*)lp;
             if (p->t >= 0) {  // image du lecteur : la position suit le temps du shader
                 if (g.previewPending > 0) g.previewPending--;
+                g.playMeter.tick();
                 if (g.player && g.player->running()) {
                     Settings cur = g.base;
                     if (cur.duration > 0) {
@@ -932,6 +954,8 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                 case ID_ABOUT: showAbout(hw); break;
                 case ID_PARAMS: showParams(hw); break;
                 case ID_OUTPUT: showOutput(hw); break;
+                case ID_FILESCOPE: toggleFileScope(); break;
+                case ID_EDITOR: showEditor(hw); break;
                 case ID_LANG: {  // langue suivante (en -> fr -> ...), appliquée tout de suite
                     std::vector<std::string> langs = i18n::available();
                     std::string cur = i18n::language(), next = langs.front();
@@ -1025,6 +1049,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                     g.base = cur;
                     saveSettings();
                 }
+                flushFileScope();
             }
             saveWindowPlacement(hw);
             DestroyWindow(hw);

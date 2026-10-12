@@ -16,6 +16,13 @@ struct OutputFields {
     std::wstring interp;         // vide ou 0 = aucune
     std::wstring loudnorm;       // vide = aucune
     std::wstring title, credit, titleDur;
+    // Reglages avances (config.ini ou commentaires du shader) : nom du fichier, fichier existant, parties, file de lecture GPU, obturateur, fin de lot
+    std::wstring name;
+    int exists = 0;              // 0 ecraser, 1 numeroter, 2 ignorer
+    std::wstring chunk, pbo, shutter;
+    int endAction = 0;           // 0 rien, 1 montrer le dossier, 2 veille
+    bool metadata = true;
+    std::wstring variants;       // variantes separees par « ; » : nom:cle=valeur|cle=valeur
 };
 
 constexpr int kScaleFilterCount = 5;

@@ -6,7 +6,7 @@
 
 Format : une section par version, la plus récente en premier. La section d'une version étiquetée est reprise dans les notes de version.
 
-## Non publié
+## 1.9.0 — 2026-10-12
 
 ### Ajouts
 
@@ -16,6 +16,18 @@ Format : une section par version, la plus récente en premier. La section d'une 
 - Texte sur la vidéo : `title`, `credit`, `titledur` avec drawtext de ffmpeg ; le journal d'un import Shadertoy donne la ligne de crédit à ajouter.
 - Montage : un fichier `nom.montage` enchaîne plusieurs shaders avec des transitions coupe, fondu, fondu enchaîné ou balayage (clips rendus par parties reprenables, puis joints par ffmpeg).
 - Ligne de commande : `--sheet=4x3` (planche-contact) et `--thumb[=secondes]` (vignette de couverture).
+- Éditeur du shader sélectionné et de ses passes (Buffer A–D, Common, Cubemap A, Sound, Post) : onglets, création en un clic d'une passe absente, numéros de ligne, coloration GLSL sous Windows, erreurs du compilateur marquées d'après le journal, `Ctrl+S` écrit le fichier et recharge l'aperçu.
+- Réglages d'un seul shader (« Ce shader seul », gardés dans `jobs/`, éventuellement écrits dans le shader en commentaires `// clé=valeur`) ; champs grisés avec la valeur du shader quand un commentaire `// clé=valeur` impose le réglage.
+- File d'attente : monter / descendre / passer en tête (`Alt+Haut` / `Alt+Bas`), rendre seulement la sélection, remettre en attente, menu du clic droit dans les deux interfaces.
+- Déposer une image, un son ou une vidéo sur la fenêtre écrit `// iChannelN=…` (ou la bande-son) dans le shader sélectionné.
+- Aperçu : numéro de l'image et cadence réelle pendant la lecture ; image PNG au temps de l'aperçu.
+- Page « Avancé » de la fenêtre Sortie : modèle du nom de fichier, règle du fichier existant, métadonnées, action de fin de lot, parties, file de lecture GPU, obturateur du flou.
+- Rapport de rendu (`report=json|text`) : durée, cadence, goulot, taille et avertissements à côté de chaque vidéo.
+- Ligne de commande : `--watch` regarde les sous-dossiers avec un `profile.ini` par dossier, `--watch-move` (done/ et failed/), `--log=fichier` ; `--benchmark --compare=precedent.json --max-drop=N` (code de sortie 5) ; l'intégration continue compare le benchmark au passage précédent.
+- Linux : rendu sans fenêtre par EGL quand il n'y a pas de serveur d'affichage (ferme de rendu, conteneur, CI), avec une étape de CI qui y passe l'auto-test.
+- Accessibilité vérifiée avec NVDA : noms, rôles et valeurs sont maintenant aussi donnés par MSAA (boutons à icône seule, champs largeur et FPS, liste des shaders, curseurs avec leur valeur, barre de progression) ; l'éditeur change d'onglet avec `Ctrl+Tab` et `Ctrl+1..9` ; les fenêtres déplacées sur un moniteur d'une autre échelle sont remises en page et gardées dans l'écran.
+- Interfaces en néerlandais, japonais et chinois simplifié (`lang/nl.json`, `ja.json`, `zh.json`) ; sous Linux et macOS une police CJK du système est chargée pour le japonais et le chinois.
+- Lots : numéroter des shaders de 1 à 4 et rendre un lot ; les réglages d'un seul shader couvrent maintenant la fenêtre Sortie et les variantes ; coloration GLSL dans l'éditeur Linux / macOS ; noms accessibles pour les boutons à icône et les nouveaux champs ; l'éditeur suit un changement d'échelle d'écran.
 - Fenêtre « Sortie » (Windows, bouton de l'en-tête) et section correspondante de la carte des réglages (Linux et macOS) pour la transparence, le HDR, la taille et le filtre de sortie, l'interpolation, le volume sonore, le titre et le crédit ; le bouton « Image PNG » devient « Images » : image PNG, vignette de couverture ou planche-contact (3×2, 4×3, 5×4, 6×5).
 
 - Paramètres animés : `// uniform float vitesse = 1.0 [0..5]` (types float, int, bool, vec2, vec3, vec4, color) déclare un uniform réglable, disponible dans toutes les passes ; valeurs enregistrées par shader dans `params/`, images clés `// key vitesse=0:1.0 ; 4:3.0` (linéaire, lissée ou constante), `--param=nom=valeur` en ligne de commande, et paramètres qui suivent le son (`audio.level`, `audio.bass`, `audio.mid`, `audio.treble`).

@@ -6,6 +6,9 @@
 // qui ne parle au modèle que par une file d'événements vidée par pump() dans le thread de l'interface.
 #pragma once
 #include "common.h"
+#include "core/batches.h"
+#include "core/channeldrop.h"
+#include "core/filesettings.h"
 #include "core/player.h"
 #include "core/settings.h"
 
@@ -43,6 +46,10 @@ struct Fields {
     int hdr = 0, scaleFilter = 0;  // hdr : 0 aucun, 1 HDR10 (PQ), 2 HLG
     char hdrPeak[16] = "1000", hdrFall[16] = "400", hdrWhite[16] = "203", scale[32] = "", interp[16] = "", loudnorm[16] = "";
     char title[256] = "", credit[256] = "", titleDur[16] = "3";
+    // Avance : nom du fichier, fichier existant, metadonnees, fin de lot, parties, file de lecture GPU, obturateur
+    char name[256] = "", chunk[16] = "30", pbo[8] = "3", shutter[16] = "0,5", variants[512] = "";
+    int exists = 0, endAction = 0;  // exists : 0 ecraser, 1 numeroter, 2 ignorer ; endAction : 0 rien, 1 dossier, 2 veille
+    bool metadata = true;
 };
 
 struct LogLine {
@@ -60,7 +67,18 @@ public:
     Settings base;  // derniers réglages validés (écrits dans config.ini)
     Fields f;
     void fromSettings(const Settings& s);
-    bool toSettings(Settings& s, std::wstring& err) const;
+    bool toSettings(Settings& s, std::wstring& err) const;  // les reglages imposes par le shader (champs gris) ne sont pas lus : s garde la valeur de la fenetre
+    // Reglages imposes par le shader selectionne : les champs montrent ses valeurs (grises) ; les valeurs de la fenetre restent dans `base`
+    std::vector<Override> forced;
+    bool isForced(const char* key) const { return isOverridden(forced, key); }
+    void refreshForced();  // a appeler a chaque image : suit la selection et les changements du fichier
+    // Reglages propres au shader selectionne (« ce shader seul ») : pendant qu'ils sont actifs, `base` et les champs les montrent et
+    // generalSettings() rend les reglages generaux ; ils sont enregistres dans jobs/ (jamais dans le shader, sauf writeScopeIntoShader).
+    bool fileScopeOn() const { return fileOn_; }
+    Settings generalSettings() const;
+    void toggleFileScope();
+    void writeScopeIntoShader();
+    void flushFileScope();
     void applyQuickPreset(int idx);  // preselections integrees (core/presets.h)
     int formatsRevision = 0;         // change quand ffmpeg est (re)installe : les listes de formats sont a refaire
     void save() const;
@@ -73,16 +91,25 @@ public:
     std::vector<std::wstring> stateText;
     int selected = 0;
     void addFiles(const std::vector<std::wstring>& files);
+    // Fichiers deposes : les shaders vont dans la liste ; les images, sons et videos attendent le choix du canal (pendingMedia, premier en tete)
+    void dropFiles(const std::vector<std::wstring>& files);
+    std::vector<std::wstring> pendingMedia;
+    void applyMedia(const std::wstring& file, int channel);  // channel 0 a 3, ou -1 : bande-son (audio=)
     void removeSelected();
+    void moveSelected(int mode);  // priorite : -1 monte, +1 descend, 0 passe en tete
+    void resetSelectedState();
+    BatchMap batches;  // lots (1 a 4) des shaders de la liste ; jobs/batches.txt
+    void setBatch(int n);  // lot du shader selectionne (0 = aucun)    // le shader selectionne redevient « en attente »
     void clearList();
     void saveQueue() const;  // shaders pas encore rendus : queue.txt, retrouves a la reouverture
 
     // --- Actions ---
-    void startJobs(bool snapshot, int imageKind = 0, int cols = 0, int rows = 0);  // snapshot : une image (0 PNG, 1 vignette, 2 planche cols x rows)
+    void startJobs(bool snapshot, int imageKind = 0, int cols = 0, int rows = 0, bool atPreview = false, bool selectedOnly = false, int batch = 0);  // snapshot : une image (0 PNG, 1 vignette, 2 planche cols x rows)
     void runPreview();
     void togglePause();
     // Apercu en temps reel (lecture) : demarre / arrete, suit le curseur et le shader selectionne
     bool playing() const { return player_ && player_->running(); }
+    FpsMeter playMeter;  // cadence reelle de l'apercu en lecture
     void togglePlay();
     void stopPlay();
     void seekPlay();  // le curseur d'apercu a bouge : saute a ce temps
@@ -108,6 +135,7 @@ public:
     int prevW = 0, prevH = 0;
     bool prevFresh = false;
 
+    std::function<void(const std::wstring&)> logHook;  // appelee pour chaque ligne du journal (l'editeur y lit les erreurs du compilateur)
     void appendLog(const std::wstring& text);
     void setStatus(const std::wstring& t) { status = t; }
     void pump();  // à appeler à chaque image, dans le thread de l'interface
@@ -141,6 +169,15 @@ private:
     std::atomic<int> playPending_{0};  // images du lecteur pas encore affichees
     std::wstring playPath_;
     double playStart_ = 0, playDur_ = 1;
+    void syncFileScope(const std::wstring& cur);
+    void leaveFileScope(bool deleteSettings);
+    void enterFileScope(const std::wstring& path, const std::vector<Override>& list);
+    bool fileOn_ = false;
+    std::wstring filePath_, fileShown_;
+    Settings general_;
+    double runStart_ = -1;  // image PNG au temps de l'apercu : temps du shader, -1 = au temps de debut
+    std::wstring forcedPath_;
+    std::chrono::steady_clock::time_point forcedChecked_{};
     std::mutex evMutex_;
     std::vector<Event> events_;
 };
