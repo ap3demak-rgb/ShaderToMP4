@@ -41,6 +41,8 @@ void layout() {
         MoveWindow(g.bAbout, hx, hy, S(40), hh, TRUE);
         hx -= gap + S(64);
         MoveWindow(g.bLang, hx, hy, S(64), hh, TRUE);
+        hx -= gap + S(40);
+        MoveWindow(g.bParams, hx, hy, S(40), hh, TRUE);
         g.chipRight = hx - gap;
     }
     int y = S(64);
@@ -402,6 +404,7 @@ void createControls(HWND hw) {
     };
     g.bAbout = button(nullptr, ID_ABOUT, IC_INFO, BtnStyle::Ghost, BG);
     g.bLang = button(nullptr, ID_LANG, IC_GLOBE, BtnStyle::Ghost, BG);
+    g.bParams = button(nullptr, ID_PARAMS, IC_SLIDERS, BtnStyle::Ghost, BG);
     g.bAdd = button("ui.btn.add", ID_ADD, IC_ADD, BtnStyle::Secondary, BG);
     g.bRemove = button("ui.btn.remove", ID_REMOVE, IC_TRASH, BtnStyle::Secondary, BG);
     g.bClear = button("ui.btn.clear", ID_CLEAR, IC_CLEAR, BtnStyle::Secondary, BG);
@@ -538,7 +541,7 @@ void createControls(HWND hw) {
     SendMessageW(g.tip, TTM_SETDELAYTIME, TTDT_INITIAL, 450);
     struct Tip { HWND c; const char* key; };
     const Tip tips[] = {
-        {g.bAbout, "ui.tip.about"}, {g.bLang, "ui.tip.language"},
+        {g.bAbout, "ui.tip.about"}, {g.bLang, "ui.tip.language"}, {g.bParams, "ui.tip.params_btn"},
         {g.bAdd, "ui.tip.add"}, {g.bRemove, "ui.tip.remove"}, {g.bClear, "ui.tip.clear"}, {g.bFolder, "ui.tip.folder"},
         {g.bSnap, "ui.tip.png"}, {g.bStart, "ui.tip.start"}, {g.bPause, "ui.tip.pause"}, {g.bCancel, "ui.tip.cancel"},
         {g.cmbRes, "ui.tip.resolution"}, {g.edW, "ui.tip.width"}, {g.edH, "ui.tip.height"}, {g.cmbFps, "ui.tip.fps"},
@@ -924,6 +927,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                     setStatus(TX(g.pause ? "status.paused" : "status.rendering"));
                     break;
                 case ID_ABOUT: showAbout(hw); break;
+                case ID_PARAMS: showParams(hw); break;
                 case ID_LANG: {  // langue suivante (en -> fr -> ...), appliquée tout de suite
                     std::vector<std::string> langs = i18n::available();
                     std::string cur = i18n::language(), next = langs.front();

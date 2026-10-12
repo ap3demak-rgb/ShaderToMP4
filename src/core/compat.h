@@ -14,5 +14,8 @@ std::string adaptShaderCode(const std::string& code, std::vector<std::wstring>& 
 // Rapport avant rendu sur l'ensemble du code (image, tampons, commun) : ce qui est ignore ou fige, au lieu d'un echec obscur.
 void checkCompatibility(const std::string& allCode, const Settings& s, std::vector<std::wstring>& notes);
 
+// Code sans commentaires (// et /* */), lignes conservees (ils sont remplaces par des espaces).
+std::string stripCodeComments(const std::string& code);
+
 // Vrai si le code (hors commentaires) contient le mot entier `word` (iChannel0, iMouse...).
 bool codeUsesWord(const std::string& code, const std::string& word);

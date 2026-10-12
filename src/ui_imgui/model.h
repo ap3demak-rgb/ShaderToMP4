@@ -35,6 +35,9 @@ struct Fields {
     int color = 0, blur = 0, encoder = 0;
     char loop[16] = "0", audio[512] = "", fadein[16] = "0", fadeout[16] = "0";
     float previewPos = 0.0f;  // 0..1 entre « début » et « début + durée »
+    bool postOn[8] = {false, false, false, false, false, false, false, false};  // effets de post-traitement (ordre de postEffectInfos())
+    float postAmt[8] = {0, 0, 0, 0, 0, 0, 0, 0};                                 // leur quantité
+    char lut[512] = "";                                                           // LUT couleur .cube
 };
 
 struct LogLine {

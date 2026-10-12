@@ -39,11 +39,14 @@ struct Settings {
     std::vector<MouseKey> mouseKeys;  // iMouse simule : images cles (vide = 0) ; positions en fractions de la taille (0,0 = bas gauche)
     double bufScale[4] = {0, 0, 0, 0};  // taille du tampon A-D : fraction de la taille du rendu (0 = taille du rendu)
     int bufW[4] = {0, 0, 0, 0}, bufH[4] = {0, 0, 0, 0};  // ou taille fixe en pixels (0 = taille du rendu)
-    std::vector<KeyPress> keys;    // canal `keyboard` : touches pressees a des instants donnes
+    std::vector<std::string> paramSpecs;  // reglages de parametres « nom=valeur » ou « nom=0:1.0 ; 4:3.0 » (// key nom=..., --param=), dans l'ordre
+    std::vector<KeyPress> keys;   // canal `keyboard` : touches pressees a des instants donnes
     std::string date;              // iDate fixe "AAAA-MM-JJ[THH:MM[:SS]]" ("" = date reelle)
     std::string vr = "auto";        // auto | off | mono | stereo : shader mainVR rendu en 360 equirectangulaire (stereo = haut / bas)
     double vrIpd = 0.064;           // ecart des yeux du rendu stereo, dans l'unite du shader
-    int warmup = 0;                // images simulees avant la premiere (tampons chauffes, iFrame decale de N) ; 0 = aucune
+    std::string post;               // effets de post-traitement : « bloom:0.4,grain,vignette » (noms et quantites, voir postfx.h)
+    std::wstring lut;               // LUT couleur .cube appliquee en dernier ("" = aucune)
+    int warmup = 0;               // images simulees avant la premiere (tampons chauffes, iFrame decale de N) ; 0 = aucune
     double chunk = 30;             // rendu par parties de N secondes, reprenables (0 = jamais)
 };
 

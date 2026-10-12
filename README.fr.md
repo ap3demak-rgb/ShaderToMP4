@@ -133,6 +133,7 @@ Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : 
 | **Retirer** | `Suppr` (dans la liste) | Retire les shaders sélectionnés |
 | **Dossier** | | Ouvre l'explorateur sur la vidéo du shader sélectionné |
 | **Profil / Enregistrer** | | Charge ou enregistre tous les réglages dans un fichier `.ini` |
+| **Paramètres** (icône à curseurs) | | Paramètres du shader et post-traitement (effets, LUT couleur) ; sous Linux et macOS ils sont en bas de la carte des réglages |
 | **À propos** | `F1` | Version, copyright, licence, contact, site web |
 | **EN / FR** | | Change la langue de l'interface |
 
@@ -181,6 +182,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 | (config.ini seulement) | `endaction` | après un lot réussi : `none` (défaut), `folder` (montrer le dernier fichier dans le gestionnaire de fichiers) ou `sleep` (mise en veille après 15 s ; fermer le programme l'annule). À la fin d'un lot le bouton de la barre des tâches / du Dock clignote toujours |
 | (config.ini seulement) | `chunk` | rendu par parties de N secondes (30 par défaut, 0 = jamais) |
 | (config.ini seulement) | `metadata` | 1 = écrire titre (nom du shader) et commentaire (taille, cadence, version) dans le fichier, 0 = aucun (1 par défaut) |
+| (commentaires du shader, config.ini) | `post`, `lut` | effets de post-traitement (`post=bloom:0.4,grain,vignette`) et LUT couleur (`lut=etalonnage.cube`) ; voir « Création » |
+| (commentaires du shader, `--param=`) | `key nom=…`, `param` | paramètres animés : `// key vitesse=0:1.0 ; 4:3.0`, `--param=vitesse=2.5` ; voir « Création » |
 | (commentaires du shader, config.ini) | `vr`, `vripd` | shader `mainVR` en vidéo 360° : `auto` (défaut), `off`, `mono`, `stereo` ; distance entre les yeux du rendu stéréo (voir « Compatibilité Shadertoy ») |
 | (commentaires du shader, config.ini) | `warmup` | images simulées avant la première (0 à 3600, 0 par défaut) : les tampons (Buffer A–D, Cubemap A) sont chauffés, et `iFrame` démarre à N (l'image 0 a `iFrame` = N, `iTime` ne change pas). Utile pour les effets à rétroaction qui mettent du temps à se stabiliser ; `iTime` des images de chauffe vaut `start − N/fps`, il peut donc être négatif |
 | (config.ini seulement) | `pbo` | profondeur de la file de lecture GPU (2 à 8, 3 par défaut) |
@@ -238,6 +241,49 @@ L'onglet **Image** et les passes **Buffer A–D**, **Common**, **Cubemap A** et 
 </details>
 
 <details>
+<summary><b>Création : paramètres animés et post-traitement</b></summary>
+
+**Paramètres.** Un commentaire déclare un `uniform` réglable, ajouté à toutes les passes du shader (image, tampons, Cubemap A, post) : `// uniform type nom = défaut [min..max]`.
+
+```glsl
+// uniform float vitesse = 1.0 [0..5]
+// uniform int   nombre = 3 [1..10]
+// uniform bool  halo = true
+// uniform vec2  centre = 0.5, 0.5 [0..1]
+// uniform color teinte = #ff8800      (un vec3 dans le shader)
+// uniform float kick = audio.bass     (suit le son, voir plus bas)
+void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... vitesse ... }
+```
+
+Types : `float`, `int`, `bool`, `vec2`, `vec3`, `vec4`, `color`. Sans intervalle, le curseur va de 0 au double de la valeur par défaut (au moins 1). Un nom déjà pris (une variable Shadertoy comme `iTime`, un mot du GLSL, un uniform écrit dans le shader, un doublon) arrête le rendu avec un message clair, comme une déclaration ou une valeur invalide.
+
+- **Panneau.** Windows : le bouton à curseurs de l'en-tête ouvre « Paramètres et post-traitement » ; Linux et macOS : la section « Paramètres du shader » en bas de la carte des réglages. Un curseur, une case ou un sélecteur de couleur par paramètre du shader sélectionné. Les valeurs sont enregistrées par shader dans le dossier `params/` à côté du programme (rien n'est écrit ailleurs) et reprises tout de suite par l'aperçu en lecture et par tous les rendus. « Rétablir les paramètres » revient aux valeurs écrites dans le shader. Le curseur de temps de l'aperçu montre un trait fin à chaque temps d'image clé du shader sélectionné.
+- **Images clés.** `// key nom=0:1.0 ; 4:3.0 ; 8:1.0` (temps en secondes de `iTime`, puis la valeur ; `x,y` pour un vecteur, `#rrggbb` pour une couleur). La valeur est interpolée entre deux clés et reste constante avant la première et après la dernière. Un mot devant choisit l'interpolation : `smooth`, `linear` (par défaut) ou `constant` (un palier à chaque clé) : `// key teinte=smooth 0:1,0,0 ; 2:0,0,1`. Une valeur seule sans temps (`// key halo=false`) fixe le paramètre. Un paramètre à images clés est animé : son curseur est inactif. La même syntaxe marche en ligne de commande : `--param=vitesse=2.5` ou `--param="vitesse=smooth 0:1 ; 4:3"`. Ordre de priorité : la déclaration, puis les valeurs enregistrées par le panneau, puis `--param`, puis les lignes `// key` du shader.
+- **Lié au son.** `// uniform float kick = audio.bass` (aussi `audio.level`, `audio.mid`, `audio.treble`) prend sa valeur dans le fichier du réglage `audio`, à l'instant exact de chaque image, avec la même analyse que le canal `audio` : `level` est le niveau sur les 23 dernières ms (1 = un sinus pleine échelle), `bass` la crête de 0 à 250 Hz, `mid` de 250 Hz à 2 kHz, `treble` de 2 à 10 kHz, tous dans 0..1. Avec `[min..max]` la valeur est ramenée à cet intervalle (`// uniform float kick = audio.bass [1..3]`). Seuls `float` et `int` peuvent suivre le son. Sans fichier son, le paramètre garde sa valeur par défaut et le journal le dit.
+
+**Post-traitement.** Appliqué à l'image rendue **en virgule flottante, avant la conversion en 8 ou 10 bits** : il marche donc avec le supersampling, le flou de mouvement et la sortie 10 bits, et les valeurs au-dessus de 1 (lumières fortes) sont encore là pour le bloom. Ordre : la passe `nom.post.glsl`, puis les effets, puis la LUT, puis le fondu.
+
+- **`nom.post.glsl`** à côté du shader : un `mainImage` qui reçoit l'image rendue dans `iChannel0` et a les mêmes entrées qu'un shader d'image (`iTime`, `iFrame`, `iMouse`, paramètres, `// iChannel1=...`, Common, tampons). Les erreurs sont données en `fichier:ligne`.
+- **Effets**, dans la fenêtre (case + curseur) ou `// post=bloom:0.4,grain,vignette` (nom, puis la quantité après deux-points ; sans elle, celle par défaut). Ils sont toujours appliqués dans cet ordre :
+
+  | Effet | Quantité (défaut) | Ce qu'il fait |
+  |---|---|---|
+  | `sharpen` | 0 à 4 (0.5) | netteté (masque flou) |
+  | `chroma` | 0 à 0.2 (0.01) | aberration chromatique, croissante vers les bords |
+  | `bloom` | 0 à 4 (0.35) | halo des parties lumineuses (flou à trois échelles) |
+  | `contrast` | −1 à 2 (0.15) | contraste autour de 0.5 |
+  | `saturation` | −1 à 2 (0.25) | −1 donne du gris |
+  | `hue` | −0.5 à 0.5 (0.05) | rotation de la teinte, en tours (1 = 360°) |
+  | `vignette` | 0 à 2 (0.4) | coins assombris |
+  | `grain` | 0 à 1 (0.06) | grain de pellicule, différent à chaque image, identique à chaque rendu |
+
+- **LUT couleur.** `// lut=etalonnage.cube` (chemin relatif au shader) ou le champ « LUT couleur » : un fichier `.cube`, 1D (`LUT_1D_SIZE` 2 à 256) ou 3D (`LUT_3D_SIZE` 2 à 65), avec `DOMAIN_MIN` / `DOMAIN_MAX`. La table 3D est lue par **interpolation tétraédrique**. Le fichier est vérifié à la lecture : mauvaise taille, mauvais nombre de lignes, mot-clé inconnu ou nombre invalide arrêtent le rendu avec le nom du fichier et la ligne.
+
+La fenêtre montre les effets dans l'aperçu en lecture (relancé un instant après un changement) ; `// post=` et `// lut=` écrits dans un shader priment sur la fenêtre. Les réglages `post` et `lut` peuvent aussi s'écrire dans `config.ini`. Pas fait : les effets dans la fenêtre principale de Windows elle-même (ils sont dans la fenêtre « Paramètres »), plusieurs passes `.post.glsl`, et des tailles propres pour la chaîne de post-traitement (elle travaille à la taille du rendu).
+
+</details>
+
+<details>
 <summary><b>Reprise après interruption</b></summary>
 
 Les vidéos plus longues que `chunk` secondes sont rendues par parties, dans un dossier `<nom>.parts` à côté de la vidéo. Si le rendu est annulé, plante ou échoue, les parties terminées restent : relance le même rendu **avec les mêmes réglages** et il reprend où il s'était arrêté, puis assemble les parties (copie des flux, sans réencodage). Si le shader ou un réglage a changé, les anciennes parties sont jetées.
@@ -258,7 +304,7 @@ Les vidéos plus longues que `chunk` secondes sont rendues par parties, dans un 
 | `ShaderToMP4 --version` | Affiche la version, le copyright et la licence |
 | `ShaderToMP4 --help` | Affiche les options |
 
-**Rendu sans fenêtre** (`--render`) : les options sont les clés du tableau des réglages écrites `--clé=valeur` (`--width=1280 --height=720 --fps=30 --duration=10 --codec=h265 --container=mp4 --crf=18 --outdir=sortie`), appliquées après `config.ini` et après `--profile=fichier.ini` ; les commentaires `// clé=valeur` d'un shader restent prioritaires, comme dans la fenêtre. `--png` rend une seule image au temps de départ. `--watch=dossier` laisse le programme actif et rend chaque `.glsl` / `.txt` qui apparaît dans le dossier (une fois que sa taille ne change plus ; les fichiers de passes comme `nom.bufferA.glsl` ne sont pas des shaders à part ; arrêt par `Ctrl+C`, ou `--watch-count=N` pour s'arrêter après N rendus). La surveillance n'est jamais active par défaut. `--progress=json` écrit un objet JSON par ligne sur la sortie standard : `start`, `progress` (`frame`, `frames`, `percent`, `fps`, `eta`), `log`, `done` (avec le fichier `output`), `error`, puis `end` (`ok`, `failed`) ; `--progress=text` écrit une ligne tous les 10 %. Codes de sortie : `0` tout est rendu, `1` un rendu a échoué, `2` ligne de commande invalide, `3` pas d'OpenGL 3.3, `4` ffmpeg introuvable. Sous Windows le programme est une application à fenêtre : utilisez `start /wait` dans `cmd`, ou `Start-Process -Wait -NoNewWindow` dans PowerShell, pour l'attendre et lire le code de sortie.
+**Rendu sans fenêtre** (`--render`) : les options sont les clés du tableau des réglages écrites `--clé=valeur` (`--width=1280 --height=720 --fps=30 --duration=10 --codec=h265 --container=mp4 --crf=18 --outdir=sortie`), appliquées après `config.ini` et après `--profile=fichier.ini` ; les commentaires `// clé=valeur` d'un shader restent prioritaires, comme dans la fenêtre. `--png` rend une seule image au temps de départ. `--param=nom=valeur` (répétable) règle un paramètre déclaré dans le shader par `// uniform`, ou lui donne des images clés : `--param="vitesse=smooth 0:1 ; 4:3"` (voir « Création »). `--watch=dossier` laisse le programme actif et rend chaque `.glsl` / `.txt` qui apparaît dans le dossier (une fois que sa taille ne change plus ; les fichiers de passes comme `nom.bufferA.glsl` ne sont pas des shaders à part ; arrêt par `Ctrl+C`, ou `--watch-count=N` pour s'arrêter après N rendus). La surveillance n'est jamais active par défaut. `--progress=json` écrit un objet JSON par ligne sur la sortie standard : `start`, `progress` (`frame`, `frames`, `percent`, `fps`, `eta`), `log`, `done` (avec le fichier `output`), `error`, puis `end` (`ok`, `failed`) ; `--progress=text` écrit une ligne tous les 10 %. Codes de sortie : `0` tout est rendu, `1` un rendu a échoué, `2` ligne de commande invalide, `3` pas d'OpenGL 3.3, `4` ffmpeg introuvable. Sous Windows le programme est une application à fenêtre : utilisez `start /wait` dans `cmd`, ou `Start-Process -Wait -NoNewWindow` dans PowerShell, pour l'attendre et lire le code de sortie.
 
 ```
 ShaderToMP4 --render --progress=json --container=webm --codec=vp9 --width=1280 --height=720 --outdir=sortie shader.glsl

@@ -11,6 +11,8 @@
 #include "i18n.h"
 #include "dateinput.h"
 #include "gl.h"
+#include "params.h"
+#include "postfx.h"
 #include "vr.h"
 #include "process.h"
 #include "soundpass.h"
@@ -203,6 +205,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         if (!vrAspectOk(W_, H_, vrMode)) H.log(L"  " + TXF("log.vr_aspect", W_, H_, vrMode == 2 ? L"1:1" : L"2:1"));
     }
     BufferPasses bp;  // Buffer A-D et Common : fichiers a cote du shader
+    PostChain post;   // post-traitement en virgule flottante (passe .post.glsl, effets, LUT)
     bp.discover(shaderPath, [&](const std::wstring& p, std::string& out) {
         if (!readFile(p, out)) return false;
         normalizeShaderText(out, H);
@@ -214,9 +217,25 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         bp.report(s, code, notes);
         for (const auto& n : notes) H.log(L"  " + n);
     }
+    // Parametres (// uniform ...) : declarations injectees dans tous les programmes, valeurs reglees a chaque image
+    ParamSet params;
+    {
+        std::vector<std::wstring> pnotes;
+        if (!params.load(code + "\n" + bp.allCode(), s, paramsFile(exeDir, shaderPath), err, &pnotes)) return Result::Failed;
+        if (!preview)
+            for (const auto& n : pnotes) H.log(L"  " + n);
+        if (params.needsAudio()) {
+            if (s.audio.empty()) {
+                if (!preview) H.log(L"  " + TX("log.param_audio_missing"));
+            } else if (!params.setAudio(findFfmpeg(exeDir), s.audio, err)) {
+                return Result::Failed;
+            }
+        }
+        bp.setPreamble(params.declarations());
+    }
     std::string chTypes[4];
     channelTypes(s, chTypes);
-    GLuint prog = buildProgram(bp.withCommon(code), err, false, chTypes, false, false, vrMode);
+    GLuint prog = buildProgram(bp.withCommon(code), err, false, chTypes, false, false, vrMode, params.declarations());
     if (!prog) {  // erreurs « fichier:ligne: message », cliquables dans le journal
         err = locateGlslErrors(err, shaderPath, 1 + (int)std::count(code.begin(), code.end(), '\n'), bp.commonPath());
         return Result::Failed;
@@ -235,6 +254,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         if (accTex) glDeleteTextures(1, &accTex);
         ogl::UseProgram(0);
         freeChannels(chans);
+        post.release();
         bp.release();
         if (present) ogl::DeleteProgram(present);
         ogl::DeleteProgram(prog);
@@ -287,6 +307,10 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         cleanupGL();
         return Result::Failed;
     }
+    if (!post.build(s, bp, shaderDir, findFfmpeg(exeDir), H, err, RW, RH, params.declarations())) {
+        cleanupGL();
+        return Result::Failed;
+    }
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);  // la creation des tampons a change la cible
     glViewport(0, 0, RW, RH);
 
@@ -336,6 +360,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iFrameRate"), (float)s.fps);
         setMouse(ogl::GetUniformLocation(p, "iMouse"), t);
         setDate(ogl::GetUniformLocation(p, "iDate"), t);
+        params.apply(p, t);
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iSampleRate"), 44100.0f);
     };
     // Les tampons avancent image par image : si le rendu demarre plus loin (reprise, apercu), on rejoue les images
@@ -363,6 +388,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         setMouse(uMouse, t);
         ogl::Uniform1i(uFrame, (GLint)(n + s.warmup));
         setDate(uDate, t);
+        params.apply(prog, t);
         glDrawArrays(GL_TRIANGLES, 0, 3);
     };
     // Rend l'image n (temps t, facteur de fondu "fade") dans fbo ;
@@ -375,25 +401,36 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
             bp.latest(latest);
             bindChannels(chans, prog, latest);
         }
+        // avec post-traitement, l'image va dans une texture flottante (fondu applique a la fin de la chaine)
+        const bool pp = post.active();
+        const GLuint imgFbo = pp ? post.inputFbo() : fbo;
+        const float weight = pp ? 1.0f : fade;
         if (B <= 1) {
-            ogl::Uniform1f(uWeight, fade);
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, imgFbo);
+            ogl::Uniform1f(uWeight, weight);
             drawAt(t, n);
-            return;
+        } else {
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, accFbo);
+            glClearColor(0, 0, 0, 0);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_ONE, GL_ONE);
+            ogl::Uniform1f(uWeight, weight / B);
+            for (int k = 0; k < B; k++) drawAt(t + (double)k / B * s.shutter / s.fps, n);
+            glDisable(GL_BLEND);
+            ogl::Uniform1f(uWeight, 1.0f);
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, imgFbo);
+            ogl::UseProgram(present);
+            glBindTexture(GL_TEXTURE_2D, accTex);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+            ogl::UseProgram(prog);
         }
-        ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, accFbo);
-        glClearColor(0, 0, 0, 0);
-        glClear(GL_COLOR_BUFFER_BIT);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_ONE, GL_ONE);
-        ogl::Uniform1f(uWeight, fade / B);
-        for (int k = 0; k < B; k++) drawAt(t + (double)k / B * s.shutter / s.fps, n);
-        glDisable(GL_BLEND);
-        ogl::Uniform1f(uWeight, 1.0f);
-        ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
-        ogl::UseProgram(present);
-        glBindTexture(GL_TEXTURE_2D, accTex);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
-        ogl::UseProgram(prog);
+        if (pp) {
+            GLuint latest[5] = {0, 0, 0, 0, 0};
+            if (bp.any()) bp.latest(latest);
+            post.apply(fbo, n, t, fade, setPassUniforms, latest);
+            ogl::UseProgram(prog);
+        }
     };
 
     // --- Apercu : une image renvoyee a l'appelant, sans ffmpeg -------------------
@@ -660,7 +697,15 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
                                      s.start, s.crf, W(s.preset).c_str(), W(s.codec).c_str(), W(enc).c_str(), s.bitrate,
                                      s.blur, W(s.color).c_str(), s.shutter, s.fadein, s.fadeout, s.ss,
                                      W(s.container).c_str(), N, chunkFrames, s.depth);
-            sigSrc = code + U8(tail) + "|vr" + std::to_string(vrMode) + (vrMode == 2 ? "|" + std::to_string(s.vrIpd) : "");
+            sigSrc = code + U8(tail) + "|vr" + std::to_string(vrMode) + (vrMode == 2 ? "|" + std::to_string(s.vrIpd) : "") + params.signature();
+            {  // post-traitement : passe .post, effets et contenu du fichier LUT
+                std::string lutBytes;
+                if (!s.lut.empty()) {
+                    const bool absolute = s.lut.size() > 1 && (s.lut[1] == L':' || s.lut[0] == L'/' || s.lut[0] == L'\\');
+                    readFile(absolute ? s.lut : shaderDir + s.lut, lutBytes);
+                }
+                sigSrc += "|post:" + s.post + "|" + fnvHex(bp.postCode()) + "|" + fnvHex(lutBytes);
+            }
         }
         const std::string sig = fnvHex(sigSrc);
         const std::wstring sigFile = partsDir + L"/signature.txt";

@@ -46,7 +46,8 @@ bool loadChannels(const Settings& s, const std::wstring& shaderDir, const std::w
                   std::wstring& err, int bufW = 0, int bufH = 0, double start = 0, double fps = 60);
 // Lie les textures aux unites 1 a 4 et renseigne iChannel0-3 et iChannelResolution du programme (actif).
 // bufferTex : textures a jour des quatre tampons (peut changer a chaque image).
-void bindChannels(const ChannelSet& cs, GLuint prog, const GLuint* bufferTex = nullptr);
+// unitBase : premiere unite de texture utilisee (1 pour l'image et les passes ; une autre chaine de rendu en prend d'autres).
+void bindChannels(const ChannelSet& cs, GLuint prog, const GLuint* bufferTex = nullptr, int unitBase = 1);
 // Met a jour les canaux audio, video et clavier pour le temps t (image n).
 void updateChannels(ChannelSet& cs, double t, long long frameIndex);
 // Renseigne iChannelTime du programme (actif) d'apres le dernier updateChannels ; bindChannels le fait aussi.

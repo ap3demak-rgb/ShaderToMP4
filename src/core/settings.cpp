@@ -22,7 +22,7 @@ bool sameSettings(const Settings& a, const Settings& b) {
            a.bitrate == b.bitrate && a.color == b.color && a.blur == b.blur && a.shutter == b.shutter &&
            a.loop == b.loop && a.audio == b.audio && a.fadein == b.fadein && a.fadeout == b.fadeout &&
            sameChannels(a, b) && formatMouseKeys(a.mouseKeys) == formatMouseKeys(b.mouseKeys) && formatKeyPresses(a.keys) == formatKeyPresses(b.keys) && a.date == b.date && a.variants == b.variants && a.gpu == b.gpu && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
-           a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.metadata == b.metadata;
+           a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.paramSpecs == b.paramSpecs && a.post == b.post && a.lut == b.lut && a.metadata == b.metadata;
 }
 
 // Valeur complete d'une cle qui garde ses espaces (chemin, modele de nom) : le commentaire `      ; texte` que writeIni peut
@@ -38,8 +38,20 @@ static std::string withoutIniComment(const std::string& raw) {
 }
 
 static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn) {
+    {  // parametres animes : « // key vitesse=0:1.0 ; 4:3.0 » (nom sensible a la casse) et --param=vitesse=2.5
+        const std::string rk = trim(kIn);
+        if (rk.size() > 4 && lower(rk.substr(0, 4)) == "key ") {
+            s.paramSpecs.push_back(trim(rk.substr(4)) + "=" + trim(vIn));
+            return;
+        }
+        if (lower(rk) == "param") {
+            const std::string t = trim(vIn);
+            if (t.find('=') != std::string::npos) s.paramSpecs.push_back(t);
+            return;
+        }
+    }
     std::string k = lower(trim(kIn)), v = trim(vIn);
-    if (k == "outdir" || k == "audio" || k == "name" || k == "variant" || k == "mouse" || k == "key" || (k.size() == 9 && k.compare(0, 8, "ichannel") == 0)) v = withoutIniComment(vIn);
+    if (k == "outdir" || k == "audio" || k == "name" || k == "variant" || k == "mouse" || k == "key" || k == "lut" || (k.size() == 9 && k.compare(0, 8, "ichannel") == 0)) v = withoutIniComment(vIn);
     if (k == "variant") {  // « nom:cle=valeur|cle=valeur » : une ligne par variante
         if (!v.empty()) s.variants.push_back(v);
         return;
@@ -57,6 +69,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else parseKeyPresses(v, s.keys);
         return;
     }
+    if (k == "lut") { s.lut = lower(v) == "off" ? L"" : W(v); return; }  // chemin du fichier .cube (peut contenir des espaces)
     if (k == "outdir") { s.outdir = W(v); return; }  // chemin complet (peut contenir des espaces)
     if (k == "audio") { s.audio = W(v); return; }
     if (k.size() == 9 && k.compare(0, 8, "ichannel") == 0 && k[8] >= '0' && k[8] <= '3') {  // chemin complet
@@ -84,6 +97,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "fadein") s.fadein = std::stod(v);
         else if (k == "fadeout") s.fadeout = std::stod(v);
         else if (k == "pbo") s.pbo = std::stoi(v);
+        else if (k == "post") s.post = lower(v) == "off" ? "" : lower(v);
         else if (k == "vr") s.vr = (lower(v) == "off" || lower(v) == "mono" || lower(v) == "stereo") ? lower(v) : "auto";
         else if (k == "vripd") s.vrIpd = std::max(0.0, std::min(10.0, std::stod(v)));
         else if (k == "warmup") s.warmup = std::max(0, std::min(3600, std::stoi(v)));
@@ -138,7 +152,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
 
 bool isSettingKey(const std::string& key) {
     static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
-                                        "blur", "shutter", "loop", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "chunk", "encoder", "color", "container",
+                                        "blur", "shutter", "loop", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "chunk", "encoder", "color", "container",
                                         "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "key", "date", "endaction", "variant", "gpu"};
     for (const char* k : kKeys)
         if (key == k) return true;
@@ -169,7 +183,7 @@ std::wstring shaderOverridesOf(const std::wstring& shaderPath) {
         const std::string key = lower(trim(body.substr(0, eq)));
         if (!isSettingKey(key)) continue;
         std::string val = trim(body.substr(eq + 1));
-        if (key != "outdir" && key != "audio" && key != "name" && key != "mouse" && key != "key" && key.compare(0, 8, "ichannel") != 0) val = val.substr(0, val.find_first_of(" \t"));
+        if (key != "outdir" && key != "audio" && key != "name" && key != "mouse" && key != "key" && key != "lut" && key.compare(0, 8, "ichannel") != 0) val = val.substr(0, val.find_first_of(" \t"));
         if (val.empty()) continue;
         out += (out.empty() ? "" : ", ") + key + "=" + val;
     }
@@ -211,7 +225,7 @@ void writeIni(const std::wstring& path, const Settings& s) {
         fputs(l.c_str(), f);
     };
     fputs(("; " + i18n::tr8("ini.header1") + "\r\n; " + i18n::tr8("ini.header2") + "\r\n").c_str(), f);
-    fputs(("; name: " + i18n::tr8("ini.name") + "\r\n; iChannel0-3: " + i18n::tr8("ini.ichannel") + "\r\n; variant: " + i18n::tr8("ini.variant") + "\r\n; mouse: " + i18n::tr8("ini.mouse") + "\r\n; key: " + i18n::tr8("ini.key") + "\r\n").c_str(), f);
+    fputs(("; name: " + i18n::tr8("ini.name") + "\r\n; iChannel0-3: " + i18n::tr8("ini.ichannel") + "\r\n; variant: " + i18n::tr8("ini.variant") + "\r\n; mouse: " + i18n::tr8("ini.mouse") + "\r\n; key: " + i18n::tr8("ini.key") + "\r\n; lut: " + i18n::tr8("ini.lut") + "\r\n").c_str(), f);
     put("width", std::to_string(s.width));
     put("height", std::to_string(s.height));
     put("fps", num(s.fps));
@@ -257,6 +271,8 @@ void writeIni(const std::wstring& path, const Settings& s) {
     put("endaction", s.endaction, "ini.endaction");
     put("chunk", num(s.chunk), "ini.chunk");
     put("warmup", std::to_string(s.warmup), "ini.warmup");
+    if (!s.post.empty()) put("post", s.post, "ini.post");
+    if (!s.lut.empty()) put("lut", U8(s.lut));  // pas de commentaire : la valeur garde ses espaces
     put("vr", s.vr, "ini.vr");
     put("vripd", num(s.vrIpd), "ini.vripd");
     put("metadata", s.metadata ? "1" : "0", "ini.metadata");

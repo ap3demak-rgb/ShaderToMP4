@@ -48,7 +48,7 @@ static GLuint compileShader(GLenum type, const std::string& src, std::wstring& e
 }
 
 GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut, const std::string* chType, bool cubemapOut, bool soundOut,
-                    int vrMode) {
+                    int vrMode, const std::string& preamble) {
     std::string channels;
     for (int i = 0; i < 4; i++) channels += "uniform " + (chType && !chType[i].empty() ? chType[i] : std::string("sampler2D")) + " iChannel" + std::to_string(i) + ";\n";
     const std::string vs =
@@ -73,6 +73,7 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         + channels +
         "uniform vec3  iChannelResolution[4];\n"
         "uniform float iChannelTime[4];\n"
+        + preamble +  // uniforms personnalises (// uniform float x = 1.0)
         "#define texture2D texture\n"  // noms GLSL ES 1.00, encore tres repandus sur Shadertoy
         "#define texture2DLod textureLod\n"
         "#define texture3D texture\n"
@@ -115,6 +116,36 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         char log[4096] = {0};
         ogl::GetProgramInfoLog(prog, sizeof(log) - 1, nullptr, log);
         err = TX("error.shader_link") + L"\n" + W(log);
+        return 0;
+    }
+    return prog;
+}
+
+GLuint buildFullscreenProgram(const std::string& fs, std::wstring& err) {
+    const std::string vs =
+        "#version 330 core\n"
+        "void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);"
+        " gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n";
+    GLuint v = compileShader(ogl::K_VERTEX_SHADER, vs, err);
+    if (!v) return 0;
+    GLuint f = compileShader(ogl::K_FRAGMENT_SHADER, fs, err);
+    if (!f) {
+        ogl::DeleteShader(v);
+        return 0;
+    }
+    GLuint prog = ogl::CreateProgram();
+    ogl::AttachShader(prog, v);
+    ogl::AttachShader(prog, f);
+    ogl::LinkProgram(prog);
+    ogl::DeleteShader(v);
+    ogl::DeleteShader(f);
+    GLint ok = 0;
+    ogl::GetProgramiv(prog, ogl::K_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[4096] = {0};
+        ogl::GetProgramInfoLog(prog, sizeof(log) - 1, nullptr, log);
+        err = TX("error.shader_link") + L"\n" + W(log);
+        ogl::DeleteProgram(prog);
         return 0;
     }
     return prog;

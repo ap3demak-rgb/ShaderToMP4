@@ -9,6 +9,8 @@
 #include "gl.h"
 #include "i18n.h"
 #include "locate.h"
+#include "params.h"
+#include "postfx.h"
 #include "vr.h"
 #include "passes.h"
 #include "render.h"
@@ -38,8 +40,13 @@ struct Rig {
     long long simFrame = 0;
     GLint uRes = -1, uTime = -1, uDelta = -1, uFrame = -1, uRate = -1, uMouse = -1, uDate = -1, uSR = -1, uWeight = -1;
     DateInput date;
-    int vr = 0;  // mainVR : 0 = non, 1 = 360 mono, 2 = 360 stereo haut / bas
+    ParamSet params;           // parametres (// uniform ...)
+    std::string paramCode;     // code dont les declarations sont lues (rechargement des valeurs sans recompiler)
+    std::wstring paramFile;    // valeurs enregistrees par le panneau
+    int vr = 0; // mainVR : 0 = non, 1 = 360 mono, 2 = 360 stereo haut / bas
+    PostChain post;            // post-traitement (passe .post, effets, LUT)
     void release() {
+        post.release();
         bp.release();
         freeChannels(chans);
         if (fbo) ogl::DeleteFramebuffers(1, &fbo);
@@ -60,7 +67,7 @@ std::string watchedContent(const std::wstring& shaderPath) {
     const size_t dot = shaderPath.find_last_of(L'.');
     const std::wstring stem = dot == std::wstring::npos ? shaderPath : shaderPath.substr(0, dot);
     const std::wstring ext = dot == std::wstring::npos ? L".glsl" : shaderPath.substr(dot);
-    for (const char* n : {"common", "bufferA", "bufferB", "bufferC", "bufferD"})
+    for (const char* n : {"common", "bufferA", "bufferB", "bufferC", "bufferD", "cubemapA", "post"})
         if (readFile(stem + L"." + W(n) + ext, text)) all += n + text;
     return fnvHex(all);
 }
@@ -103,7 +110,15 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
     channelTypes(s, chTypes);
     if (!vrModeFor(code, s, r.vr, err)) return false;
     if (r.vr == 2) r.h &= ~1;  // stereo haut / bas : deux yeux de meme hauteur
-    r.prog = buildProgram(r.bp.withCommon(code), err, false, chTypes, false, false, r.vr);
+    r.paramCode = code + "\n" + r.bp.allCode();
+    r.paramFile = paramsFile(exeDir, shaderPath);
+    if (!r.params.load(r.paramCode, s, r.paramFile, err)) return false;
+    if (r.params.needsAudio() && !s.audio.empty()) {
+        std::wstring audioErr;
+        r.params.setAudio(findFfmpeg(exeDir), s.audio, audioErr);  // sans le son, le parametre garde sa valeur par defaut
+    }
+    r.bp.setPreamble(r.params.declarations());
+    r.prog = buildProgram(r.bp.withCommon(code), err, false, chTypes, false, false, r.vr, r.params.declarations());
     if (!r.prog) {
         err = locateGlslErrors(err, shaderPath, 1 + (int)std::count(code.begin(), code.end(), '\n'), r.bp.commonPath());
         return false;
@@ -126,6 +141,7 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
         return false;
     }
     if (!r.bp.build(r.w, r.h, shaderDir, ffmpeg, quiet, err, s.start, s.fps, &s)) return false;
+    if (!r.post.build(s, r.bp, shaderDir, ffmpeg, quiet, err, r.w, r.h, r.params.declarations())) return false;
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, r.fbo);
     glViewport(0, 0, r.w, r.h);
     ogl::UseProgram(r.prog);
@@ -156,6 +172,7 @@ void setUniforms(const Rig& r, GLuint p, long long n, double t) {
     float m[4];
     mouseAt(r.s.mouseKeys, t, 1.0 / r.s.fps, r.w, r.h, m);
     ogl::Uniform4f(ogl::GetUniformLocation(p, "iMouse"), m[0], m[1], m[2], m[3]);
+    r.params.apply(p, t);
     float d[4];
     dateAt(r.date, t, d);
     ogl::Uniform4f(ogl::GetUniformLocation(p, "iDate"), d[0], d[1], d[2], d[3]);
@@ -187,9 +204,18 @@ void renderAt(Rig& r, double t, bool send, const PreviewPlayer::FrameFn& onFrame
         r.bp.latest(latest);
         bindChannels(r.chans, r.prog, latest);
     }
+    const bool pp = r.post.active();
+    ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, pp ? r.post.inputFbo() : r.fbo);
     setUniforms(r, r.prog, idx, t);
     ogl::Uniform1f(r.uWeight, 1.0f);
     glDrawArrays(GL_TRIANGLES, 0, 3);
+    if (pp) {
+        GLuint latest[5] = {0, 0, 0, 0, 0};
+        if (r.bp.any()) r.bp.latest(latest);
+        r.post.apply(r.fbo, idx, t, 1.0f, [&](GLuint p, long long n) { setUniforms(r, p, n, r.s.start + (double)n / r.s.fps); }, latest);
+        ogl::UseProgram(r.prog);
+    }
+    ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, r.fbo);
     if (!send) return;
     std::vector<uint8_t> px((size_t)r.w * r.h * 4), out((size_t)r.w * r.h * 4);
     glReadPixels(0, 0, r.w, r.h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
@@ -219,6 +245,12 @@ void playerMain(PreviewPlayer::Impl* I, std::wstring shaderPath, std::wstring ex
     Rig rig;
     bool built = false;
     std::string watch = watchedContent(shaderPath);
+    std::string paramWatch;  // contenu du fichier des valeurs : un changement relit les valeurs sans recompiler
+    {
+        std::string v;
+        readFile(paramsFile(exeDir, shaderPath), v);
+        paramWatch = v;
+    }
     auto rebuild = [&] {
         rig.release();
         std::wstring e;
@@ -233,7 +265,7 @@ void playerMain(PreviewPlayer::Impl* I, std::wstring shaderPath, std::wstring ex
     if (built) t = std::min(std::max(startTime, rig.s.start), rig.s.start + rig.s.duration);
     I->curT = t;
     bool need = true;  // une image a rendre meme en pause
-    auto last = clk::now(), lastWatch = last;
+    auto last = clk::now(), lastWatch = last, lastParams = last;
     while (!I->stopFlag) {
         const auto now = clk::now();
         const double dt = std::chrono::duration<double>(now - last).count();
@@ -245,6 +277,17 @@ void playerMain(PreviewPlayer::Impl* I, std::wstring shaderPath, std::wstring ex
                 watch = cur;
                 log(TX("log.preview_reload"));
                 rebuild();
+                need = true;
+            }
+        }
+        if (built && now - lastParams > std::chrono::milliseconds(100)) {  // valeurs du panneau « Parametres »
+            lastParams = now;
+            std::string v;
+            readFile(rig.paramFile, v);
+            if (v != paramWatch) {
+                paramWatch = v;
+                std::wstring e;
+                rig.params.load(rig.paramCode, rig.s, rig.paramFile, e);
                 need = true;
             }
         }

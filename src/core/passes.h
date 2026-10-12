@@ -17,6 +17,8 @@ public:
     // Cherche les fichiers des passes. read : lit et normalise un fichier de shader.
     void discover(const std::wstring& shaderPath, const std::function<bool(const std::wstring&, std::string&)>& read, const Hooks& H);
     bool any() const { return used_[0] || used_[1] || used_[2] || used_[3] || cubeUsed_; }
+    // Declarations GLSL des parametres (uniforms personnalises) ajoutees a chaque programme compile par build().
+    void setPreamble(const std::string& preamble) { preamble_ = preamble; }
     // Code de l'image : le code commun place devant le code du shader (numeros de ligne du shader conserves).
     std::string withCommon(const std::string& code) const;
     const std::wstring& commonPath() const { return commonPath_; }
@@ -24,6 +26,11 @@ public:
     bool hasSound() const { return !sound_.empty(); }
     const std::string& soundCode() const { return sound_; }
     const std::wstring& soundPath() const { return soundPath_; }
+    // Passe finale <nom>.post.glsl (mainImage appliquee a l'image rendue, iChannel0 = l'image) : lue par postfx.h
+    bool hasPost() const { return !post_.empty(); }
+    const std::string& postCode() const { return post_; }
+    const std::wstring& postPath() const { return postPath_; }
+    const Settings& postSettings() const { return postSt_; }  // canaux iChannel1-3 de la passe
     int commonLines() const;
     // Tout le code des passes (commun + tampons), pour le rapport de compatibilite.
     std::string allCode() const;
@@ -69,6 +76,10 @@ private:
     };
     Cube cube_;
     bool cubeUsed_ = false;
+    std::string preamble_;
+    std::string post_;
+    std::wstring postPath_;
+    Settings postSt_;
     std::string sound_;
     std::wstring soundPath_;
     std::string common_;
