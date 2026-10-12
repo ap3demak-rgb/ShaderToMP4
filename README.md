@@ -127,7 +127,7 @@ The [`examples`](examples) folder contains four shaders ready to convert: plasma
 | **Start** | `F5` | Render every file of the list that is not already finished |
 | **Pause** / **Resume** | `F6` | Suspend the render (paused time is not counted in the speed) |
 | **Cancel** | `Esc` | Stop the render; finished parts are kept |
-| **PNG image** | | Render a single image at the “Start” time and open it |
+| **Images** | | Menu: a PNG image at the “Start” time, a cover thumbnail (middle of the range) or a contact sheet (3×2 to 6×5); the file is opened |
 | **Preview** and slider | `Ctrl+P` | Show a frame of the shader at a chosen time, without ffmpeg |
 | **Play** / **Stop** | | Play the shader in real time at preview size (up to 640 px), loop over the range, jump with the slider; the preview reloads by itself when the shader or one of its pass files changes on disk |
 | **Remove** | `Del` (in the list) | Remove the selected shaders |
@@ -291,7 +291,9 @@ The window shows the effects in the live preview (restarted a moment after a cha
 <details>
 <summary><b>Output: transparency, HDR, size, sound, text, montage, contact sheets</b></summary>
 
-All of these are written as `// key=value` comments in the shader, in `config.ini` or on the command line (`--key=value`); the settings window does not have controls for them yet.
+All of these are written as `// key=value` comments in the shader, in `config.ini` or on the command line (`--key=value`), and set in the **Output** window (the film icon in the header on Windows; a section at the bottom of the settings card on Linux and macOS). Values are checked when you close the window (Windows) or press Start, with the same rules as the command line.
+
+<p align="center"><img src="docs/screenshots/en/output.png" alt="The Output window" width="420"></p>
 
 **Transparency** (`alpha=1`). The shader's `fragColor.a` is kept (straight, not premultiplied alpha; most Shadertoy shaders write garbage or 0 there, so it is off by default). Possible with **ProRes 4444** (MOV, MKV), **VP9** (WebM, MKV; 8-bit alpha), **WebP** and **PNG / TIFF / EXR** sequences; every other combination (H.264, H.265, AV1, GIF, ProRes 422...) is refused before the render with a message. Supersampling, motion blur and the post-processing keep the alpha (the blur accumulates premultiplied colors, so edges stay exact); fades act on the alpha, the live preview and the preview image show the transparency over a gray checkerboard. The size estimate counts the alpha channel. Not possible with HDR or frame interpolation.
 
@@ -318,7 +320,7 @@ plasma.glsl 8 crossfade 1.5
 
 A clip line is a path (relative to the `.montage`; in quotes if it has spaces), an optional duration, then the transition that leads *into* this clip from the previous one (ignored for the first): `cut`, `fade` (through black), `crossfade` or `wipe`, with its length. Add the file to the list or on the command line like a shader. Each clip is rendered like a shader, **in parts that can resume** (a clip that is already rendered with the same settings is reused after an interruption), into a `name.clips` folder next to the video, as ProRes HQ (or lossless H.264 if this ffmpeg has no ProRes); then ffmpeg joins them with the transitions (`xfade`, `acrossfade`) and writes the final video with your codec. Size, frame rate, `scale`, `interp`, `title`, `credit`, fades and `loudnorm` are applied to the montage as a whole, not to each clip; the `audio` setting is one soundtrack over the whole montage, otherwise the sound of each clip (a Sound pass) is joined with silence for the clips that have none. Limits: video containers only, no alpha, no HDR, no preview or single image of a montage, and a `// audio=` comment or `// duration=` comment inside a clip is replaced by the montage.
 
-**Contact sheet and cover thumbnail** (command line). `--sheet=4x3` writes `name_sheet.png`, a grid of 4 × 3 thumbnails taken at the middle of 12 equal intervals of the rendered range (at most 100 tiles, 1920 pixels wide in all); `--thumb` writes `name_thumb.png`, one image from the middle of the range, or `--thumb=2.5` at second 2.5, 1280 pixels wide at most. Both work with buffers (the history is replayed) and with the post-processing.
+**Contact sheet and cover thumbnail** (the **Images** button: PNG image, cover thumbnail, or a 3×2, 4×3, 5×4 or 6×5 sheet; or on the command line). `--sheet=4x3` writes `name_sheet.png`, a grid of 4 × 3 thumbnails taken at the middle of 12 equal intervals of the rendered range (at most 100 tiles, 1920 pixels wide in all); `--thumb` writes `name_thumb.png`, one image from the middle of the range, or `--thumb=2.5` at second 2.5, 1280 pixels wide at most. Both work with buffers (the history is replayed) and with the post-processing.
 
 </details>
 

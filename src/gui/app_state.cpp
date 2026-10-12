@@ -104,6 +104,7 @@ void updateButtons() {
     EnableWindow(g.bClear, !r);
     EnableWindow(g.bStart, !r && !g.paths.empty());
     EnableWindow(g.bSnap, !r && !g.paths.empty());
+    EnableWindow(g.bOutput, !r);
     EnableWindow(g.bCancel, r && !g.previewRun);
     EnableWindow(g.bPause, r && !g.previewRun);
     EnableWindow(g.bPrev, !r && !g.paths.empty());

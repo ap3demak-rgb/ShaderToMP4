@@ -5,6 +5,7 @@
 #include "core/ffmpeg_download.h"
 #include "core/i18n.h"
 #include "core/gl.h"
+#include "core/outputopts.h"
 #include "core/params.h"
 #include "core/render.h"
 #include "core/util.h"
@@ -35,7 +36,12 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
     H.log = postLog;
     H.cancel = &g.cancel;
     H.pause = &g.pause;
-    H.snapshot = g.snapshotRun;
+    H.snapshot = g.snapshotRun && g.imageKind != 2;  // la planche-contact n'est pas une image fixe pour le moteur
+    if (g.snapshotRun && g.imageKind == 1) H.thumbTime = -2;  // vignette : milieu de la plage
+    if (g.snapshotRun && g.imageKind == 2) {
+        H.sheetCols = g.sheetCols;
+        H.sheetRows = g.sheetRows;
+    }
     if (g.previewRun) {  // une seule image renvoyee a la fenetre, pas de ffmpeg
         H.previewFrame = [](int w, int h, std::vector<uint8_t>&& px) {
             PostMessageW(g.wnd, WM_APP_PREVIEW, 0, (LPARAM) new PreviewData{w, h, std::move(px)});
@@ -69,6 +75,23 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
     PostMessageW(g.wnd, WM_APP_DONE, 0, 0);
 }
 
+// Bouton « Images » : une image PNG au temps de début, la vignette de couverture ou une planche-contact (grille au choix)
+void showImageMenu() {
+    HMENU m = CreatePopupMenu();
+    AppendMenuW(m, MF_STRING, 1, TX("ui.menu.png").c_str());
+    AppendMenuW(m, MF_STRING, 2, TX("ui.menu.thumb").c_str());
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    for (int i = 0; i < kSheetGridCount; i++)
+        AppendMenuW(m, MF_STRING, (UINT_PTR)(10 + i), TXF("ui.menu.sheet", kSheetGrids[i][0], kSheetGrids[i][1]).c_str());
+    RECT r;
+    GetWindowRect(g.bSnap, &r);
+    const int cmd = (int)TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, r.left, r.bottom, 0, g.wnd, nullptr);
+    DestroyMenu(m);
+    if (cmd == 1) startJobs(true, 0);
+    else if (cmd == 2) startJobs(true, 1);
+    else if (cmd >= 10 && cmd < 10 + kSheetGridCount) startJobs(true, 2, kSheetGrids[cmd - 10][0], kSheetGrids[cmd - 10][1]);
+}
+
 void promptDownload() {
     if (g.running) return;
     int r = MessageBoxW(g.wnd,
@@ -90,7 +113,7 @@ void promptDownload() {
     });
 }
 
-void startJobs(bool snapshot) {
+void startJobs(bool snapshot, int imageKind, int cols, int rows) {
     stopPlayer();
     if (!g.running && !ffmpegPresent(g.exeDir)) {
         promptDownload();
@@ -125,9 +148,12 @@ void startJobs(bool snapshot) {
     updateButtons();
     SendMessageW(g.prog, PBM_SETPOS, 0, 0);
     g.snapshotRun = snapshot;
+    g.imageKind = snapshot ? imageKind : 0;
+    g.sheetCols = cols;
+    g.sheetRows = rows;
     g.previewRun = false;
     if (snapshot) {
-        g.snapshotPath = outputPath(jobs[0].second, cur.outdir, L".png");
+        g.snapshotPath = outputPath(jobs[0].second, cur.outdir, imageKind == 1 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : L".png");
     }
     setStatus(TX(snapshot ? "status.rendering_image" : "status.rendering"));
     g.worker = std::thread(runJobs, std::move(jobs));

@@ -127,7 +127,7 @@ Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : 
 | **Démarrer** | `F5` | Rend tous les fichiers de la liste qui ne sont pas déjà terminés |
 | **Pause** / **Reprendre** | `F6` | Suspend le rendu (le temps de pause n'est pas compté dans la vitesse) |
 | **Annuler** | `Échap` | Arrête le rendu ; les parties déjà terminées sont conservées |
-| **Image PNG** | | Rend une seule image, au temps « Début », et l'ouvre |
+| **Images** | | Menu : une image PNG au temps « Début », une vignette de couverture (milieu de la plage) ou une planche-contact (3×2 à 6×5) ; le fichier est ouvert |
 | **Aperçu** et curseur | `Ctrl+P` | Affiche une image du shader à un instant choisi, sans ffmpeg |
 | **Lecture** / **Arrêt** | | Joue le shader en temps réel à la taille de l'aperçu (640 px au plus), en boucle sur la plage, saut par le curseur ; l'aperçu se recharge tout seul quand le shader ou un de ses fichiers de passes change sur le disque |
 | **Retirer** | `Suppr` (dans la liste) | Retire les shaders sélectionnés |
@@ -291,7 +291,9 @@ La fenêtre montre les effets dans l'aperçu en lecture (relancé un instant apr
 <details>
 <summary><b>Sortie : transparence, HDR, taille, son, texte, montage, planches-contact</b></summary>
 
-Tout ceci s'écrit en commentaires `// clé=valeur` dans le shader, dans `config.ini` ou en ligne de commande (`--clé=valeur`) ; la fenêtre de réglages n'a pas encore de contrôles pour cela.
+Tout ceci s'écrit en commentaires `// clé=valeur` dans le shader, dans `config.ini` ou en ligne de commande (`--clé=valeur`), et se règle dans la fenêtre **Sortie** (l'icône de film dans l'en-tête sous Windows ; une section en bas de la carte des réglages sous Linux et macOS). Les valeurs sont vérifiées quand vous fermez la fenêtre (Windows) ou appuyez sur Démarrer, avec les mêmes règles qu'en ligne de commande.
+
+<p align="center"><img src="docs/screenshots/fr/output.png" alt="La fenêtre Sortie" width="420"></p>
 
 **Transparence** (`alpha=1`). Le `fragColor.a` du shader est conservé (alpha droit, pas prémultiplié ; la plupart des shaders Shadertoy y écrivent n'importe quoi ou 0, c'est donc désactivé par défaut). Possible avec **ProRes 4444** (MOV, MKV), **VP9** (WebM, MKV ; alpha 8 bits), **WebP** et les séquences **PNG / TIFF / EXR** ; toute autre combinaison (H.264, H.265, AV1, GIF, ProRes 422...) est refusée avant le rendu avec un message. Le supersampling, le flou de mouvement et le post-traitement gardent l'alpha (le flou accumule des couleurs prémultipliées, les bords restent exacts) ; les fondus agissent sur l'alpha, l'aperçu en lecture et l'image d'aperçu montrent la transparence sur un damier gris. L'estimation de taille compte le canal alpha. Impossible avec le HDR ou l'interpolation d'images.
 
@@ -318,7 +320,7 @@ plasma.glsl 8 crossfade 1.5
 
 Une ligne de clip est un chemin (relatif au `.montage` ; entre guillemets s'il a des espaces), une durée facultative, puis la transition qui amène *dans* ce clip depuis le précédent (ignorée pour le premier) : `cut`, `fade` (par le noir), `crossfade` ou `wipe`, avec sa durée. Ajoutez le fichier à la liste ou en ligne de commande comme un shader. Chaque clip est rendu comme un shader, **par parties reprenables** (un clip déjà rendu avec les mêmes réglages est réutilisé après une interruption), dans un dossier `nom.clips` à côté de la vidéo, en ProRes HQ (ou en H.264 sans perte si ce ffmpeg n'a pas ProRes) ; puis ffmpeg les joint avec les transitions (`xfade`, `acrossfade`) et écrit la vidéo finale avec votre codec. La taille, la cadence, `scale`, `interp`, `title`, `credit`, les fondus et `loudnorm` s'appliquent au montage entier, pas à chaque clip ; le réglage `audio` est une seule bande-son sur tout le montage, sinon le son de chaque clip (une passe Sound) est joint avec du silence pour les clips qui n'en ont pas. Limites : conteneurs vidéo seulement, ni alpha ni HDR, ni aperçu ni image fixe d'un montage, et un commentaire `// audio=` ou `// duration=` dans un clip est remplacé par le montage.
 
-**Planche-contact et vignette de couverture** (ligne de commande). `--sheet=4x3` écrit `nom_sheet.png`, une grille de 4 × 3 vignettes tirées au milieu de 12 intervalles égaux de la plage rendue (100 vignettes au plus, 1920 pixels de large au total) ; `--thumb` écrit `nom_thumb.png`, une image du milieu de la plage, ou `--thumb=2.5` à la seconde 2,5, 1280 pixels de large au plus. Les deux marchent avec les tampons (l'historique est rejoué) et avec le post-traitement.
+**Planche-contact et vignette de couverture** (le bouton **Images** : image PNG, vignette de couverture, ou planche de 3×2, 4×3, 5×4 ou 6×5 ; ou en ligne de commande). `--sheet=4x3` écrit `nom_sheet.png`, une grille de 4 × 3 vignettes tirées au milieu de 12 intervalles égaux de la plage rendue (100 vignettes au plus, 1920 pixels de large au total) ; `--thumb` écrit `nom_thumb.png`, une image du milieu de la plage, ou `--thumb=2.5` à la seconde 2,5, 1280 pixels de large au plus. Les deux marchent avec les tampons (l'historique est rejoué) et avec le post-traitement.
 
 </details>
 
