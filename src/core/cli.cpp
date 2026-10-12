@@ -11,6 +11,7 @@
 #include "i18n.h"
 #include "looptools.h"
 #include "process.h"
+#include "vr.h"
 #include "render.h"
 #include "shadertoy_import.h"
 #include "util.h"
@@ -52,7 +53,7 @@ std::string num(double v) {
 
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
-    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_best", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
+    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
                           "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
@@ -70,6 +71,9 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
     double thumbTime = -1;       // --thumb[=secondes] : vignette de couverture
     int sheetCols = 0, sheetRows = 0;  // --sheet=CxR : planche-contact
     bool bestThumb = false;      // --png=best / --thumb=best : vignette intelligente (les trois images les plus riches)
+    bool heatmap = false;        // --heatmap[=CxR] : carte de chaleur du cout GPU par zone de l'ecran
+    int heatCols = 16, heatRows = 9;
+    bool cubeFaces = false;      // --cubefaces[=taille] : les six faces d'une cubemap d'un shader mainVR
     bool findLoopMode = false;   // --find-loop[=secondes] : cherche la periode du shader au lieu de le rendre
     double findLoopMax = 0;
     std::wstring watchDir;  // --watch=dossier : rend chaque shader qui y apparait (explicite, jamais par defaut)
@@ -94,6 +98,24 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         if (key == "png") {
             snapshot = true;
             bestThumb = lower(val) == "best";
+        } else if (key == "heatmap") {
+            heatmap = true;
+            if (!val.empty()) {
+                int c = 0, r = 0;
+                char x = 0;
+                if (sscanf(val.c_str(), "%d%c%d", &c, &x, &r) != 3 || (x != 'x' && x != 'X') || c < 1 || r < 1 || c > 64 || r > 64) return fail(TXF("cli.bad_sheet", W(val).c_str()));
+                heatCols = c;
+                heatRows = r;
+            }
+        } else if (key == "cubefaces") {
+            cubeFaces = true;
+            snapshot = true;
+            if (!val.empty()) {
+                const int size = atoi(val.c_str());
+                if (size < 16 || size > 16384) return fail(TXF("cli.unknown_option", W(arg).c_str()));
+                overrides.push_back({"width", val});
+                overrides.push_back({"height", val});
+            }
         } else if (key == "find-loop") {
             findLoopMode = true;
             findLoopMax = val.empty() ? 0.0 : atof(val.c_str());
@@ -226,6 +248,35 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
                 return true;
             }
             failed++;
+            return false;
+        }
+        if (heatmap) {  // cout du shader par zone de l'ecran
+            HeatStats hs;
+            std::wstring heatFile;
+            if (renderHeatmap(f, exeDir, cfg, heatCols, heatRows, -1, H, hs, heatFile, e)) {
+                H.log(L"  " + describeHeat(hs));
+                H.log(L"  " + TXF("log.ok_output", heatFile.c_str()));
+                ok++;
+                if (json) out("{\"event\":\"done\",\"file\":" + jsonString(U8(f)) + ",\"output\":" + jsonString(U8(heatFile)) + "}\n", false);
+                return true;
+            }
+            failed++;
+            if (json) out("{\"event\":\"error\",\"file\":" + jsonString(U8(f)) + ",\"message\":" + jsonString(U8(e)) + "}\n", false);
+            else out(U8(TXF("log.error", e.c_str())) + "\n", true);
+            return false;
+        }
+        if (cubeFaces) {  // six faces PNG carrees
+            std::vector<std::wstring> made;
+            Settings sq = cfg;
+            sq.height = sq.width;
+            if (renderCubeFaces(f, exeDir, sq, H, made, e)) {
+                ok++;
+                if (json) out("{\"event\":\"done\",\"file\":" + jsonString(U8(f)) + ",\"output\":" + jsonString(U8(currentOutput)) + "}\n", false);
+                return true;
+            }
+            failed++;
+            if (json) out("{\"event\":\"error\",\"file\":" + jsonString(U8(f)) + ",\"message\":" + jsonString(U8(e)) + "}\n", false);
+            else out(U8(TXF("log.error", e.c_str())) + "\n", true);
             return false;
         }
         if (bestThumb) {  // vignette intelligente : trois propositions

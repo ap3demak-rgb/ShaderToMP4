@@ -16,6 +16,7 @@
 #include "params.h"
 #include "postfx.h"
 #include "previewconv.h"
+#include "mouse.h"
 #include "vr.h"
 #include "process.h"
 #include "report.h"
@@ -114,7 +115,9 @@ struct ReportData {
     double fps = 0, mediaSeconds = 0, loopSeconds = 0, waitSeconds = 0;
     long long frames = 0;
     std::string encoder;
-    bool loopChecked = false;  // controle de la boucle apres le rendu (looptools.h)
+    double gpuImageMs = 0, gpuBufferMs = 0, gpuPostMs = 0;  // temps GPU moyen par image, mesure sur quelques images
+    int gpuSamples = 0;
+    bool loopChecked = false;  // controle de la couture apres le rendu (looptools.h)
     double loopSeam = 0, loopTypical = 0;
     bool loopPerfect = false;
 };
@@ -151,6 +154,10 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     rep.codec = rd.s.codec;
     rep.container = rd.s.container;
     rep.encoder = rd.encoder;
+    rep.gpuImageMs = rd.gpuImageMs;
+    rep.gpuBufferMs = rd.gpuBufferMs;
+    rep.gpuPostMs = rd.gpuPostMs;
+    rep.gpuSamples = rd.gpuSamples;
     rep.loopChecked = rd.loopChecked;
     rep.loopSeam = rd.loopSeam;
     rep.loopTypical = rd.loopTypical;
@@ -208,7 +215,8 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     const bool videoMode = !preview && !H.snapshot && !sheet;
     const int SMP = (!preview && H.snapshot && !thumb) ? std::min(100000, std::max(1, s.samples)) : 1;  // image fixe : echantillons moyennes
     const OutKind kind = outKind(s.container);
-    if (!videoMode || kind == OutKind::Gif || kind == OutKind::Webp) s.depth = 8;  // 10 bits : video et sequences seulement
+    const bool still = !preview && H.snapshot && !thumb;  // image PNG (16 bits par composante possibles)
+    if (videoMode ? (kind == OutKind::Gif || kind == OutKind::Webp) : !still) s.depth = 8;  // 10 bits : video, sequences et image fixe seulement
     if (!videoMode) s.hdr = "off";  // l'apercu et l'image fixe restent en SDR
     if (videoMode && s.alpha && !alphaSupported(s.codec, s.container)) {  // transparence : refusee avant le rendu
         err = TXF("error.alpha_unsupported", codecLabel(s.codec), W(s.container).c_str());
@@ -285,7 +293,30 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         return Result::Failed;
     }
     const int SS = preview ? 1 : std::min(4, std::max(1, s.ss));  // supersampling : reduit par ffmpeg
-    const int RW = W_ * SS, RH = H_ * SS;
+    const int FW = W_ * SS, FH = H_ * SS;  // taille complete du rendu
+    // Image fixe plus grande que le GPU ne le permet (ou `tile` demande) : calculee par tuiles
+    GLint maxTexEarly = 0;
+    glGetIntegerv(0x0D33 /*GL_MAX_TEXTURE_SIZE*/, &maxTexEarly);
+    const int gpuEdge = maxTexEarly > 0 ? (int)maxTexEarly : 4096;
+    bool tiled = false;
+    int TW = FW, TH = FH;  // taille d'une tuile
+    if (still) {
+        if (s.tile > 0) {
+            const int edge = std::max(SS, std::min(s.tile, gpuEdge) / SS * SS);
+            tiled = FW > edge || FH > edge;
+            TW = std::min(FW, edge);
+            TH = std::min(FH, edge);
+        } else if (FW > std::min(gpuEdge, 8192) || FH > std::min(gpuEdge, 8192)) {
+            tiled = true;
+            TW = std::min(FW, std::max(SS, std::min(gpuEdge, 2048) / SS * SS));
+            TH = std::min(FH, std::max(SS, std::min(gpuEdge, 512) / SS * SS));
+        }
+        if (tiled && (W_ > 65536 || H_ > 65536)) {
+            err = TX("error.poster_size");
+            return Result::Failed;
+        }
+    }
+    const int RW = tiled ? TW : FW, RH = tiled ? TH : FH;  // taille des cibles de rendu : une tuile, ou l'image entiere
     const size_t frameBytes = (size_t)RW * RH * 4 * bpc;
     bool hasAudio = videoMode && kind == OutKind::Video && !s.audio.empty();
     if (videoMode && kind != OutKind::Video && !s.audio.empty()) H.log(L"  " + TX("log.audio_ignored"));
@@ -301,7 +332,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         return Result::Failed;
     }
     if (!preview && !s.outdir.empty()) platform::makeDir(s.outdir);  // sans effet si deja present
-    const std::wstring ext = thumb ? L"_thumb" + H.thumbSuffix + L".png" : H.snapshot ? L".png" : sheet ? L"_sheet.png" : L"." + W(s.container);
+    const std::wstring ext = H.cubeFace >= 0 && H.snapshot ? std::wstring(L"_") + vrFaceName(H.cubeFace) + L".png" : thumb ? L"_thumb" + H.thumbSuffix + L".png" : H.snapshot ? L".png" : sheet ? L"_sheet.png" : L"." + W(s.container);
     bool skipExisting = false;
     const std::wstring out = !videoMode ? outputPath(shaderPath, s.outdir, ext) : outputFile(shaderPath, s, true, &skipExisting);
     if (skipExisting) {
@@ -353,12 +384,22 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     }
 
     // --- Shader + FBO + PBO ---------------------------------------------------
-    int vrMode = 0;  // mainVR : 360 equirectangulaire, mono (1) ou stereo haut / bas (2)
-    if (!vrModeFor(code, s, vrMode, err)) return Result::Failed;
-    if (vrMode > 0 && !preview) {
-        H.log(L"  " + TX(vrMode == 2 ? "log.vr_stereo" : "log.compat_vr"));
-        if (!vrAspectOk(W_, H_, vrMode)) H.log(L"  " + TXF("log.vr_aspect", W_, H_, vrMode == 2 ? L"1:1" : L"2:1"));
+    int vrMode = 0;  // mainVR : 360 equirectangulaire mono (1), stereo haut / bas (2), cote a cote (3), anaglyphe (4), fulldome (5), face de cubemap (6)
+    if (H.cubeFace >= 0 && H.snapshot && !preview) {  // une face de cubemap : exige mainVR
+        Settings forceVr = s;
+        forceVr.vr = "mono";
+        if (!vrModeFor(code, forceVr, vrMode, err)) return Result::Failed;
+        vrMode = 6;
+    } else if (!vrModeFor(code, s, vrMode, err)) {
+        return Result::Failed;
     }
+    if (vrMode > 0 && !preview) {
+        const char* const vrLog[7] = {"", "log.compat_vr", "log.vr_stereo", "log.vr_sbs", "log.vr_anaglyph", "log.vr_fulldome", "log.vr_face"};
+        H.log(L"  " + TX(vrLog[vrMode]));
+        if (!vrAspectOk(W_, H_, vrMode)) H.log(L"  " + TXF("log.vr_aspect", W_, H_, vrAspectText(vrMode)));
+    }
+    int eyeW = FW, eyeH = FH;  // iResolution du programme principal : un oeil en stereo
+    vrEyeSize(vrMode, FW, FH, eyeW, eyeH);
     BufferPasses bp;  // Buffer A-D et Common : fichiers a cote du shader
     PostChain post;   // post-traitement en virgule flottante (passe .post.glsl, effets, LUT)
     bp.discover(shaderPath, [&](const std::wstring& p, std::string& out) {
@@ -472,6 +513,11 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         cleanupGL();
         return Result::Failed;
     }
+    if (tiled && (bp.any() || post.active())) {  // les passes et le post-traitement lisent leurs voisins : pas decoupables
+        err = TX("error.tile_passes");
+        cleanupGL();
+        return Result::Failed;
+    }
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);  // la creation des tampons a change la cible
     glViewport(0, 0, RW, RH);
 
@@ -485,14 +531,16 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     GLint uDate = ogl::GetUniformLocation(prog, "iDate");
     GLint uSR = ogl::GetUniformLocation(prog, "iSampleRate");
     GLint uWeight = ogl::GetUniformLocation(prog, "st_weight");
-    ogl::Uniform3f(uRes, (float)RW, (float)(vrMode == 2 ? RH / 2 : RH), 1.0f);  // stereo : iResolution = taille d'un oeil
+    ogl::Uniform3f(uRes, (float)eyeW, (float)eyeH, 1.0f);  // stereo : iResolution = taille d'un oeil
+    ogl::Uniform1i(ogl::GetUniformLocation(prog, "st_face"), std::max(0, H.cubeFace));
+    const GLint uEye = ogl::GetUniformLocation(prog, "st_eye");
     ogl::Uniform1f(ogl::GetUniformLocation(prog, "st_ipd"), (float)s.vrIpd);
     ogl::Uniform1f(uDelta, (float)(1.0 / s.fps));
     ogl::Uniform1f(uRate, (float)s.fps);
     // iMouse simule : valeur en pixels du rendu au temps t (voir mouse.h)
     auto setMouse = [&](GLint loc, double t) {
         float m[4];
-        mouseAt(s.mouseKeys, t, 1.0 / s.fps, RW, RH, m);
+        mouseAt(s.mouseKeys, t, 1.0 / s.fps, FW, FH, m);
         ogl::Uniform4f(loc, m[0], m[1], m[2], m[3]);
     };
     setMouse(uMouse, s.start);
@@ -529,8 +577,22 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     // Chauffe (warmup) : les N images avant la premiere sont simulees aussi, et iFrame est decale de N
     long long simFrame = -(long long)s.warmup;
     bool replayLogged = false;
+    // Temps GPU par passe : mesure sur quelques images seulement (le GPU est vide avant et apres, ce qui coute du debit) ; ms cumules
+    bool timing = false;
+    double gpuMs[3] = {0, 0, 0};  // image, tampons, post-traitement
+    int gpuSamples = 0;
+    using Tick = std::chrono::steady_clock::time_point;
+    auto tickStart = [&]() -> Tick {
+        glFinish();
+        return std::chrono::steady_clock::now();
+    };
+    auto tickStop = [&](Tick t0, int slot) {
+        glFinish();
+        gpuMs[slot] += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    };
     auto advanceBuffers = [&](long long n) {
         if (!bp.any()) return;
+        const Tick tb = timing ? tickStart() : Tick();
         for (; simFrame < n && !H.cancelled(); simFrame++) {
             if (!replayLogged) {
                 H.log(L"  " + TXF("log.buffers_replay", (long long)(n + s.warmup)));
@@ -542,6 +604,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         simFrame = n + 1;
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);  // retour a l'image
         ogl::UseProgram(prog);
+        if (timing) tickStop(tb, 1);
     };
 
     auto drawAt = [&](double t, long long n, long long extraFrame = 0) {
@@ -551,7 +614,17 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         ogl::Uniform1i(uFrame, (GLint)(n + s.warmup + extraFrame));
         setDate(uDate, t);
         params.apply(prog, t);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        if (vrMode == 4) {  // anaglyphe : l'oeil gauche ne dessine que le rouge (et l'alpha), le droit le vert et le bleu
+            ogl::Uniform1f(uEye, -1.0f);
+            glColorMask(GL_TRUE, GL_FALSE, GL_FALSE, GL_TRUE);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+            ogl::Uniform1f(uEye, 1.0f);
+            glColorMask(GL_FALSE, GL_TRUE, GL_TRUE, GL_FALSE);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        } else {
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        }
     };
     // Rend l'image n (temps t, facteur de fondu "fade") dans fbo ;
     // avec flou : moyenne de B sous-images etalees sur l'obturateur
@@ -567,10 +640,12 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     // Fin d'une image : post-traitement en virgule flottante (le fondu s'applique a la fin de la chaine)
     auto finishFrame = [&](long long n, double t, float fade) {
         if (!post.active()) return;
+        const Tick tp = timing ? tickStart() : Tick();
         GLuint latest[5] = {0, 0, 0, 0, 0};
         if (bp.any()) bp.latest(latest);
         post.apply(fbo, n, t, fade, setPassUniforms, latest);
         ogl::UseProgram(prog);
+        if (timing) tickStop(tp, 2);
     };
     // Plusieurs echantillons d'un meme instant (image fixe) : iFrame different a chaque tirage, moyenne en virgule flottante ;
     // une interruption garde ce qui est deja accumule (la moyenne est remise a l'echelle)
@@ -627,6 +702,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             float w;
         };
         std::vector<Draw> draws;
+        const Tick ti = timing ? tickStart() : Tick();
         const double u = (double)n / s.fps;
         for (int k = 0; k < B; k++) {
             const double dk = B > 1 ? (double)k / B * s.shutter / s.fps : 0.0;
@@ -666,6 +742,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             glDrawArrays(GL_TRIANGLES, 0, 3);
             ogl::UseProgram(prog);
         }
+        if (timing) tickStop(ti, 0);
         finishFrame(n, t, fade);
     };
 
@@ -684,6 +761,131 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         std::vector<uint8_t> flipped = previewBgra(px.data(), RW, RH, s.alpha);  // haut en bas, BGRA ; transparence sur un damier
         cleanupGL();
         H.previewFrame(RW, RH, std::move(flipped));
+        return Result::Ok;
+    }
+
+    // --- Image fixe par tuiles : chaque tuile est calculee avec le iResolution complet et un fragCoord decale (st_offset), lue sur le GPU, reduite du
+    // sur-echantillonnage, rangee dans une bande ; chaque bande est encodee en PNG par ffmpeg (bandes gardees pour reprendre), puis les bandes sont empilees.
+    if (tiled) {
+        const std::wstring ffm = findFfmpeg(exeDir);
+        const int nx = (FW + TW - 1) / TW, ny = (FH + TH - 1) / TH;
+        const long long totalTiles = (long long)nx * ny;
+        const std::wstring tilesDir = out.substr(0, out.find_last_of(L'.')) + L".tiles";
+        platform::makeDir(tilesDir);
+        std::string sigSrc = code + params.signature() + "|poster|" + std::to_string(W_) + "x" + std::to_string(H_) + "|" + std::to_string(SS) + "|" + std::to_string(TW) + "x" + std::to_string(TH) +
+                             "|" + std::to_string(deep) + std::to_string(s.alpha) + "|" + std::to_string(SMP) + "|" + std::to_string(s.start) + "|" + std::to_string(s.dpi) + "|" +
+                             std::to_string(vrMode) + std::to_string(s.vrIpd) + "|" + std::to_string(H.cubeFace) + "|" + s.date + "|" + formatMouseKeys(s.mouseKeys) + "|" + std::to_string(s.warmup);
+        for (int i = 0; i < 4; i++) sigSrc += "|" + U8(s.channel[i]) + s.chFilter[i] + s.chWrap[i] + std::to_string(s.chVflip[i]);
+        const std::string sig = fnvHex(sigSrc);
+        std::string oldSig;
+        const std::wstring sigFile = tilesDir + L"/signature.txt";
+        if (!readFile(sigFile, oldSig) || trim(oldSig) != sig) {  // autre image : les anciennes bandes sont jetees
+            clearDir(tilesDir);
+            if (FILE* f = platform::openFile(sigFile, "wb")) {
+                fputs(sig.c_str(), f);
+                fclose(f);
+            }
+        }
+        H.log(L"  " + TXF("log.tiles", nx, ny, TW, TH, W_, H_));
+        const wchar_t* inFmt = deep ? L"rgba64le" : L"rgba";
+        const wchar_t* outFmt = s.alpha ? (deep ? L"rgba64be" : L"rgba") : (deep ? L"rgb48be" : L"rgb24");
+        const std::wstring dpiArg = s.dpi > 0 ? wfmt(L" -dpi %d", s.dpi) : std::wstring();
+        const int OW = W_;
+        const GLint uOff = ogl::GetUniformLocation(prog, "st_offset");
+        std::vector<uint8_t> tileBuf((size_t)TW * TH * 4 * bpc);
+        long long doneTiles = 0;
+        bool stopped = false;
+        std::vector<std::wstring> strips;
+        auto fail = [&](const std::wstring& m) {
+            err = m;
+            cleanupGL();
+            return Result::Failed;
+        };
+        for (int bi = 0; bi < ny && !stopped; bi++) {  // bi = 0 : bande du haut (GL a l'origine en bas)
+            const int ty = ny - 1 - bi;
+            const int r0 = ty * TH, r1 = std::min(FH, r0 + TH);
+            const int bh = (r1 - r0) / SS;
+            const std::wstring strip = tilesDir + L"/" + wfmt(L"band_%05d.png", bi);
+            strips.push_back(strip);
+            if (fileExists(strip)) {
+                doneTiles += nx;
+                continue;
+            }
+            std::vector<uint8_t> band((size_t)OW * bh * 4 * bpc, 0);
+            for (int tx = 0; tx < nx; tx++) {
+                if (H.cancelled()) {
+                    stopped = true;
+                    break;
+                }
+                const int c0 = tx * TW, c1 = std::min(FW, c0 + TW);
+                ogl::Uniform2f(uOff, (float)c0, (float)r0);
+                if (SMP > 1) renderSamples(0, s.start, 1.0f);
+                else renderFrame(0, s.start, 1.0f);
+                ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
+                glReadPixels(0, 0, RW, RH, GL_RGBA, deep ? GL_UNSIGNED_SHORT : GL_UNSIGNED_BYTE, tileBuf.data());
+                const int cols = (c1 - c0) / SS, ox0 = c0 / SS;
+                auto copyTile = [&](auto* src, auto* dst) {  // moyenne de SS x SS pixels ; premiere ligne du haut dans la bande
+                    const unsigned area = (unsigned)(SS * SS);
+                    for (int y = 0; y < bh; y++)
+                        for (int x = 0; x < cols; x++)
+                            for (int c = 0; c < 4; c++) {
+                                unsigned long long sum = 0;
+                                for (int sy = 0; sy < SS; sy++)
+                                    for (int sx = 0; sx < SS; sx++) sum += src[((size_t)(y * SS + sy) * RW + (size_t)(x * SS + sx)) * 4 + c];
+                                dst[((size_t)(bh - 1 - y) * OW + (size_t)(ox0 + x)) * 4 + c] = (std::remove_pointer_t<decltype(dst)>)((sum + area / 2) / area);
+                            }
+                };
+                if (deep) copyTile((const uint16_t*)tileBuf.data(), (uint16_t*)band.data());
+                else copyTile((const uint8_t*)tileBuf.data(), (uint8_t*)band.data());
+                doneTiles++;
+                if (H.progress) H.progress(doneTiles, totalTiles, 0.0, 0.0);
+            }
+            if (stopped) break;
+            const std::wstring tmp = strip + L".part.png";
+            const std::wstring cmd = L"\"" + ffm + L"\" -hide_banner -loglevel error -y -f rawvideo -pix_fmt " + inFmt + L" -video_size " + std::to_wstring(OW) + L"x" + std::to_wstring(bh) +
+                                     L" -i - -frames:v 1 -pix_fmt " + outFmt + dpiArg + L" \"" + tmp + L"\"";
+            auto proc = platform::Process::start(platform::splitCommand(cmd), true, true);
+            if (!proc) return fail(TX("error.ffmpeg_launch"));
+            bool wrote = true;
+            for (size_t off = 0; off < band.size() && wrote; off += (size_t)16 << 20)
+                wrote = proc->writeStdin(band.data() + off, std::min((size_t)16 << 20, band.size() - off));
+            proc->closeStdin();
+            char drain[4096];
+            std::string ffLog;
+            size_t got;
+            while ((got = proc->readOutput(drain, sizeof(drain))) > 0) ffLog.append(drain, got);
+            const int code2 = proc->wait();
+            if (!wrote || code2 != 0 || !platform::moveFile(tmp, strip, true)) {
+                if (!ffLog.empty()) H.log(TX("log.ffmpeg_prefix") + W(trim(ffLog)));
+                return fail(TX("error.ffmpeg_failed"));
+            }
+        }
+        if (stopped) {
+            H.log(L"  " + TXF("log.tiles_interrupted", (long long)doneTiles, totalTiles, tilesDir.c_str()));
+            cleanupGL();
+            return Result::Cancelled;
+        }
+        H.log(L"  " + TX("log.assembling"));
+        bool joined = true;
+        if (strips.size() == 1) {
+            joined = platform::moveFile(strips[0], out, true);
+        } else {
+            std::wstring cmd = L"\"" + ffm + L"\" -hide_banner -loglevel error -nostdin -y";
+            std::wstring labels;
+            for (size_t i = 0; i < strips.size(); i++) {
+                cmd += L" -i \"" + strips[i] + L"\"";
+                labels += L"[" + std::to_wstring(i) + L":v]";
+            }
+            cmd += L" -filter_complex \"" + labels + L"vstack=inputs=" + std::to_wstring(strips.size()) + L"[v]\" -map [v] -frames:v 1 -pix_fmt " + outFmt + dpiArg + L" \"" + out + L"\"";
+            joined = runProcess(cmd, [&](const std::wstring& line) { H.log(TX("log.ffmpeg_prefix") + line); }) == 0;
+        }
+        if (!joined) return fail(TX("error.assemble_failed"));
+        clearDir(tilesDir);
+        platform::removeDir(tilesDir);
+        cleanupGL();
+        H.log(L"  " + TXF("log.ok_output", out.c_str()));
+        if (H.output) H.output(out);
+        if (rd) rd->output = out;
         return Result::Ok;
     }
 
@@ -788,7 +990,8 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                   L" -frames:v 1 -pix_fmt rgb24 \"" + dest + L"\"";
         } else if (H.snapshot) {  // image RGB pleine plage, sans conversion YUV
             const std::wstring thumbScale = thumb ? L"scale='min(1280,iw)':-2:flags=area," : L"";
-            cmd = head + L" -vf \"vflip," + ssFilter + thumbScale + (s.alpha ? L"format=rgba\" -frames:v 1 -pix_fmt rgba \"" : L"format=rgb24\" -frames:v 1 -pix_fmt rgb24 \"") + dest + L"\"";
+            const std::wstring still8 = s.alpha ? (deep ? L"rgba64be" : L"rgba") : (deep ? L"rgb48be" : L"rgb24");
+            cmd = head + L" -vf \"vflip," + ssFilter + thumbScale + L"format=" + still8 + L"\" -frames:v 1 -pix_fmt " + still8 + (s.dpi > 0 && !thumb ? wfmt(L" -dpi %d", s.dpi) : std::wstring()) + L" \"" + dest + L"\"";
         } else if (kind != OutKind::Video) {  // image animee ou sequence : RGB pleine plage, pas de YUV
             std::wstring text;  // texte incruste (le temps de la video : une image par 1/fps)
             std::wstring oe;
@@ -887,10 +1090,13 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                 t = s.start + ((double)n + 0.5) * duration / (double)N;
                 n = std::llround((t - s.start) * s.fps);
             }
+            timing = videoMode && k % std::max(1LL, cnt / 24) == 0;  // une vingtaine d'images mesurees
             advanceBuffers(n);
             if (SMP > 1) renderSamples(n, t, 1.0f);
             else renderFrame(n, t, videoMode ? fadeAt(n) : 1.0f);
 
+            if (timing) gpuSamples++;
+            timing = false;
             ogl::BindBuffer(ogl::K_PIXEL_PACK_BUFFER, pbo[k % D]);
             glReadPixels(0, 0, RW, RH, GL_RGBA, deep ? GL_UNSIGNED_SHORT : GL_UNSIGNED_BYTE, nullptr);
             if (k >= D - 1 && !fetch(k - (D - 1))) aborted = true;
@@ -947,7 +1153,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                                      s.start, s.crf, W(s.preset).c_str(), W(s.codec).c_str(), W(enc).c_str(), s.bitrate,
                                      s.blur, W(s.color).c_str(), s.shutter, s.fadein, s.fadeout, s.ss,
                                      W(s.container).c_str(), N, chunkFrames, s.depth);
-            sigSrc = code + U8(tail) + "|vr" + std::to_string(vrMode) + (vrMode == 2 ? "|" + std::to_string(s.vrIpd) : "") + params.signature();
+            sigSrc = code + U8(tail) + "|vr" + std::to_string(vrMode) + (vrMode >= 2 && vrMode <= 4 ? "|" + std::to_string(s.vrIpd) : "") + params.signature();
             {  // post-traitement : passe .post, effets et contenu du fichier LUT
                 std::string lutBytes;
                 if (!s.lut.empty()) {
@@ -1035,17 +1241,25 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     if (rd) {
         rd->loopSeconds = loopSec;
         rd->waitSeconds = waitSec;
+        if (gpuSamples > 0) {
+            rd->gpuSamples = gpuSamples;
+            rd->gpuImageMs = gpuMs[0] / gpuSamples;
+            rd->gpuBufferMs = gpuMs[1] / gpuSamples;
+            rd->gpuPostMs = gpuMs[2] / gpuSamples;
+        }
     }
+    if (result == Result::Ok && videoMode && gpuSamples > 0)
+        H.log(L"  " + TXF("log.gpu_passes", gpuSamples, gpuMs[0] / gpuSamples, gpuMs[1] / gpuSamples, gpuMs[2] / gpuSamples));
     if (result == Result::Ok) {
         if (videoMode && loopSec > 1.0 && waitSec > 0.3 * loopSec)
             H.log(L"  " + TXF("log.measure_encoder_bound",
                        100.0 * waitSec / loopSec));
         else if (videoMode && loopSec > 1.0)
             H.log(L"  " + TXF("log.measure_gpu_bound", 100.0 * waitSec / loopSec));
-        if (vrMode > 0 && videoMode && kind == OutKind::Video && s.metadata) {  // video spherique reconnue par YouTube et les lecteurs 360
+        if (vrMode >= 1 && vrMode <= 4 && videoMode && kind == OutKind::Video && s.metadata) {  // video spherique reconnue par YouTube et les lecteurs 360
             std::wstring metaErr;
             if (s.container != "mp4" && s.container != "mov") H.log(L"  " + TXF("log.vr_meta_skipped", W(s.container).c_str()));
-            else if (injectSphericalMetadata(out, vrMode == 2, metaErr)) H.log(L"  " + TX("log.vr_meta_done"));
+            else if (injectSphericalMetadata(out, vrMode == 2 ? 1 : vrMode == 3 ? 2 : 0, metaErr)) H.log(L"  " + TX("log.vr_meta_done"));
             else H.log(L"  " + metaErr);
         }
         if (videoMode && (kind == OutKind::Video || kind == OutKind::Gif || kind == OutKind::Webp) && (s.loopMode != "none" || s.loop > 0) && !H.cancelled()) {

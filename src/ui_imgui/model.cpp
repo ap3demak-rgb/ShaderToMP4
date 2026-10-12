@@ -14,6 +14,7 @@
 #include "core/i18n.h"
 #include "core/postfx.h"
 #include "core/render.h"
+#include "core/vr.h"
 #include "core/util.h"
 #include "platform/platform.h"
 
@@ -154,6 +155,8 @@ void Model::fromSettings(const Settings& real) {
     copyTo(f.timemap, sizeof(f.timemap), U8(o.timemap));
     copyTo(f.speed, sizeof(f.speed), U8(o.speed));
     copyTo(f.samples, sizeof(f.samples), U8(o.samples));
+    copyTo(f.tile, sizeof(f.tile), U8(o.tile));
+    copyTo(f.dpi, sizeof(f.dpi), U8(o.dpi));
     f.exists = o.exists;
     f.endAction = o.endAction;
     f.metadata = o.metadata;
@@ -235,6 +238,8 @@ bool Model::toSettings(Settings& s, std::wstring& err) const {
     o.timemap = W(f.timemap);
     o.speed = W(f.speed);
     o.samples = W(f.samples);
+    o.tile = W(f.tile);
+    o.dpi = W(f.dpi);
     o.exists = f.exists;
     o.endAction = f.endAction;
     o.metadata = f.metadata;
@@ -632,6 +637,19 @@ void Model::runJobsThread(std::vector<std::pair<int, std::wstring>> jobs) {
         if (snapshotRun_ && imageKind_ == 3) {  // vignette intelligente : les trois images les plus riches
             std::vector<std::wstring> made;
             r = renderSmartThumbnails(jobs[i].second, exeDir, run, H, made, e) ? Result::Ok : cancel_ ? Result::Cancelled : Result::Failed;
+        } else if (snapshotRun_ && imageKind_ == 6) {  // carte de chaleur du cout GPU par zone
+            HeatStats hs;
+            std::wstring heatFile;
+            if (renderHeatmap(jobs[i].second, exeDir, run, 16, 9, -1, H, hs, heatFile, e)) {
+                postLog(L"  " + describeHeat(hs));
+            } else {
+                r = cancel_ ? Result::Cancelled : Result::Failed;
+            }
+        } else if (snapshotRun_ && imageKind_ == 5) {  // les six faces d'une cubemap (shader mainVR), carrees
+            Settings sq = run;
+            sq.width = sq.height = std::min(run.width, run.height);
+            std::vector<std::wstring> made;
+            r = renderCubeFaces(jobs[i].second, exeDir, sq, H, made, e) ? Result::Ok : cancel_ ? Result::Cancelled : Result::Failed;
         } else if (snapshotRun_ && imageKind_ == 4) {  // recherche de la periode du shader, sans rendu
             LoopFound lf;
             if (findLoop(jobs[i].second, exeDir, run, 0, H, lf, e)) {
@@ -735,7 +753,7 @@ void Model::startJobs(bool snapshot, int imageKind, int cols, int rows, bool atP
     previewRun = false;
     progress = 0;
     progressFailed = false;
-    if (snapshot) snapshotPath_ = imageKind == 4 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : L".png");
+    if (snapshot) snapshotPath_ = imageKind == 4 || imageKind == 5 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
     setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot ? "status.rendering_image" : "status.rendering"));
     worker_ = std::thread(&Model::runJobsThread, this, std::move(jobs));
 }

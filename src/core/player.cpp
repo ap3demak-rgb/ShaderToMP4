@@ -111,6 +111,7 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
     channelTypes(s, chTypes);
     if (!vrModeFor(code, s, r.vr, err)) return false;
     if (r.vr == 2) r.h &= ~1;  // stereo haut / bas : deux yeux de meme hauteur
+    if (r.vr == 3) r.w &= ~1;  // stereo cote a cote : deux yeux de meme largeur
     r.paramCode = code + "\n" + r.bp.allCode();
     r.paramFile = paramsFile(exeDir, shaderPath);
     if (!r.params.load(r.paramCode, s, r.paramFile, err)) return false;
@@ -164,7 +165,9 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
 
 // Variables communes d'un programme (image ou tampon) pour l'image n au temps t
 void setUniforms(const Rig& r, GLuint p, long long n, double t) {
-    ogl::Uniform3f(ogl::GetUniformLocation(p, "iResolution"), (float)r.w, (float)(p == r.prog && r.vr == 2 ? r.h / 2 : r.h), 1.0f);
+    int eyeW = r.w, eyeH = r.h;
+    if (p == r.prog) vrEyeSize(r.vr, r.w, r.h, eyeW, eyeH);
+    ogl::Uniform3f(ogl::GetUniformLocation(p, "iResolution"), (float)eyeW, (float)eyeH, 1.0f);
     ogl::Uniform1f(ogl::GetUniformLocation(p, "st_ipd"), (float)r.s.vrIpd);
     ogl::Uniform1f(ogl::GetUniformLocation(p, "iTime"), (float)t);
     ogl::Uniform1f(ogl::GetUniformLocation(p, "iTimeDelta"), (float)(1.0 / r.s.fps));
@@ -341,6 +344,32 @@ bool ShaderProbe::frameAt(double t, std::vector<uint8_t>& rgba) {
     drawRig(r, t);
     rgba.resize((size_t)r.w * r.h * 4);
     glReadPixels(0, 0, r.w, r.h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+    return true;
+}
+
+bool ShaderProbe::tileCosts(double t, int cols, int rows, int repeats, std::vector<double>& ms, std::vector<uint8_t>& rgba) {
+    if (!impl_->open || cols < 1 || rows < 1) return false;
+    Rig& r = impl_->rig;
+    drawRig(r, t);  // les passes avancent, l'image est rendue une fois en entier
+    rgba.resize((size_t)r.w * r.h * 4);
+    glReadPixels(0, 0, r.w, r.h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+    ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, r.fbo);
+    ogl::UseProgram(r.prog);
+    ogl::Uniform1f(r.uWeight, 1.0f);
+    glEnable(GL_SCISSOR_TEST);
+    ms.assign((size_t)cols * rows, 0.0);
+    for (int row = 0; row < rows; row++)
+        for (int col = 0; col < cols; col++) {
+            const int x0 = col * r.w / cols, x1 = (col + 1) * r.w / cols;
+            const int yTop0 = row * r.h / rows, yTop1 = (row + 1) * r.h / rows;  // ligne 0 = haut de l'image
+            glScissor(x0, r.h - yTop1, std::max(1, x1 - x0), std::max(1, yTop1 - yTop0));
+            glFinish();
+            const auto t0 = clk::now();
+            for (int k = 0; k < repeats; k++) glDrawArrays(GL_TRIANGLES, 0, 3);
+            glFinish();
+            ms[(size_t)row * cols + col] = std::chrono::duration<double, std::milli>(clk::now() - t0).count() / repeats;
+        }
+    glDisable(GL_SCISSOR_TEST);
     return true;
 }
 

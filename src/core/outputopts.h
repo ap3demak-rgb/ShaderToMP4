@@ -26,6 +26,7 @@ struct OutputFields {
     // Temps et boucle : boucle sans couture (0 aucune, 1 fondu, 2 aller-retour), duree du fondu, courbe de temps, vitesse, echantillons de l'image fixe
     int loopMode = 0;
     std::wstring loopFade, timemap, speed, samples;
+    std::wstring tile, dpi;      // image fixe : cote des tuiles (vide = automatique), resolution ecrite dans le PNG en ppp (vide = aucune)
 };
 
 constexpr int kScaleFilterCount = 5;

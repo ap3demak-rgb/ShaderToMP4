@@ -52,7 +52,7 @@ struct Fields {
     bool metadata = true;
     // Temps et boucle : boucle sans couture (0 aucune, 1 fondu, 2 aller-retour), fondu, courbe de temps, vitesse, echantillons de l'image fixe
     int loopMode = 0;
-    char loopFade[16] = "1", timemap[256] = "", speed[16] = "", samples[16] = "";
+    char loopFade[16] = "1", timemap[256] = "", speed[16] = "", samples[16] = "", tile[16] = "", dpi[16] = "";
 };
 
 struct LogLine {

@@ -92,6 +92,10 @@ std::string reportJson(const RenderReport& r) {
     field("codec", jstr(r.codec));
     field("container", jstr(r.container));
     field("encoder", jstr(r.encoder));
+    if (r.gpuSamples > 0)
+        field("gpu_ms", "{\"image\": " + jnum(r.gpuImageMs) + ", \"buffers\": " + jnum(r.gpuBufferMs) + ", \"post\": " + jnum(r.gpuPostMs) + ", \"sampled_frames\": " + std::to_string(r.gpuSamples) + "}");
+    else
+        field("gpu_ms", "null");
     if (r.loopChecked)
         field("loop", "{\"seam\": " + jnum(r.loopSeam) + ", \"typical\": " + jnum(r.loopTypical) + ", \"perfect\": " + (r.loopPerfect ? "true" : "false") + "}");
     else
@@ -117,6 +121,8 @@ std::string reportText(const RenderReport& r) {
     if (!bn.empty()) line("log.report.bottleneck", TXF(bn == "encoder" ? "log.report.bn_encoder" : "log.report.bn_gpu", i18n::fixed(reportWaitPercent(r), 0).c_str()));
     if (r.bytes > 0) line("log.report.bytes", sizeText(r.bytes));
     if (!r.container.empty()) line("log.report.format", W(r.codec) + L" / " + W(r.container) + L" / " + W(r.encoder));
+    if (r.gpuSamples > 0)
+        line("log.report.gpu", TXF("log.report.gpu_value", i18n::fixed(r.gpuImageMs, 2).c_str(), i18n::fixed(r.gpuBufferMs, 2).c_str(), i18n::fixed(r.gpuPostMs, 2).c_str(), r.gpuSamples));
     if (r.loopChecked)
         line("log.report.loop", TXF(r.loopPerfect ? "log.report.loop_perfect" : "log.report.loop_visible", i18n::fixed(r.loopSeam, 2).c_str(), i18n::fixed(r.loopTypical, 2).c_str()));
     o += TX("log.report.warnings") + L":";

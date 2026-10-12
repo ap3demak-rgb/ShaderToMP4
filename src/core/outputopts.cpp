@@ -70,6 +70,8 @@ void outputFieldsFrom(const Settings& s, OutputFields& f) {
     f.timemap = W(s.timemap);
     f.speed = s.speed != 1.0 ? i18n::num(s.speed) : L"";
     f.samples = s.samples > 1 ? std::to_wstring(s.samples) : L"";
+    f.tile = s.tile > 0 ? std::to_wstring(s.tile) : L"";
+    f.dpi = s.dpi > 0 ? std::to_wstring(s.dpi) : L"";
     f.variants.clear();
     for (const std::string& v : s.variants) f.variants += (f.variants.empty() ? L"" : L" ; ") + W(v);
 }
@@ -153,6 +155,13 @@ bool outputFieldsApply(const OutputFields& f, Settings& s, std::wstring& err) {
             if (!isspace((unsigned char)c)) curve += c;
         TimeMap check;
         if (!TimeMap::parse(curve, check, err)) return false;
+        double tile = 0, dpi = 0;
+        if (!number(f.tile, tile, 0) || (tile != 0 && (tile < 64 || tile > 16384)) || tile != std::floor(tile) || !number(f.dpi, dpi, 0) || dpi < 0 || dpi > 10000 || dpi != std::floor(dpi)) {
+            err = TX("error.still_invalid");
+            return false;
+        }
+        t.tile = (int)tile;
+        t.dpi = (int)dpi;
         t.loopFade = fade;
         t.speed = speed;
         t.samples = (int)samples;

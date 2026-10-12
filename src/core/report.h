@@ -18,6 +18,8 @@ struct RenderReport {
     double waitSeconds = 0;             // temps passe par le rendu a attendre l'encodeur
     uint64_t bytes = 0;                 // taille du fichier produit
     std::string codec, container, encoder;
+    double gpuImageMs = 0, gpuBufferMs = 0, gpuPostMs = 0;  // temps GPU moyen par image (ms), mesure sur quelques images ; 0 = non mesure
+    int gpuSamples = 0;
     bool loopChecked = false;           // controle de la couture d'une video en boucle (looptools.h)
     double loopSeam = 0, loopTypical = 0;
     bool loopPerfect = false;

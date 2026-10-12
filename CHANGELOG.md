@@ -16,6 +16,9 @@ Format: one section per version, newest first. The section of a tagged version i
 - Smart thumbnail (Images menu, `--png=best`): the three richest frames as `_thumb.png`, `_thumb2.png`, `_thumb3.png`.
 - Averaged still image: `samples=N` (`--png --samples=N`) averages N independent samples of one instant in floating point; a cancel keeps the samples already computed.
 - “Time and loop” section of the Output window (Windows) and of the settings card (Linux and macOS); seven new self-test cases.
+- Poster by tiles: a still image larger than 8192 pixels (or than the GPU allows, up to 65536) is computed tile by tile with the whole `iResolution` and a shifted `fragCoord`, identical to a single render; PNG bands kept to resume, supersampling, 16 bits (`depth=10`), `samples`, `printdpi=300`; `tile=` to choose the tile size.
+- GPU cost map (`--heatmap[=16x9]`, Images menu): the image tinted from blue to red by the GPU time of each zone, with the figures in the log; average GPU time per frame of the image, the buffers and the post-processing in the log and in the render report (`gpu_ms`).
+- VR projections for `mainVR`: `vr=sbs` (side by side), `vr=anaglyph` (red-cyan), `vr=fulldome` (180° fisheye square), spherical metadata for the stereo modes; `--cubefaces[=size]` writes the six upright cubemap faces.
 
 ## 1.9.0 — 2026-10-12
 

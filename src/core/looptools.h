@@ -51,5 +51,23 @@ bool findBestFrames(const std::wstring& shaderPath, const std::wstring& exeDir, 
 bool renderSmartThumbnails(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& s, const Hooks& H, std::vector<std::wstring>& files,
                            std::wstring& err);
 
+// --- Carte de chaleur du cout ----------------------------------------------------------------------------------------------------------
+struct HeatStats {
+    int cols = 0, rows = 0;
+    double totalMs = 0, minMs = 0, maxMs = 0, meanMs = 0;  // temps du dessin de l'image entiere (somme des tuiles) et extremes par tuile
+    int hotCol = 0, hotRow = 0;                             // tuile la plus chere (0 = haut / gauche)
+    double hotShare = 0;                                    // part du temps total prise par cette tuile (0 a 1)
+    std::vector<double> tileMs;                             // cout de chaque tuile, ligne du haut d'abord
+};
+// Mesure le cout du shader par zone de l'ecran : l'image est partagee en cols x rows tuiles, chacune redessinee plusieurs fois en mesurant le temps
+// du GPU. Ecrit `<nom>_heat.png` (l'image teintee du bleu au rouge selon le cout) dans le dossier de sortie et rend les chiffres. Au temps `t`
+// du shader (t < 0 : le milieu de la plage). Contexte OpenGL courant requis.
+bool renderHeatmap(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& s, int cols, int rows, double t, const Hooks& H,
+                   HeatStats& stats, std::wstring& outFile, std::wstring& err);
+// Phrase localisee : temps total, extremes, tuile la plus chere et sa part du temps
+std::wstring describeHeat(const HeatStats& st);
+// Couleur de la rampe du cout : x de 0 (bleu) a 1 (rouge), via le vert et le jaune
+void heatColor(double x, uint8_t& r, uint8_t& g, uint8_t& b);
+
 // Note d'une image RGBA (première ligne en bas) : entropie des couleurs, contraste, détail local et exposition combinés, de 0 à 1.
 double frameRichness(const uint8_t* rgba, int w, int h);

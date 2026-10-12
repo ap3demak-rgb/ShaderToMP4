@@ -70,6 +70,10 @@ public:
     bool frameAt(double t, std::vector<uint8_t>& rgba);
     int width() const;
     int height() const;
+    // Cout de chaque tuile d'une grille cols x rows au temps t : le programme de l'image est redessine `repeats` fois dans le rectangle de la
+    // tuile (glScissor), le GPU est vide avant et apres (glFinish), la duree moyenne par dessin est rendue en millisecondes (ordre : ligne du haut
+    // d'abord). rgba recoit l'image rendue (largeur x hauteur de la sonde, premiere ligne en bas).
+    bool tileCosts(double t, int cols, int rows, int repeats, std::vector<double>& ms, std::vector<uint8_t>& rgba);
     bool hasHistory() const;          // le shader a des passes Buffer / Cubemap (l'état dépend du chemin parcouru)
     const Settings& settings() const; // réglages du shader (// clé=valeur comprises)
     void close();
