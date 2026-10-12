@@ -73,6 +73,8 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
         if (g.snapshotRun && g.imageKind == 3) {  // vignette intelligente : les trois images les plus riches
             std::vector<std::wstring> made;
             r = renderSmartThumbnails(jobs[i].second, g.exeDir, run, H, made, e) ? Result::Ok : g.cancel ? Result::Cancelled : Result::Failed;
+            if (r == Result::Ok)  // les trois propositions s'ouvrent ensemble : on choisit en les voyant
+                for (const std::wstring& f : made) ShellExecuteW(nullptr, L"open", f.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         } else if (g.snapshotRun && g.imageKind == 6) {  // carte de chaleur du cout GPU par zone
             HeatStats hs;
             std::wstring heatFile;
@@ -203,7 +205,7 @@ void startJobs(bool snapshot, int imageKind, int cols, int rows, bool atPreview,
     g.sheetRows = rows;
     g.previewRun = false;
     if (snapshot) {
-        g.snapshotPath = imageKind == 4 || imageKind == 5 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
+        g.snapshotPath = imageKind == 3 || imageKind == 4 || imageKind == 5 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
     }
     setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot ? "status.rendering_image" : "status.rendering"));
     g.worker = std::thread(runJobs, std::move(jobs));

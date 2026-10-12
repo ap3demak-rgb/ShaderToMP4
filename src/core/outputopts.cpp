@@ -71,6 +71,7 @@ void outputFieldsFrom(const Settings& s, OutputFields& f) {
     f.speed = s.speed != 1.0 ? i18n::num(s.speed) : L"";
     f.samples = s.samples > 1 ? std::to_wstring(s.samples) : L"";
     f.tile = s.tile > 0 ? std::to_wstring(s.tile) : L"";
+    f.audioFollow = s.audioFollow;
     f.dpi = s.dpi > 0 ? std::to_wstring(s.dpi) : L"";
     f.variants.clear();
     for (const std::string& v : s.variants) f.variants += (f.variants.empty() ? L"" : L" ; ") + W(v);
@@ -160,6 +161,7 @@ bool outputFieldsApply(const OutputFields& f, Settings& s, std::wstring& err) {
             err = TX("error.still_invalid");
             return false;
         }
+        t.audioFollow = f.audioFollow;
         t.tile = (int)tile;
         t.dpi = (int)dpi;
         t.loopFade = fade;

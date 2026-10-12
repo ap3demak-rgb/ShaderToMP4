@@ -23,7 +23,7 @@ std::vector<Override> mainSettingValues(const Settings& s) {
             {"depth", std::to_string(s.depth)},   {"ss", std::to_string(s.ss)},         {"outdir", U8(s.outdir)},
             {"bitrate", std::to_string(s.bitrate)}, {"color", s.color},                 {"blur", std::to_string(s.blur)},
             {"loop", num(s.loop)},                {"loopmode", s.loopMode},            {"loopfade", num(s.loopFade)},
-            {"timemap", s.timemap},               {"speed", num(s.speed)},              {"audio", U8(s.audio)},               {"fadein", num(s.fadein)},
+            {"timemap", s.timemap},               {"speed", num(s.speed)}, {"audiofollow", s.audioFollow ? "1" : "0"},              {"audio", U8(s.audio)},               {"fadein", num(s.fadein)},
             {"fadeout", num(s.fadeout)},          {"encoder", s.encoder},
             // fenetre Sortie : transparence, HDR, taille, interpolation, volume, texte, fichier, parties
             {"alpha", s.alpha ? "1" : "0"},       {"hdr", s.hdr},                       {"hdrpeak", std::to_string(s.hdrPeak)},

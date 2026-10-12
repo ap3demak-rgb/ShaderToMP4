@@ -139,6 +139,18 @@ void TimeMap::speedRange(double duration, double& lo, double& hi) const {
     }
 }
 
+bool timeCurveSamples(const std::string& timemap, double speed, bool pingpong, double duration, int n, std::vector<double>& out) {
+    out.clear();
+    TimeMap tm;
+    std::wstring err;
+    if (!TimeMap::parse(timemap, tm, err)) return false;
+    if (pingpong && !tm.hasCurve()) tm = TimeMap::pingPong(duration / 2);
+    tm.setSpeed(speed == 0 ? 1.0 : speed);
+    n = std::max(2, n);
+    for (int i = 0; i < n; i++) out.push_back(tm.at(duration * i / (n - 1)));
+    return true;
+}
+
 std::string TimeMap::canonical() const {
     char b[96];
     snprintf(b, sizeof(b), "tm:%d|%g|%g", pingpong_ ? 1 : 0, half_, speed_);

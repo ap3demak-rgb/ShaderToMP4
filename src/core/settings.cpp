@@ -20,7 +20,7 @@ bool sameSettings(const Settings& a, const Settings& b) {
            a.start == b.start && a.crf == b.crf && a.preset == b.preset && a.codec == b.codec &&
            a.container == b.container && a.ss == b.ss && a.outdir == b.outdir &&
            a.bitrate == b.bitrate && a.color == b.color && a.blur == b.blur && a.shutter == b.shutter &&
-           a.loop == b.loop && a.loopMode == b.loopMode && a.loopFade == b.loopFade && a.timemap == b.timemap && a.speed == b.speed && a.audio == b.audio && a.fadein == b.fadein && a.fadeout == b.fadeout &&
+           a.loop == b.loop && a.loopMode == b.loopMode && a.loopFade == b.loopFade && a.timemap == b.timemap && a.speed == b.speed && a.audioFollow == b.audioFollow && a.audio == b.audio && a.fadein == b.fadein && a.fadeout == b.fadeout &&
            sameChannels(a, b) && formatMouseKeys(a.mouseKeys) == formatMouseKeys(b.mouseKeys) && formatKeyPresses(a.keys) == formatKeyPresses(b.keys) && a.date == b.date && a.variants == b.variants && a.gpu == b.gpu && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
            a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.paramSpecs == b.paramSpecs && a.post == b.post && a.lut == b.lut && a.alpha == b.alpha && a.hdr == b.hdr && a.hdrPeak == b.hdrPeak &&
            a.hdrFall == b.hdrFall && a.hdrWhite == b.hdrWhite && a.interp == b.interp && a.scale == b.scale && a.scaleFilter == b.scaleFilter &&
@@ -99,6 +99,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "blur") s.blur = std::stoi(v);
         else if (k == "shutter") s.shutter = std::stod(v);
         else if (k == "loop") s.loop = std::stod(v);
+        else if (k == "audiofollow") s.audioFollow = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
         else if (k == "loopmode") s.loopMode = (lower(v) == "crossfade" || lower(v) == "pingpong") ? lower(v) : "none";
         else if (k == "loopfade") s.loopFade = std::max(0.05, std::min(600.0, std::stod(v)));
         else if (k == "speed") s.speed = std::stod(v) == 0 ? 1.0 : std::max(-100.0, std::min(100.0, std::stod(v)));
@@ -180,7 +181,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
 
 bool isSettingKey(const std::string& key) {
     static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
-                                        "blur", "shutter", "loop", "loopmode", "loopfade", "timemap", "speed", "samples", "tile", "printdpi", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
+                                        "blur", "shutter", "loop", "loopmode", "loopfade", "timemap", "speed", "audiofollow", "samples", "tile", "printdpi", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
                                         "report", "scale", "scalefilter", "loudnorm", "title", "credit", "titledur", "chunk", "encoder", "color", "container",
                                         "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "key", "date", "endaction", "variant", "gpu"};
     for (const char* k : kKeys)
@@ -293,6 +294,7 @@ void writeIni(const std::wstring& path, const Settings& s) {
     }
     if (!s.timemap.empty()) put("timemap", s.timemap);  // pas de commentaire : la valeur garde sa forme exacte
     if (s.speed != 1.0) put("speed", num(s.speed), "ini.speed");
+    if (s.audioFollow) put("audiofollow", "1", "ini.audiofollow");
     put("audio", U8(s.audio));
     put("fadein", num(s.fadein), "ini.fadein");
     put("fadeout", num(s.fadeout), "ini.fadeout");

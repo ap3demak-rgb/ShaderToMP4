@@ -3,6 +3,7 @@
 
 // Interface Linux / macOS : GLFW (fenêtre, entrées, glisser-déposer) + Dear ImGui + icônes SVG (NanoSVG).
 #include "core/ffmpeg_download.h"
+#include "core/timemap.h"
 #include "core/formats.h"
 #include "core/locate.h"
 #include "core/outputopts.h"
@@ -703,6 +704,24 @@ void drawOutput(App& a) {
     row("ui.output.speed");
     ImGui::SetNextItemWidth(width);
     ImGui::InputText("##speed", f.speed, sizeof(f.speed));
+    row("ui.output.audiofollow");
+    int af = f.audioFollow ? 1 : 0;
+    if (comboList("##audiofollow", &af, offOn, width)) f.audioFollow = af == 1;
+    {  // apercu de la courbe : l'instant du shader selon l'instant de la video (le temps reel est la diagonale)
+        std::string curve;
+        for (char c : std::string(f.timemap))
+            if (!isspace((unsigned char)c)) curve += c;
+        double speed = atof(f.speed);
+        if (speed == 0) speed = 1.0;
+        std::vector<double> y;
+        const double duration = std::max(0.1, atof(f.dur));
+        if (timeCurveSamples(curve, speed, f.loopMode == 2, duration, 120, y)) {
+            std::vector<float> v(y.begin(), y.end());
+            ImGui::PlotLines("##curve", v.data(), (int)v.size(), 0, nullptr, FLT_MAX, FLT_MAX, ImVec2(ImGui::GetContentRegionAvail().x, S(60)));
+        } else {
+            ImGui::TextColored(colv(pal::ERR), "%s", T("error.timemap_invalid_short").c_str());
+        }
+    }
     row("ui.output.samples");
     ImGui::SetNextItemWidth(width);
     ImGui::InputText("##samples", f.samples, sizeof(f.samples));

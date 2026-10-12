@@ -7,6 +7,10 @@
 #pragma once
 #include "common.h"
 
+// Echantillons de la courbe (decalage du temps du shader, en secondes, pour n instants regulierement repartis sur [0, duration]) tels que les
+// interfaces les dessinent : courbe `timemap`, vitesse `speed`, aller-retour. Faux si le texte de la courbe est invalide.
+bool timeCurveSamples(const std::string& timemap, double speed, bool pingpong, double duration, int n, std::vector<double>& out);
+
 class TimeMap {
 public:
     // « 0:0;4:2;8:10 » : points « instant de la vidéo : instant du shader » en secondes (le shader compté depuis `start`), séparés par « ; » ou « , ».

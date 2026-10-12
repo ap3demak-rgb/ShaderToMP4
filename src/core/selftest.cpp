@@ -1231,7 +1231,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                         const char* curve;
                         bool ok;
                     };
-                    for (const Case& c : {Case{"pingpong", "", false}, Case{"none", "0:2;2:0", false}, Case{"crossfade", "", false}, Case{"none", "0:0;2:1", true}}) {
+                    for (const Case& c : {Case{"pingpong", "", true}, Case{"none", "0:2;2:0", true}, Case{"crossfade", "", false}, Case{"none", "0:0;2:1", true}}) {
                         Settings sh = seqSettings(1);
                         sh.loopMode = c.mode;
                         sh.timemap = c.curve;
@@ -1584,6 +1584,75 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                     }
                 }
                 check("selftest.fmt_gpupasses", problem);
+            }
+            // passes Buffer avec un temps qui recule : l'etat est rejoue depuis le debut, le meme etat revient au meme instant du shader, le cout est borne
+            if (formatAvailable(ffmpeg, "h264", "png")) {
+                std::wstring problem;
+                const std::wstring counter = put(L"p16_counter.glsl", "// iChannel0=bufferA\nvoid mainImage(out vec4 o, in vec2 p){ float v = texture(iChannel0, p / iResolution.xy).r; o = vec4(v, v, v, 1.0); }\n");
+                put(L"p16_counter.bufferA.glsl", "// iChannel0=bufferA\nvoid mainImage(out vec4 o, in vec2 p){ vec4 prev = texelFetch(iChannel0, ivec2(p), 0); o = vec4(prev.r + 0.01, 0.0, 0.0, 1.0); }\n");
+                auto grayAtSeq = [&](const Settings& st, double t) {
+                    const std::string px = decodeRaw(sequencePattern(outputFile(counter, st, false)), L"gray", wfmt(L"-framerate 10 -ss %.2f", t));
+                    return px.size() == 64 * 64 ? (int)(uint8_t)px[32 * 64 + 32] : -1;
+                };
+                std::wstring e;
+                std::string logText;
+                Settings pp = seqSettings(4);
+                pp.loopMode = "pingpong";  // aller-retour : instant du shader 0 -> 2 -> 0
+                if (!renderOne(counter, pp, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    const int a = grayAtSeq(pp, 1.0), b = grayAtSeq(pp, 2.0), c = grayAtSeq(pp, 3.0);  // etats apres 11, 21 et 11 pas (0.11 -> 28, 0.21 -> 54)
+                    if (std::abs(a - 28) > 2 || std::abs(b - 54) > 2 || std::abs(c - a) > 1) problem = bad("pingpong " + std::to_string(a) + "," + std::to_string(b) + "," + std::to_string(c));
+                }
+                if (problem.empty()) {  // courbe decroissante 2 s -> 0 s
+                    Settings rv = seqSettings(2);
+                    rv.timemap = "0:2;2:0";
+                    if (!renderOne(counter, rv, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else {
+                        const int a = grayAtSeq(rv, 0.0), b = grayAtSeq(rv, 1.0), c = grayAtSeq(rv, 1.9);
+                        if (std::abs(a - 54) > 2 || std::abs(b - 28) > 3 || c > 12) problem = bad("reverse " + std::to_string(a) + "," + std::to_string(b) + "," + std::to_string(c));
+                    }
+                }
+                if (problem.empty()) {  // trop cher : aller-retour de 1000 s a 10 images par seconde
+                    Settings big = seqSettings(1000);
+                    big.loopMode = "pingpong";
+                    big.chunk = 0;
+                    if (renderOne(counter, big, e, logText) || e.find(L"400000") == std::wstring::npos) problem = bad("cost limit not enforced");
+                }
+                check("selftest.fmt_replay", problem);
+            }
+            // le son suit une vitesse constante : le passage fort (1.5 s) dure autant que la video ralentie (vitesse 0.5 : 2.4 s de video = 1.2 s de son)
+            if (formatAvailable(ffmpeg, "h264", "mp4")) {
+                std::wstring problem;
+                const std::wstring rampA = put(L"p16_ramp.glsl", "void mainImage(out vec4 o, in vec2 p){ float v = clamp(iTime / 4.0, 0.0, 1.0); o = vec4(v, v, v, 1.0); }\n");
+                const std::wstring tone = outDir + sep + L"p16_tone.wav";
+                runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -f lavfi -i \"aevalsrc='if(lt(t,1.5),0.5*sin(2*PI*440*t),0)':s=44100:d=6\" \"" + tone + L"\"", nullptr);
+                auto volume = [&](const std::wstring& file) {  // volume moyen (dB) entre 1.8 s et 2.2 s
+                    double db = 0;
+                    bool seen = false;
+                    runProcess(L"\"" + ffmpeg + L"\" -hide_banner -nostdin -ss 1.8 -t 0.4 -i \"" + file + L"\" -vn -af volumedetect -f null -", [&](const std::wstring& l) {
+                        const std::string line = U8(l);
+                        const size_t at = line.find("mean_volume: ");
+                        if (at != std::string::npos) {
+                            db = atof(line.c_str() + at + 13);
+                            seen = true;
+                        }
+                    });
+                    return seen ? db : 1.0;
+                };
+                double level[2] = {0, 0};
+                for (int follow = 0; follow < 2 && problem.empty(); follow++) {
+                    Settings sv = base("h264", "mp4", 8);
+                    sv.duration = 2.4;
+                    sv.speed = 0.5;
+                    sv.audio = tone;
+                    sv.audioFollow = follow == 1;
+                    std::wstring e;
+                    std::string logText;
+                    if (!renderOne(rampA, sv, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else level[follow] = volume(outputFile(rampA, sv, false));
+                }
+                if (problem.empty() && (level[1] < -30 || level[0] > -60)) problem = bad("volume follow " + std::to_string(level[1]) + " / plain " + std::to_string(level[0]));
+                check("selftest.fmt_audiofollow", problem);
             }
         }
     }
