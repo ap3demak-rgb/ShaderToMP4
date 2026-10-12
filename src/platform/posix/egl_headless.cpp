@@ -129,6 +129,7 @@ bool available() { return g.ready; }
 
 void* createContext(std::wstring& err) {
     if (!g.ready) return nullptr;
+    g.api.bindAPI(kOpenGLApi);  // l'API liee est propre a chaque thread (OpenGL ES par defaut dans un nouveau thread)
     const Int ctxAttribs[] = {kContextMajor, 3, kContextMinor, 3, kContextProfile, kCoreProfileBit, kNone};
     Ptr context = g.api.createContext(g.display, g.config, nullptr, ctxAttribs);
     if (!context) {
@@ -147,6 +148,7 @@ void* createContext(std::wstring& err) {
 bool makeCurrent(void* context, std::wstring& err) {
     auto* c = static_cast<Context*>(context);
     if (!g.ready || !c) return false;
+    g.api.bindAPI(kOpenGLApi);
     if (!g.api.makeCurrentFn(g.display, c->surface, c->surface, c->context)) {
         err = errorText("eglMakeCurrent");
         return false;
