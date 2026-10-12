@@ -310,7 +310,8 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         std::atomic<double> lastT{-1.0};
         Settings st = base("h264", "mp4", 8);
         st.duration = 4.0;
-        std::wstring problem;
+        std::mutex logMutex;
+        std::wstring problem, playerLog;  // dernier message du lecteur, joint au diagnostic
         if (!threads) problem = TXF("selftest.fmt_bad", W("thread context").c_str());
         else {
             PreviewPlayer player;
@@ -319,7 +320,10 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                     frames++;
                     lastT = t;
                 }
-            }, [] { return true; }, [](const std::wstring&) {});
+            }, [] { return true; }, [&](const std::wstring& m) {
+                std::lock_guard<std::mutex> l(logMutex);
+                playerLog = m;
+            });
             for (int i = 0; i < 100 && frames < 3; i++) platform::sleepMs(50);
             const int before = frames;
             player.seek(3.0);
@@ -328,7 +332,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             platform::sleepMs(150);
             const int paused = frames;
             platform::sleepMs(250);
-            if (before < 3) problem = TXF("selftest.fmt_bad", W("no frame").c_str());
+            if (before < 3) problem = TXF("selftest.fmt_bad", (W("no frame ") + (std::lock_guard<std::mutex>(logMutex), playerLog)).c_str());
             else if (lastT < 2.9) problem = TXF("selftest.fmt_bad", W("seek").c_str());
             else if (frames > paused + 1) problem = TXF("selftest.fmt_bad", W("pause").c_str());
         }  // le destructeur arrete le thread
