@@ -158,6 +158,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     ACCEL acc[] = {
         {FVIRTKEY | FCONTROL, 'O', ID_ADD},
         {FVIRTKEY | FCONTROL, 'P', ID_PREVBTN},
+        {FVIRTKEY | FCONTROL, 'E', ID_EDITOR},
         {FVIRTKEY, VK_F1, ID_ABOUT},
         {FVIRTKEY, VK_F5, ID_START},
         {FVIRTKEY, VK_F6, ID_PAUSE},
@@ -196,8 +197,9 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
 
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0) > 0) {
-        if (TranslateAcceleratorW(wnd, haccel, &m)) continue;
-        if (IsDialogMessageW(wnd, &m)) continue;  // Tab / Maj+Tab entre les contrôles
+        const bool inMain = GetAncestor(m.hwnd, GA_ROOT) == wnd;  // l'éditeur et les autres fenêtres ont leurs propres touches
+        if (inMain && TranslateAcceleratorW(wnd, haccel, &m)) continue;
+        if (inMain && IsDialogMessageW(wnd, &m)) continue;  // Tab / Maj+Tab entre les contrôles
         TranslateMessage(&m);
         DispatchMessageW(&m);
     }

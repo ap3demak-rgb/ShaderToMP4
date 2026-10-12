@@ -12,6 +12,7 @@ namespace ui {
 Metrics metrics;
 ImFont* fontRegular = nullptr;
 ImFont* fontBold = nullptr;
+ImFont* fontMono = nullptr;
 
 ImVec4 colv(unsigned hex, float alpha) {
     return ImVec4(((hex >> 16) & 255) / 255.0f, ((hex >> 8) & 255) / 255.0f, (hex & 255) / 255.0f, alpha);
@@ -83,8 +84,43 @@ void setupFonts(float uiScale, float fbScale) {
     cfg.OversampleH = 2;
     cfg.OversampleV = 2;
     const float px = 15.0f * uiScale * fbScale;
+    // japonais et chinois : Inter est latine, les caracteres viennent d'une police du systeme fusionnee dans chacune des deux polices
+    const std::string lang = i18n::language();
+    static std::string cjk, cjkLang;
+    int cjkNo = 0;
+    if (lang == "ja" || lang == "zh") {
+        const std::wstring file = platform::systemCjkFontFile(lang, cjkNo);
+        if (cjkLang != lang) {
+            cjk.clear();
+            cjkLang = lang;
+            if (!file.empty()) platform::readFile(file, cjk);
+        }
+    } else {
+        cjk.clear();
+        cjkLang.clear();
+    }
+    auto mergeCjk = [&](float size) {  // fusionne dans la police ajoutee juste avant
+        if (cjk.empty()) return;
+        ImFontConfig merge;
+        merge.FontDataOwnedByAtlas = false;
+        merge.MergeMode = true;
+        merge.FontNo = cjkNo;
+        merge.OversampleH = 1;
+        merge.OversampleV = 1;
+        io.Fonts->AddFontFromMemoryTTF(&cjk[0], (int)cjk.size(), size, &merge,
+                                       lang == "ja" ? io.Fonts->GetGlyphRangesJapanese() : io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
+    };
     fontRegular = io.Fonts->AddFontFromMemoryTTF(&regular[0], (int)regular.size(), px, &cfg, ranges);
+    mergeCjk(px);
     fontBold = io.Fonts->AddFontFromMemoryTTF(&bold[0], (int)bold.size(), px * 1.1f, &cfg, ranges);
+    mergeCjk(px * 1.1f);
+    {  // editeur de shader : police a chasse fixe integree a Dear ImGui (caracteres ASCII)
+        ImFontConfig mono;
+        mono.SizePixels = 14.0f * uiScale * fbScale;
+        mono.OversampleH = 1;
+        mono.OversampleV = 1;
+        fontMono = io.Fonts->AddFontDefault(&mono);
+    }
     io.FontGlobalScale = 1.0f / fbScale;
     io.Fonts->Build();
 }

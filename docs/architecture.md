@@ -15,6 +15,8 @@ Today the code is split in two layers:
 - `src/core/`: the rendering engine (OpenGL 3.3 core, ffmpeg pipe, chunking and resume, settings, i18n, self-test). It is independent of the interface and calls no operating system API: everything goes through `src/platform/`.
 - `src/gui/`: the Windows interface (Win32 + Direct2D/DirectWrite, SVG through Direct2D).
 
+Since version 1.8 the engine also holds the code that both front-ends share for features that are not rendering itself, so that a feature is written once: `outputopts` (fields and validation of the Output window), `filesettings` (settings of one shader, in `jobs/`, and writing settings into a shader), `batches`, `channeldrop` (what to write when a file is dropped), `passfiles` and `glslsyntax` (the editor's tabs, templates and colouring), `report` (render report). Windows-only code (`src/gui/editor.cpp` RichEdit editor, dialogs) and ImGui-only code (`src/ui_imgui/editor_imgui.cpp`) only draw and call these. `src/platform/posix/egl_headless.cpp` creates the OpenGL context through EGL when there is no display server.
+
 ## 2. Options considered for the interface
 
 | Option | For | Against |

@@ -69,6 +69,7 @@ void appendLog(const std::wstring& text) {
     SendMessageW(g.log, EM_SETCHARFORMAT, SCF_SELECTION, (LPARAM)&cf);
     SendMessageW(g.log, EM_REPLACESEL, FALSE, (LPARAM)t.c_str());
     SendMessageW(g.log, WM_VSCROLL, SB_BOTTOM, 0);
+    editorNoteLog(text);
 }
 
 // Les shaders pas encore rendus (ni termines) sont notes pour la prochaine ouverture
@@ -80,14 +81,40 @@ void saveQueueNow() {
 }
 
 // Reglages ecrits dans le shader selectionne (ou le premier) : ils priment sur la fenetre
+// Champs actifs : ni pendant un rendu, ni quand le shader selectionne impose le reglage
+void enableSettingsControls() {
+    const bool r = g.running.load();
+    for (HWND c : {g.cmbRes, g.edW, g.edH, g.cmbFps, g.edDur, g.edStart, g.cmbCodec, g.cmbPreset, g.cmbContainer, g.cmbSS, g.edOut, g.bBrowse, g.bLoadP, g.bSaveP, g.trkCrf,
+                   g.edBitrate, g.cmbColor, g.cmbBlur, g.edLoop, g.edAudio, g.bAudio, g.edFadeIn, g.edFadeOut, g.cmbEncoder, g.cmbDepth,
+                   g.chips[0], g.chips[1], g.chips[2], g.chips[3], g.chips[4]})
+        EnableWindow(c, !r && !controlForced(c));
+}
+
 void updateForced() {
     if (!g.lblForced) return;
+    const std::wstring shownBefore = g.fileScope.shown;
+    syncFileScope();  // autre shader selectionne : ses reglages propres (jobs/) prennent la place
+    const bool scopeChanged = shownBefore != g.fileScope.shown;
     std::wstring text;
+    std::vector<Override> now;
     if (!g.paths.empty()) {
         int sel = ListView_GetNextItem(g.list, -1, LVNI_SELECTED);
         if (sel < 0 || sel >= (int)g.paths.size()) sel = 0;
+        now = shaderOverrides(g.paths[sel]);
         const std::wstring o = shaderOverridesOf(g.paths[sel]);
         if (!o.empty()) text = TXF("ui.forced", o.c_str());
+    }
+    if (scopeChanged || !(now == g.forced)) {
+        // les champs gris montrent les valeurs du shader : on garde d'abord les valeurs saisies pour les autres reglages dans g.base
+        // (deja fait par syncFileScope quand c'est la selection qui a change)
+        Settings cur = g.base;
+        std::wstring e;
+        const bool ok = scopeChanged || uiToSettings(cur, e);
+        if (ok && !scopeChanged) g.base = cur;
+        g.forced = now;
+        if (ok && g.cmbRes) settingsToUI(g.base);
+        enableSettingsControls();
+        updateEstimate();
     }
     SetWindowTextW(g.lblForced, text.c_str());
     updatePrevLabel();  // autre shader : repères des images clés sur le curseur de l'aperçu
@@ -95,16 +122,15 @@ void updateForced() {
 
 void updateButtons() {
     const bool r = g.running.load();
-    for (HWND c : {g.cmbRes, g.edW, g.edH, g.cmbFps, g.edDur, g.edStart, g.cmbCodec, g.cmbPreset, g.cmbContainer, g.cmbSS, g.edOut, g.bBrowse, g.bLoadP, g.bSaveP, g.trkCrf,
-                   g.edBitrate, g.cmbColor, g.cmbBlur, g.edLoop, g.edAudio, g.bAudio, g.edFadeIn, g.edFadeOut, g.cmbEncoder, g.cmbDepth,
-                   g.chips[0], g.chips[1], g.chips[2], g.chips[3], g.chips[4]})
-        EnableWindow(c, !r);
+    enableSettingsControls();
+    updateFileScopeButton();
     EnableWindow(g.bAdd, !r);
     EnableWindow(g.bRemove, !r);
     EnableWindow(g.bClear, !r);
     EnableWindow(g.bStart, !r && !g.paths.empty());
     EnableWindow(g.bSnap, !r && !g.paths.empty());
     EnableWindow(g.bOutput, !r);
+    EnableWindow(g.bEditor, !g.paths.empty());
     EnableWindow(g.bCancel, r && !g.previewRun);
     EnableWindow(g.bPause, r && !g.previewRun);
     EnableWindow(g.bPrev, !r && !g.paths.empty());

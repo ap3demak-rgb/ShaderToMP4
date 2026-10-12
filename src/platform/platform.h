@@ -13,6 +13,7 @@ namespace platform {
 std::wstring appDir();  // dossier de l'application, séparateur final inclus
 bool fileExists(const std::wstring& path);
 bool dirExists(const std::wstring& path);
+bool fileSize(const std::wstring& path, uint64_t& bytes);   // taille d'un fichier sans le lire
 bool readFile(const std::wstring& path, std::string& out);  // contenu binaire complet
 FILE* openFile(const std::wstring& path, const char* mode);  // fopen avec chemin Unicode ("rb", "wb"...)
 bool makeDir(const std::wstring& path);                      // un niveau ; true aussi si le dossier existe déjà
@@ -46,6 +47,9 @@ struct DateTime {
 DateTime localTime();
 // Police sans empattement du système (fichier .ttf / .ttc lisible), pour le texte incrusté dans la vidéo ; vide si aucune n'est trouvée.
 std::wstring systemFontFile();
+// Police du système qui contient les caractères japonais ("ja") ou chinois simplifiés ("zh") ; `fontNo` = indice dans un fichier .ttc. Vide si
+// le système n'en a pas : l'interface Linux / macOS (police Inter, latine) s'en sert pour afficher ces deux langues.
+std::wstring systemCjkFontFile(const std::string& lang, int& fontNo);
 enum class MessageKind { Info, Warning, Error };
 void showMessage(const std::wstring& title, const std::wstring& text, MessageKind kind);  // boîte de message, ou stderr sans interface
 

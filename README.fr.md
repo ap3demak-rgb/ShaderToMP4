@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.8.0-FF5A96?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.9.0-FF5A96?style=flat-square">
   <img alt="Plateforme" src="https://img.shields.io/badge/plateforme-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-0078D4?style=flat-square">
   <img alt="Portable" src="https://img.shields.io/badge/portable-sans%20installeur-3DDC97?style=flat-square">
   <img alt="Langues" src="https://img.shields.io/badge/langues-6-7C6CFF?style=flat-square">
@@ -128,6 +128,8 @@ Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : 
 | **Pause** / **Reprendre** | `F6` | Suspend le rendu (le temps de pause n'est pas compté dans la vitesse) |
 | **Annuler** | `Échap` | Arrête le rendu ; les parties déjà terminées sont conservées |
 | **Images** | | Menu : une image PNG au temps « Début », une vignette de couverture (milieu de la plage) ou une planche-contact (3×2 à 6×5) ; le fichier est ouvert |
+| **Modifier** (icône crayon de l'en-tête ; le bouton **Modifier** sous la liste sous Linux et macOS) | `Ctrl+E` | Ouvre l'éditeur du shader sélectionné et de ses passes (voir « Éditeur et passes ») |
+| **Ce shader seul** | | Les champs de la carte des réglages valent pour le seul shader sélectionné (voir « Ordre de la file, réglages d'un shader, médias déposés ») |
 | **Aperçu** et curseur | `Ctrl+P` | Affiche une image du shader à un instant choisi, sans ffmpeg |
 | **Lecture** / **Arrêt** | | Joue le shader en temps réel à la taille de l'aperçu (640 px au plus), en boucle sur la plage, saut par le curseur ; l'aperçu se recharge tout seul quand le shader ou un de ses fichiers de passes change sur le disque |
 | **Retirer** | `Suppr` (dans la liste) | Retire les shaders sélectionnés |
@@ -140,6 +142,35 @@ Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : 
 `Tab` passe d'un réglage au suivant. Tous les textes de l'interface ont un contraste d'au moins 4,5:1 avec leur fond (WCAG AA), contrôlé automatiquement pour les deux interfaces.
 
 **File d'attente conservée entre deux sessions** : les shaders pas encore rendus (en attente, en échec, annulés ou interrompus) sont notés dans `queue.txt` à côté du programme et remis dans la liste à la prochaine ouverture sans fichier (le journal l'indique ; appuyez sur Démarrer). Les shaders terminés sont oubliés, tout comme un fichier qui n'existe plus.
+
+</details>
+
+<details>
+<summary><b>Ordre de la file, réglages d'un shader, médias déposés</b></summary>
+
+**Ordre de la file.** Clic droit sur un shader (sous Windows aussi `Alt+Haut` / `Alt+Bas`) : *Passer en tête de file*, *Monter*, *Descendre*, *Rendre seulement la sélection* (les autres shaders restent tels quels), *Modifier le shader…*, *Remettre en attente* (un shader terminé ou en échec est rendu de nouveau au prochain Démarrer), *Retirer*. L'ordre est conservé dans `queue.txt`. **Lots** : *Lot ▸ Mettre dans le lot 1 à 4* numérote les shaders sélectionnés (`[2]` s'affiche devant leur nom, noté dans `jobs/batches.txt`), et *Rendre le lot N* ne rend que ce groupe, shaders terminés compris.
+
+**Réglages d'un seul shader.** La carte des réglages vaut normalement pour tous les shaders. Le bouton **Ce shader seul** (à côté du titre de la carte) fait valoir les champs pour le seul shader sélectionné : ils sont gardés dans le dossier `jobs/` à côté du programme (un petit `.ini` par shader), le fichier du shader n'est pas touché et les autres shaders gardent les réglages généraux. Cela couvre la carte des réglages **et** la fenêtre Sortie (transparence, HDR, taille, texte, nom du fichier, parties, variantes...), sauf l'action de fin de lot. Un second appui rend les réglages généraux (ceux du shader sont effacés). L'entrée du clic droit *Écrire les réglages dans le shader* les transforme en commentaires `// clé=valeur` en tête du fichier du shader (après une confirmation sous Windows) : c'est la seule façon dont le programme modifie un shader, et seulement à votre demande. Priorité : réglages généraux, puis réglages propres au shader, puis commentaires `// clé=valeur` du shader.
+
+**Réglages imposés par le shader.** Quand le shader sélectionné impose un réglage par un commentaire `// clé=valeur`, le champ montre la valeur du shader, grisée, à la place de celle de la fenêtre (qui reste pour les autres shaders) ; l'estimation de taille suit ce que fera le shader.
+
+**Médias déposés.** Déposez une image, un son ou une vidéo sur la fenêtre : un menu demande le canal, et la ligne `// iChannel0=tex/bois.png` (`audio:fichier.wav` pour un son, `video:clip.mp4` pour une vidéo ; un chemin relatif au shader quand le fichier est à côté) s'écrit dans les commentaires du shader sélectionné. Pour un son le menu propose aussi la bande-son (`// audio=…`). Les fichiers shader déposés sur la fenêtre sont toujours ajoutés à la liste.
+
+**Aperçu.** Pendant la lecture, le temps affiché donne aussi le numéro de l'image et la cadence réelle de l'aperçu (`t = 1,23 s · n° 37 · 58 img/s`) ; le menu Images propose *Image PNG au temps de l'aperçu*.
+
+</details>
+
+<details>
+<summary><b>Éditeur et passes</b></summary>
+
+On l'ouvre par l'icône crayon de l'en-tête (Windows), le bouton **Modifier** sous la liste (Linux et macOS), `Ctrl+E` ou le menu du clic droit de la liste.
+
+- **Un onglet par fichier du shader** : Image (le shader lui-même), Buffer A–D, Common, Cubemap A, Sound et Post. Un onglet marqué `+` n'existe pas encore : un clic crée le fichier à côté du shader (`nom.bufferA.glsl`…) avec un code minimal qui compile, et l'ouvre.
+- **Windows** : coloration GLSL (commentaires, directives `// clé=valeur`, mots-clés, types, fonctions, uniforms de Shadertoy, nombres, lignes `#`), numéros de ligne, annuler. **Linux et macOS** : les mêmes onglets, numéros de ligne et couleurs (le champ de texte est dessiné transparent et le même texte est redessiné par-dessus, en couleur ; l'éditeur utilise la police intégrée à Dear ImGui, seuls les caractères ASCII s'affichent).
+- **`Ctrl+S`** écrit le fichier dans son propre dossier (jamais ailleurs ; il est écrit à côté puis renommé, donc jamais à moitié écrit ; fins de ligne et marque d'ordre des octets conservées) et recharge l'aperçu. Les erreurs du compilateur reviennent dans le journal sous la forme `fichier:ligne: message` et se marquent dans l'éditeur : ligne rouge soulignée, point dans la marge, message sous l'éditeur. Quand l'aperçu en lecture tourne, il se recharge tout seul.
+- La fermeture demande si les onglets modifiés doivent être enregistrés. Un rendu lancé entre-temps utilise ce qui est sur le disque.
+
+<p align="center"><img src="docs/screenshots/fr/editor.png" alt="L'éditeur de shader sous Windows" width="620"></p>
 
 </details>
 
@@ -191,6 +222,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
 | (commentaires du shader, `--param=`) | `key nom=…`, `param` | paramètres animés : `// key vitesse=0:1.0 ; 4:3.0`, `--param=vitesse=2.5` ; voir « Création » |
 | (commentaires du shader, config.ini) | `vr`, `vripd` | shader `mainVR` en vidéo 360° : `auto` (défaut), `off`, `mono`, `stereo` ; distance entre les yeux du rendu stéréo (voir « Compatibilité Shadertoy ») |
 | (commentaires du shader, config.ini) | `warmup` | images simulées avant la première (0 à 3600, 0 par défaut) : les tampons (Buffer A–D, Cubemap A) sont chauffés, et `iFrame` démarre à N (l'image 0 a `iFrame` = N, `iTime` ne change pas). Utile pour les effets à rétroaction qui mettent du temps à se stabiliser ; `iTime` des images de chauffe vaut `start − N/fps`, il peut donc être négatif |
+| (commentaires du shader, config.ini, `--report=`) | `report` | `json` ou `text` : un rapport de rendu est écrit à côté de chaque vidéo (voir « Sortie ») ; `off` par défaut |
 | (config.ini seulement) | `pbo` | profondeur de la file de lecture GPU (2 à 8, 3 par défaut) |
 
 </details>
@@ -320,7 +352,32 @@ plasma.glsl 8 crossfade 1.5
 
 Une ligne de clip est un chemin (relatif au `.montage` ; entre guillemets s'il a des espaces), une durée facultative, puis la transition qui amène *dans* ce clip depuis le précédent (ignorée pour le premier) : `cut`, `fade` (par le noir), `crossfade` ou `wipe`, avec sa durée. Ajoutez le fichier à la liste ou en ligne de commande comme un shader. Chaque clip est rendu comme un shader, **par parties reprenables** (un clip déjà rendu avec les mêmes réglages est réutilisé après une interruption), dans un dossier `nom.clips` à côté de la vidéo, en ProRes HQ (ou en H.264 sans perte si ce ffmpeg n'a pas ProRes) ; puis ffmpeg les joint avec les transitions (`xfade`, `acrossfade`) et écrit la vidéo finale avec votre codec. La taille, la cadence, `scale`, `interp`, `title`, `credit`, les fondus et `loudnorm` s'appliquent au montage entier, pas à chaque clip ; le réglage `audio` est une seule bande-son sur tout le montage, sinon le son de chaque clip (une passe Sound) est joint avec du silence pour les clips qui n'en ont pas. Limites : conteneurs vidéo seulement, ni alpha ni HDR, ni aperçu ni image fixe d'un montage, et un commentaire `// audio=` ou `// duration=` dans un clip est remplacé par le montage.
 
+**Page avancée.** Le bouton **Avancé…** de la fenêtre Sortie (Linux et macOS : la fin de sa section) ouvre les réglages qui n'existaient que dans `config.ini` : modèle du nom de fichier (`name`), que faire si le fichier existe (`exists` : écraser, numéroter, ignorer), métadonnées du conteneur (`metadata`), les variantes (`variants` : `720p:width=1280|height=720 ; 360p:width=640|height=360`), l'action de fin de lot (`endaction` : rien, montrer le dossier, veille après 15 s), la durée des parties reprenables (`chunk`), la profondeur de la file de lecture GPU (`pbo`) et l'obturateur du flou de mouvement (`shutter`).
+
+**Rapport de rendu** (`report=json` ou `report=text`, ou `--report=json` en ligne de commande). Après chaque rendu (réussi, en échec ou annulé) un fichier `nom.report.json` (ou `.report.txt`, dans votre langue) est écrit à côté de la vidéo avec le shader, le fichier produit, l'état et l'erreur, la taille et le nombre d'images, la durée de la vidéo, la durée totale du rendu, les images par seconde de la boucle de rendu, le **goulot** (le rendu a attendu l'encodeur plus de 30 % du temps : l'encodeur ; sinon le GPU, avec le pourcentage), la taille du fichier, le codec / conteneur / encodeur, et les avertissements affichés par le journal. Les montages et les images seules n'ont pas de rapport.
+
 **Planche-contact et vignette de couverture** (le bouton **Images** : image PNG, vignette de couverture, ou planche de 3×2, 4×3, 5×4 ou 6×5 ; ou en ligne de commande). `--sheet=4x3` écrit `nom_sheet.png`, une grille de 4 × 3 vignettes tirées au milieu de 12 intervalles égaux de la plage rendue (100 vignettes au plus, 1920 pixels de large au total) ; `--thumb` écrit `nom_thumb.png`, une image du milieu de la plage, ou `--thumb=2.5` à la seconde 2,5, 1280 pixels de large au plus. Les deux marchent avec les tampons (l'historique est rejoué) et avec le post-traitement.
+
+</details>
+
+<details>
+<summary><b>Fonctions par version</b></summary>
+
+Tirées de [CHANGELOG.fr.md](CHANGELOG.fr.md), qui donne le détail ; la liste est contrôlée par `scripts/check-repo.ps1`.
+
+| Version | Principaux ajouts |
+|---|---|
+| 1.9.0 | Transparence, HDR10 / HLG, taille de sortie, interpolation, volume sonore, titre et crédit, montage, planches-contact ; paramètres animés et post-traitement ; fenêtre Sortie ; éditeur avec passes ; réglages d'un seul shader, lots, ordre de la file, médias déposés ; rapport de rendu ; dossier surveillé avancé et comparaison du benchmark ; rendu sans fenêtre par EGL ; néerlandais, japonais et chinois |
+| 1.8.0 | `iMouse` et `iDate` animés, clavier simulé, tampons à taille propre, vidéos 360° `mainVR`, volumes Shadertoy, `warmup` |
+| 1.7.0 | Passe Sound (`mainSound`) |
+| 1.6.1 | Allemand, espagnol, italien et portugais entièrement traduits |
+| 1.6.0 | Cubemaps, textures 3D, canaux audio et vidéo, passe Cubemap A, import hors ligne d'un export JSON de Shadertoy |
+| 1.5.1 | Noms accessibles des champs, listes et curseurs ; captures d'écran rafraîchies |
+| 1.5.0 | Variantes, aperçu en temps réel, progression dans le Dock macOS, choix du GPU sous Linux, `--dpi=` |
+| 1.4.0 | VP9, AV1, ProRes, DNxHR, GIF, WebP, séquences d'images, sortie 10 bits, estimation de taille, préréglages, textures et passes Buffer A–D, ligne de commande complète, file d'attente, dossier surveillé, diagnostic et benchmark, quatre langues de plus |
+| 1.3.0 | Versions Linux (x86-64, ARM64) et macOS avec une interface GLFW + Dear ImGui, couche plateforme, archives portables pour les trois systèmes |
+| 1.2.0 | Licence GPL-3.0-or-later, interface et documentation en anglais / français, fenêtre À propos, site officiel, contrôles du dépôt |
+| Avant la 1.2.0 | Première version publique, interface sombre Direct2D |
 
 </details>
 
@@ -339,13 +396,13 @@ Les vidéos plus longues que `chunk` secondes sont rendues par parties, dans un 
 | `ShaderToMP4 a.glsl b.glsl` | Ajoute les fichiers et lance le rendu |
 | `ShaderToMP4 --render [options] a.glsl b.glsl` | Rendre sans fenêtre, identique sous Windows, Linux et macOS (voir plus bas) |
 | `ShaderToMP4 --diagnostic` | Affiche système, carte graphique, OpenGL, ffmpeg et encodeurs trouvés (sans chemin ni donnée personnelle) : à coller dans un rapport de bug |
-| `ShaderToMP4 --benchmark [--seconds=N] [--quick] [--json]` | Mesure les images par seconde en 720p, 1080p et 4K avec l'encodeur CPU, et avec le matériel s'il existe |
+| `ShaderToMP4 --benchmark [--seconds=N] [--quick] [--json] [--compare=precedent.json --max-drop=N]` | Mesure les images par seconde en 720p, 1080p et 4K avec l'encodeur CPU, et avec le matériel s'il existe. Avec `--compare` (une sortie `--json` précédente) chaque cas est comparé au même cas d'avant ; code de sortie `5` quand l'un est plus lent de plus de N % (15 par défaut). L'intégration continue Linux garde le résultat précédent dans un cache et échoue au-delà de 50 % |
 | `ShaderToMP4 --selftest [--update] [--quiet]` | Auto-test (voir plus bas) |
 | `ShaderToMP4 --get-ffmpeg [--quiet]` | Télécharge et installe `ffmpeg` sans ouvrir la fenêtre (Windows et Linux) |
 | `ShaderToMP4 --version` | Affiche la version, le copyright et la licence |
 | `ShaderToMP4 --help` | Affiche les options |
 
-**Rendu sans fenêtre** (`--render`) : les options sont les clés du tableau des réglages écrites `--clé=valeur` (`--width=1280 --height=720 --fps=30 --duration=10 --codec=h265 --container=mp4 --crf=18 --outdir=sortie`), appliquées après `config.ini` et après `--profile=fichier.ini` ; les commentaires `// clé=valeur` d'un shader restent prioritaires, comme dans la fenêtre. `--png` rend une seule image au temps de départ. `--thumb[=secondes]` écrit une vignette de couverture et `--sheet=4x3` une planche-contact (voir « Sortie »). `--param=nom=valeur` (répétable) règle un paramètre déclaré dans le shader par `// uniform`, ou lui donne des images clés : `--param="vitesse=smooth 0:1 ; 4:3"` (voir « Création »). `--watch=dossier` laisse le programme actif et rend chaque `.glsl` / `.txt` qui apparaît dans le dossier (une fois que sa taille ne change plus ; les fichiers de passes comme `nom.bufferA.glsl` ne sont pas des shaders à part ; arrêt par `Ctrl+C`, ou `--watch-count=N` pour s'arrêter après N rendus). La surveillance n'est jamais active par défaut. `--progress=json` écrit un objet JSON par ligne sur la sortie standard : `start`, `progress` (`frame`, `frames`, `percent`, `fps`, `eta`), `log`, `done` (avec le fichier `output`), `error`, puis `end` (`ok`, `failed`) ; `--progress=text` écrit une ligne tous les 10 %. Codes de sortie : `0` tout est rendu, `1` un rendu a échoué, `2` ligne de commande invalide, `3` pas d'OpenGL 3.3, `4` ffmpeg introuvable. Sous Windows le programme est une application à fenêtre : utilisez `start /wait` dans `cmd`, ou `Start-Process -Wait -NoNewWindow` dans PowerShell, pour l'attendre et lire le code de sortie.
+**Rendu sans fenêtre** (`--render`) : les options sont les clés du tableau des réglages écrites `--clé=valeur` (`--width=1280 --height=720 --fps=30 --duration=10 --codec=h265 --container=mp4 --crf=18 --outdir=sortie`), appliquées après `config.ini` et après `--profile=fichier.ini` ; les commentaires `// clé=valeur` d'un shader restent prioritaires, comme dans la fenêtre. `--png` rend une seule image au temps de départ. `--thumb[=secondes]` écrit une vignette de couverture et `--sheet=4x3` une planche-contact (voir « Sortie »). `--param=nom=valeur` (répétable) règle un paramètre déclaré dans le shader par `// uniform`, ou lui donne des images clés : `--param="vitesse=smooth 0:1 ; 4:3"` (voir « Création »). `--watch=dossier` laisse le programme actif et rend chaque `.glsl` / `.txt` qui apparaît dans le dossier (une fois que sa taille ne change plus ; les fichiers de passes comme `nom.bufferA.glsl` ne sont pas des shaders à part ; arrêt par `Ctrl+C`, ou `--watch-count=N` pour s'arrêter après N rendus). La surveillance n'est jamais active par défaut. Elle regarde aussi les sous-dossiers (pas `done/` ni `failed/`) : un `profile.ini` dans le dossier surveillé ou dans un sous-dossier règle les paramètres des shaders qui s'y trouvent (après `config.ini` et `--profile`, avant les options `--clé=valeur`) ; `--watch-move` déplace chaque shader rendu, avec ses fichiers de passes, vers `done/` (ou `failed/` après une erreur) de son propre dossier ; `--log=fichier` ajoute aussi tout ce qui est affiché, horodaté, à un fichier ; `--report=json|text` écrit un rapport de rendu à côté de chaque vidéo. `--progress=json` écrit un objet JSON par ligne sur la sortie standard : `start`, `progress` (`frame`, `frames`, `percent`, `fps`, `eta`), `log`, `done` (avec le fichier `output`), `error`, puis `end` (`ok`, `failed`) ; `--progress=text` écrit une ligne tous les 10 %. Codes de sortie : `0` tout est rendu, `1` un rendu a échoué, `2` ligne de commande invalide, `3` pas d'OpenGL 3.3, `4` ffmpeg introuvable. Sous Linux sans aucun serveur d'affichage (ferme de rendu, conteneur, intégration continue) `--render`, `--selftest`, `--diagnostic` et `--benchmark` créent leur contexte OpenGL par **EGL** (la `libEGL` de Mesa, chargée seulement quand aucun affichage n'est trouvé ; installez le paquet EGL de Mesa de votre distribution, par exemple `libegl1` et `libegl-mesa0`). Sous Windows le programme est une application à fenêtre : utilisez `start /wait` dans `cmd`, ou `Start-Process -Wait -NoNewWindow` dans PowerShell, pour l'attendre et lire le code de sortie.
 
 ```
 ShaderToMP4 --render --progress=json --container=webm --codec=vp9 --width=1280 --height=720 --outdir=sortie shader.glsl
@@ -356,7 +413,7 @@ ShaderToMP4 --render --progress=json --container=webm --codec=vp9 --width=1280 -
 <details>
 <summary><b>Langues</b></summary>
 
-Tous les textes de l'interface viennent de `lang/en.json` et `lang/fr.json`, embarqués dans l'exécutable, et des autres fichiers du dossier `lang` livré à côté : allemand (`de`), espagnol (`es`), italien (`it`) et portugais (`pt`). Ces quatre traductions sont récentes et n'ont pas été relues par des locuteurs natifs : les corrections sont bienvenues. La langue suit le système par défaut (quand un fichier existe pour elle), se change avec le bouton globe et est mémorisée dans `window.ini`. Pour ajouter ou corriger une langue sans recompiler, place un fichier `lang/<code>.json` à côté de l'exécutable (les clés qui y manquent retombent sur l'anglais) ; le bouton globe passe alors en revue toutes les langues disponibles.
+Tous les textes de l'interface viennent de `lang/en.json` et `lang/fr.json`, embarqués dans l'exécutable, et des autres fichiers du dossier `lang` livré à côté : allemand (`de`), espagnol (`es`), italien (`it`), portugais (`pt`), néerlandais (`nl`), japonais (`ja`) et chinois simplifié (`zh`). Ces sept traductions sont récentes et n'ont pas été relues par des locuteurs natifs : les corrections sont bienvenues. La langue suit le système par défaut (quand un fichier existe pour elle), se change avec le bouton globe et est mémorisée dans `window.ini`. Le japonais et le chinois demandent une police qui contient ces caractères : Windows en a une (le système y retombe tout seul) ; sous Linux et macOS le programme charge une police CJK du système quand il y en a une (Noto Sans CJK, WenQuanYi, Droid Sans Fallback, PingFang ou Hiragino...) et montre des carrés vides sinon. Pour ajouter ou corriger une langue sans recompiler, place un fichier `lang/<code>.json` à côté de l'exécutable (les clés qui y manquent retombent sur l'anglais) ; le bouton globe passe alors en revue toutes les langues disponibles.
 
 </details>
 
@@ -433,7 +490,7 @@ src/        code source : core/ (moteur de rendu, sans interface), platform/ (se
             gui/ (interface Windows, Direct2D), ui_imgui/ (interface Linux et macOS, GLFW + Dear ImGui), main.cpp, main_posix.cpp
 assets/     polices embarquées dans l'interface Linux / macOS (Inter)
 cmake/      embarquement des ressources pour les compilations CMake
-lang/       textes de l'interface : en, fr, de, es, it, pt (.json)
+lang/       textes de l'interface : en, fr, de, es, it, pt, nl, ja, zh (.json)
 res/        manifeste (DPI, thème), icône, informations de version, icônes SVG (icons/)
 scripts/    build.bat / build.sh (compiler), test.bat / test.sh (auto-test), package-*.{ps1,sh} (archives portables), check-repo.ps1 (contrôle du dépôt)
 tests/      shaders de référence et leurs images .ref
@@ -456,10 +513,11 @@ bin/        dossier de travail : l'exécutable (généré), ffmpeg, config.ini
 
 ### Limites connues
 
-- L'interface Windows s'adapte au DPI de l'écran. Sa mise en page a été vérifiée à 100 %, 125 %, 150 % et 200 % avec `--dpi=120|144|192` (option de test qui force l'échelle ; le comportement d'une fenêtre déplacée entre deux vrais écrans d'échelles différentes n'a pas été testé). Lecteurs d'écran : les champs, les listes déroulantes et les curseurs portent leur libellé comme nom pour l'automatisation de l'interface de Windows (UI Automation, vérifié avec un client UI Automation) ; Narrator et NVDA eux-mêmes n'ont pas été essayés.
+- L'interface Windows s'adapte au DPI de l'écran, y compris quand une fenêtre passe d'un moniteur à un autre d'échelle différente (vérifié sur un vrai PC à deux moniteurs en passant le second à 150 % puis 200 % : la fenêtre principale et l'éditeur sont remises en page à la nouvelle échelle et gardées dans l'écran ; une fenêtre qu'il a fallu réduire pour qu'elle tienne ne regrandit pas quand on la remet sur un plus grand écran). Lecteurs d'écran : vérifié avec NVDA 2026.2 (son journal de parole lu en parcourant la fenêtre principale et la fenêtre Sortie à la touche Tab : chaque champ, liste, curseur et bouton est annoncé avec son nom et son rôle, le curseur avec sa valeur ; les boutons à icône seule sont nommés par leur info-bulle) et avec un client UI Automation ; les noms sont donnés à UI Automation et à MSAA, que NVDA lit. Narrator utilise UI Automation et a été lancé pendant que le programme tournait, mais sa parole ne peut pas être enregistrée : seuls les noms qu'il lit ont été vérifiés. Dans l'éditeur, `Ctrl+Tab` / `Ctrl+Maj+Tab` / `Ctrl+1` à `Ctrl+9` changent d'onglet sans la souris (`Tab` insère une tabulation dans le texte).
 - Les encodeurs matériels AMD et Intel (AMF, QuickSync, VAAPI), et l'AV1 matériel, n'ont pas été testés sur du matériel réel.
 - macOS : le programme est compilé et empaqueté par l'intégration continue, mais les machines macOS hébergées n'ont pas de GPU : la fenêtre n'a donc pas été lancée sur un vrai Mac. Signale tout problème.
 - Linux et macOS : les boîtes de dialogue de fichiers sont intégrées au programme (pas de boîte système), et la progression du rendu s'affiche dans le Dock de macOS (écrite d'après la documentation du système et compilée par l'intégration continue, mais jamais exécutée sur un vrai Mac) ; sous Linux il n'y a pas de progression sur le bouton de la barre des tâches (l'API des lanceurs passe par D-Bus, une bibliothèque que le programme ne livre pas), la fenêtre demande seulement l'attention à la fin d'un lot.
+- Linux et macOS : l'éditeur, la section Sortie, les réglages d'un seul shader, le menu des médias déposés et le rendu sans fenêtre par EGL sont compilés par l'intégration continue (le code ImGui a aussi été vérifié syntaxiquement avec les vraies sources) mais leurs fenêtres n'ont pas été vues à l'écran, et le chemin EGL n'a tourné qu'en intégration continue. Il en va de même des encodeurs matériels en 10 bits et de la comparaison de l'interpolation d'images avec le rendu natif, vérifiés seulement sur des sorties synthétiques.
 
 ## Informations sur le projet
 

@@ -3,6 +3,7 @@
 
 // Couche plateforme, version Linux et macOS : fichiers, système, processus, OpenGL (GLFW).
 #include "platform/platform.h"
+#include "platform/posix/egl_headless.h"
 #include "platform/posix/glfw_bridge.h"
 #include "core/util.h"
 #include "core/i18n.h"
@@ -79,6 +80,13 @@ std::wstring appDir() {
 bool fileExists(const std::wstring& path) {
     struct stat st;
     return stat(U8(path).c_str(), &st) == 0 && S_ISREG(st.st_mode);
+}
+
+bool fileSize(const std::wstring& path, uint64_t& bytes) {
+    struct stat st;
+    if (stat(U8(path).c_str(), &st) != 0 || !S_ISREG(st.st_mode)) return false;
+    bytes = (uint64_t)st.st_size;
+    return true;
 }
 
 bool dirExists(const std::wstring& path) {
@@ -244,6 +252,28 @@ std::wstring systemFontFile() {
     return L"";
 }
 
+std::wstring systemCjkFontFile(const std::string& lang, int& fontNo) {
+    // Noto Sans CJK (.ttc : JP = 0, KR = 1, SC = 2, TC = 3), WenQuanYi, Droid, IPA / Takao, et les polices de macOS
+    struct Candidate { const char* path; int jp, sc; };
+    static const Candidate kCandidates[] = {
+        {"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0, 2}, {"/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc", 0, 2},
+        {"/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", 0, 2}, {"/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", 0, 2},
+        {"/usr/share/fonts/google-noto/NotoSansCJK-Regular.ttc", 0, 2}, {"/usr/share/fonts/OTF/NotoSansCJK-Regular.ttc", 0, 2},
+        {"/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", 0, 0}, {"/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc", 0, 0},
+        {"/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf", 0, 0}, {"/usr/share/fonts/truetype/takao-gothic/TakaoGothic.ttf", 0, 0},
+        {"/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf", 0, 0}, {"/System/Library/Fonts/PingFang.ttc", 0, 0},
+        {"/System/Library/Fonts/Hiragino Sans GB.ttc", 0, 0}, {"/System/Library/Fonts/STHeiti Medium.ttc", 0, 0},
+        {"/System/Library/Fonts/\xE3\x83\x92\xE3\x83\xA9\xE3\x82\xAE\xE3\x83\x8E\xE8\xA7\x92\xE3\x82\xB4\xE3\x82\xB7\xE3\x83\x83\xE3\x82\xAF W3.ttc", 0, 0},
+        {"/Library/Fonts/Arial Unicode.ttf", 0, 0}};
+    for (const Candidate& c : kCandidates) {
+        if (!fileExists(W(c.path))) continue;
+        fontNo = lang == "ja" ? c.jp : c.sc;
+        return W(c.path);
+    }
+    fontNo = 0;
+    return L"";
+}
+
 void showMessage(const std::wstring& title, const std::wstring& text, MessageKind) {
     fprintf(stderr, "%s\n%s\n", U8(title).c_str(), U8(text).c_str());
 }
@@ -381,15 +411,23 @@ bool httpGet(const std::wstring& url, const std::function<bool(const uint8_t*, s
     return true;
 }
 
-// --- OpenGL (GLFW) -------------------------------------------------------------------------------------------------
+// --- OpenGL (GLFW ; EGL sans serveur d'affichage quand GLFW ne peut pas s'ouvrir) -------------------------------------
 namespace {
 GLFWwindow* g_shared = nullptr;
+bool g_useEgl = false;  // les contextes viennent d'EGL (aucun serveur d'affichage) : les fonctions OpenGL aussi
 std::string g_glfwError;  // dernier message de GLFW, joint aux erreurs de création de contexte
 void onGlfwError(int, const char* description) { g_glfwError = description ? description : ""; }
 struct PosixGL {
     GLFWwindow* win = nullptr;
     bool owned = false;
+    void* eglContext = nullptr;  // contexte EGL de ce thread (aucun serveur d'affichage)
 };
+bool useEglContext(PosixGL* c, std::wstring& err) {
+    c->eglContext = egl::createContext(err);
+    if (!c->eglContext) return false;
+    g_useEgl = true;
+    return egl::makeCurrent(c->eglContext, err);
+}
 }  // namespace
 
 void setSharedGLWindow(void* glfwWindow) { g_shared = (GLFWwindow*)glfwWindow; }
@@ -399,9 +437,16 @@ bool createGLContext(void*& ctx, std::wstring& err) {
     ctx = c;
     if (g_shared) {
         c->win = g_shared;
+    } else if (egl::available()) {
+        return useEglContext(c, err);
     } else {
         glfwSetErrorCallback(onGlfwError);
-        if (!glfwInit()) { err = TX("error.gl_window") + L" (" + W(g_glfwError) + L")"; return false; }
+        if (!glfwInit()) {  // ni X11 ni Wayland : contexte EGL sans fenetre (ferme de rendu, conteneur)
+            std::wstring eglErr;
+            if (egl::open(eglErr)) return useEglContext(c, err);
+            err = TX("error.gl_window") + L" (" + W(g_glfwError) + L" ; " + eglErr + L")";
+            return false;
+        }
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -421,8 +466,12 @@ GLFWwindow* g_ownedShared = nullptr;  // fenetre creee par prepareOffThreadConte
 
 bool prepareOffThreadContexts() {
     if (g_shared) return true;  // l'interface en a deja confie une
+    if (egl::available()) return true;
     glfwSetErrorCallback(onGlfwError);
-    if (!glfwInit()) return false;
+    if (!glfwInit()) {  // sans serveur d'affichage : le contexte EGL unique sert a tous les threads de rendu
+        std::wstring eglErr;
+        return egl::open(eglErr);
+    }
     glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -444,6 +493,13 @@ void releaseOffThreadContexts() {
 void destroyGLContext(void*& ctx) {
     auto* c = (PosixGL*)ctx;
     if (!c) return;
+    if (c->eglContext) {
+        egl::release();
+        egl::destroyContext(c->eglContext);
+        delete c;
+        ctx = nullptr;
+        return;
+    }
     glfwMakeContextCurrent(nullptr);
     if (c->owned && c->win) {
         glfwDestroyWindow(c->win);
@@ -453,6 +509,6 @@ void destroyGLContext(void*& ctx) {
     ctx = nullptr;
 }
 
-void* glProc(const char* name) { return (void*)glfwGetProcAddress(name); }
+void* glProc(const char* name) { return g_useEgl ? egl::proc(name) : (void*)glfwGetProcAddress(name); }
 
 }  // namespace platform

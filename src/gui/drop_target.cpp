@@ -57,7 +57,11 @@ public:
                 if (DragQueryFileW(d, i, p, MAX_PATH * 2)) files.push_back(p);
             }
             ReleaseStgMedium(&sm);
-            addFiles(files);
+            std::vector<std::wstring> shaders, media;
+            for (const auto& f : files) (classifyDropped(f) == DropKind::Image || classifyDropped(f) == DropKind::Sound || classifyDropped(f) == DropKind::Video ? media : shaders).push_back(f);
+            if (!shaders.empty()) addFiles(shaders);
+            // le menu de choix du canal s'ouvre apres la fin du glisser-deposer (pas dans le rappel OLE)
+            if (!media.empty()) PostMessageW(g.wnd, WM_APP_MEDIA, 0, (LPARAM) new std::vector<std::wstring>(media));
             *effect = DROPEFFECT_COPY;
         }
         return S_OK;

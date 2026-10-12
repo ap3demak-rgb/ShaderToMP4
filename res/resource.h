@@ -31,3 +31,4 @@
 #define IDR_LANG_FR  302
 #define IC_INFO      224
 #define IC_GLOBE     225
+#define IC_EDIT      226

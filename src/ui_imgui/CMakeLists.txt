@@ -12,6 +12,7 @@ FetchContent_MakeAvailable(imgui nanosvg)
 set(UI_SOURCES
     src/ui_imgui/gui_main.cpp
     src/ui_imgui/model.cpp
+    src/ui_imgui/editor_imgui.cpp
     src/ui_imgui/widgets.cpp
     src/ui_imgui/file_browser.cpp
     src/ui_imgui/icons.cpp

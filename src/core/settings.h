@@ -59,6 +59,7 @@ struct Settings {
     std::wstring lut;               // LUT couleur .cube appliquee en dernier ("" = aucune)
     int warmup = 0;               // images simulees avant la premiere (tampons chauffes, iFrame decale de N) ; 0 = aucune
     double chunk = 30;             // rendu par parties de N secondes, reprenables (0 = jamais)
+    std::string report = "off";    // rapport de rendu a cote de la video : off | json | text
 };
 
 bool sameSettings(const Settings& a, const Settings& b);
@@ -69,4 +70,13 @@ bool isSettingKey(const std::string& key);
 // Reglages ecrits en commentaires `// cle=valeur` dans un shader (ils priment sur la fenetre), sous la forme « fps=30, width=3840 ».
 // "" si le shader n'en a pas ou ne peut pas etre lu.
 std::wstring shaderOverridesOf(const std::wstring& shaderPath);
+// Reglages imposes par les commentaires `// cle=valeur` du shader (cles en minuscules, valeur telle que lue par applySetting) : les fenetres
+// affichent ces valeurs, champs grises, a la place de celles de la fenetre.
+struct Override {
+    std::string key, value;
+    bool operator==(const Override& o) const { return key == o.key && value == o.value; }
+};
+std::vector<Override> shaderOverrides(const std::wstring& shaderPath);
+bool isOverridden(const std::vector<Override>& list, const char* key);
+void applyOverrides(Settings& s, const std::vector<Override>& list);
 void applySetting(Settings& s, const std::string& key, const std::string& value);

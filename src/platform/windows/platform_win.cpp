@@ -30,6 +30,13 @@ bool fileExists(const std::wstring& path) {
     return a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
 }
 
+bool fileSize(const std::wstring& path, uint64_t& bytes) {
+    WIN32_FILE_ATTRIBUTE_DATA d;
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &d) || (d.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) return false;
+    bytes = ((uint64_t)d.nFileSizeHigh << 32) | d.nFileSizeLow;
+    return true;
+}
+
 bool dirExists(const std::wstring& path) {
     DWORD a = GetFileAttributesW(path.c_str());
     return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY);
@@ -132,6 +139,20 @@ std::wstring systemFontFile() {
     const UINT n = GetWindowsDirectoryW(dir, MAX_PATH);
     if (n == 0 || n >= MAX_PATH) return L"";
     for (const wchar_t* name : {L"\\Fonts\\segoeui.ttf", L"\\Fonts\\arial.ttf", L"\\Fonts\\tahoma.ttf"}) {
+        const std::wstring p = std::wstring(dir) + name;
+        if (fileExists(p)) return p;
+    }
+    return L"";
+}
+
+std::wstring systemCjkFontFile(const std::string& lang, int& fontNo) {
+    fontNo = 0;
+    wchar_t dir[MAX_PATH];
+    const UINT n = GetWindowsDirectoryW(dir, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return L"";
+    const std::vector<const wchar_t*> names = lang == "ja" ? std::vector<const wchar_t*>{L"\\Fonts\\YuGothR.ttc", L"\\Fonts\\meiryo.ttc", L"\\Fonts\\msgothic.ttc"}
+                                                          : std::vector<const wchar_t*>{L"\\Fonts\\msyh.ttc", L"\\Fonts\\simsun.ttc"};
+    for (const wchar_t* name : names) {
         const std::wstring p = std::wstring(dir) + name;
         if (fileExists(p)) return p;
     }

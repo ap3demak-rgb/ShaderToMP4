@@ -6,11 +6,16 @@
 #include "accessible.h"
 #include "core/i18n.h"
 #include <commctrl.h>
+#include <initguid.h>  // definit les GUID de oleacc.h (CLSID_AccPropServices, PROPID_ACC_*) dans ce fichier
+#include <oleacc.h>
 #include <uiautomation.h>
 
 #pragma comment(lib, "uiautomationcore.lib")
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "oleaut32.lib")
+#pragma comment(lib, "oleacc.lib")
+#pragma comment(lib, "uuid.lib")
+#pragma comment(lib, "ole32.lib")
 
 namespace {
 
@@ -73,8 +78,45 @@ LRESULT CALLBACK accProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD
     return DefSubclassProc(h, msg, wp, lp);
 }
 
+IAccPropServices* propServices() {
+    static IAccPropServices* svc = nullptr;
+    if (!svc) CoCreateInstance(CLSID_AccPropServices, nullptr, CLSCTX_INPROC_SERVER, IID_IAccPropServices, (void**)&svc);
+    return svc;
+}
+
+std::vector<std::pair<HWND, const char*>> g_named;  // controles nommes par une cle de langue
+
+void applyMsaaName(HWND h, const char* key) {
+    if (IAccPropServices* s = propServices()) {
+        const std::wstring name = TX(key);
+        s->SetHwndPropStr(h, OBJID_CLIENT, CHILDID_SELF, PROPID_ACC_NAME, name.c_str());
+    }
+}
+
 }  // namespace
 
 void setAccessibleName(HWND control, const char* langKey) {
-    if (control) SetWindowSubclass(control, accProc, 77, (DWORD_PTR)langKey);
+    if (!control) return;
+    SetWindowSubclass(control, accProc, 77, (DWORD_PTR)langKey);
+    g_named.push_back({control, langKey});
+    applyMsaaName(control, langKey);
+}
+
+void refreshAccessibleNames() {
+    g_named.erase(std::remove_if(g_named.begin(), g_named.end(), [](const std::pair<HWND, const char*>& n) { return !IsWindow(n.first); }), g_named.end());
+    for (const auto& n : g_named) applyMsaaName(n.first, n.second);
+}
+
+void setAccessibleRole(HWND control, long msaaRole) {
+    if (IAccPropServices* s = propServices()) {
+        VARIANT v;
+        VariantInit(&v);
+        v.vt = VT_I4;
+        v.lVal = msaaRole;
+        s->SetHwndProp(control, OBJID_CLIENT, CHILDID_SELF, PROPID_ACC_ROLE, v);
+    }
+}
+
+void setAccessibleValue(HWND control, const std::wstring& value) {
+    if (IAccPropServices* s = propServices()) s->SetHwndPropStr(control, OBJID_CLIENT, CHILDID_SELF, PROPID_ACC_VALUE, value.c_str());
 }

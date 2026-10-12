@@ -8,6 +8,7 @@
 std::wstring W(const std::string& s);   // UTF-8 -> UTF-16
 std::string U8(const std::wstring& w);  // UTF-16 -> UTF-8
 bool readFile(const std::wstring& path, std::string& out);
+bool writeFileAtomic(const std::wstring& path, const std::string& bytes);  // fichier temporaire a cote, puis remplacement : jamais a moitie ecrit
 bool fileExists(const std::wstring& p);
 std::string trim(const std::string& s);
 std::string lower(std::string s);

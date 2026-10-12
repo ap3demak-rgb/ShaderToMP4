@@ -51,7 +51,7 @@ std::string num(double v) {
 
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
-    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch",
+    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
                           "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
@@ -70,6 +70,8 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
     int sheetCols = 0, sheetRows = 0;  // --sheet=CxR : planche-contact
     std::wstring watchDir;  // --watch=dossier : rend chaque shader qui y apparait (explicite, jamais par defaut)
     int watchCount = 0;     // --watch-count=N : s'arrete apres N rendus (0 = sans fin)
+    bool watchMove = false;  // --watch-move : le shader rendu est deplace vers done/ (ou failed/ en cas d'echec)
+    std::wstring logPath;    // --log=fichier : copie horodatee de tout ce qui est affiche (option explicite)
     std::vector<std::pair<std::string, std::string>> overrides;
     auto fail = [&](const std::wstring& msg) {
         write(U8(TXF("log.error", msg.c_str())) + "\n", true);
@@ -105,6 +107,11 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
             if (!platform::dirExists(watchDir)) return fail(TXF("cli.watch_missing", watchDir.c_str()));
         } else if (key == "watch-count") {
             watchCount = std::max(0, atoi(val.c_str()));
+        } else if (key == "watch-move") {
+            watchMove = true;
+        } else if (key == "log") {
+            logPath = W(val);
+            if (logPath.empty()) return fail(TXF("cli.unknown_option", W(arg).c_str()));
         } else if (key == "profile") {
             std::string p;
             if (!readFile(W(val), p)) return fail(TXF("error.profile_read", W(val).c_str()));
@@ -116,11 +123,39 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         }
     }
     for (const auto& kv : overrides) applySetting(base, kv.first, kv.second);
+    FILE* logFile = nullptr;
+    if (!logPath.empty()) {
+        logFile = platform::openFile(logPath, "ab");
+        if (!logFile) return fail(TXF("cli.log_failed", logPath.c_str()));
+    }
+    // sortie unique du programme : standard / erreur, et le fichier journal quand --log est donne
+    const auto out = [&](const std::string& text, bool isErr) {
+        write(text, isErr);
+        if (!logFile) return;
+        const platform::DateTime t = platform::localTime();
+        char stamp[40];
+        snprintf(stamp, sizeof(stamp), "[%04d-%02d-%02d %02d:%02d:%02d] ", t.year, t.month, t.day, t.hour, t.minute, t.second);
+        size_t pos = 0;
+        while (pos < text.size()) {
+            size_t e = text.find('\n', pos);
+            if (e == std::string::npos) e = text.size();
+            if (e > pos) {
+                const std::string line = std::string(stamp) + text.substr(pos, e - pos) + "\n";
+                fwrite(line.data(), 1, line.size(), logFile);
+            }
+            pos = e + 1;
+        }
+        fflush(logFile);
+    };
+    struct LogCloser {
+        FILE*& f;
+        ~LogCloser() { if (f) fclose(f); }
+    } logCloser{logFile};
     if (files.empty() && watchDir.empty()) return fail(TX("cli.no_files"));
     for (const auto& f : files)
         if (!fileExists(f)) return fail(TXF("cli.file_missing", f.c_str()));
     if (!ffmpegPresent(exeDir)) {
-        write(U8(TXF("log.error", TX("cli.no_ffmpeg").c_str())) + "\n", true);
+        out(U8(TXF("log.error", TX("cli.no_ffmpeg").c_str())) + "\n", true);
         return kExitNoFfmpeg;
     }
 
@@ -128,13 +163,13 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
     GLContext gl;
     std::wstring err;
     if (!createGLContext(gl, err)) {
-        write(U8(TXF("log.error", err.c_str())) + "\n", true);
+        out(U8(TXF("log.error", err.c_str())) + "\n", true);
         return kExitNoGL;
     }
     const bool json = progress == "json";
     int ok = 0, failed = 0, index = 0, lastDecile = -1;
     std::wstring lastOutput;
-    auto renderOne = [&](const std::wstring& f, size_t count) {
+    auto renderOne = [&](const std::wstring& f, size_t count, const Settings& cfg) -> bool {
         index++;
         std::wstring currentOutput;
         Hooks H;
@@ -143,84 +178,134 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         H.sheetCols = snapshot ? 0 : sheetCols;  // une image fixe prime sur la planche
         H.sheetRows = snapshot ? 0 : sheetRows;
         H.log = [&](const std::wstring& s) {
-            if (json) write("{\"event\":\"log\",\"message\":" + jsonString(U8(s)) + "}\n", false);
-            else write(U8(s) + "\n", false);
+            if (json) out("{\"event\":\"log\",\"message\":" + jsonString(U8(s)) + "}\n", false);
+            else out(U8(s) + "\n", false);
         };
         H.progress = [&](long long n, long long total, double speed, double remaining) {
             const double pct = total > 0 ? 100.0 * n / total : 0.0;
             if (json) {
-                write("{\"event\":\"progress\",\"file\":" + jsonString(U8(f)) + ",\"frame\":" + std::to_string(n) + ",\"frames\":" +
+                out("{\"event\":\"progress\",\"file\":" + jsonString(U8(f)) + ",\"frame\":" + std::to_string(n) + ",\"frames\":" +
                           std::to_string(total) + ",\"percent\":" + num(pct) + ",\"fps\":" + num(speed) + ",\"eta\":" + num(remaining) + "}\n",
                       false);
             } else if (progress == "text" && (int)(pct / 10) != lastDecile) {
                 lastDecile = (int)(pct / 10);
-                write(U8(wfmt(L"  %3.0f %%  (%lld/%lld)", pct, n, total)) + "\n", false);
+                out(U8(wfmt(L"  %3.0f %%  (%lld/%lld)", pct, n, total)) + "\n", false);
             }
         };
         H.output = [&](const std::wstring& path) { currentOutput = path; lastOutput = path; };
         lastDecile = -1;
-        if (json) write("{\"event\":\"start\",\"file\":" + jsonString(U8(f)) + ",\"index\":" + std::to_string(index) + ",\"count\":" +
+        if (json) out("{\"event\":\"start\",\"file\":" + jsonString(U8(f)) + ",\"index\":" + std::to_string(index) + ",\"count\":" +
                             std::to_string(count) + "}\n", false);
-        else write(U8(f) + "\n", false);
+        else out(U8(f) + "\n", false);
         std::wstring e;
-        if (convertFile(f, exeDir, base, H, e) == Result::Ok) {
+        if (convertFile(f, exeDir, cfg, H, e) == Result::Ok) {
             ok++;
-            if (json) write("{\"event\":\"done\",\"file\":" + jsonString(U8(f)) + ",\"output\":" + jsonString(U8(currentOutput)) + "}\n", false);
-        } else {
-            failed++;
-            if (json) write("{\"event\":\"error\",\"file\":" + jsonString(U8(f)) + ",\"message\":" + jsonString(U8(e)) + "}\n", false);
-            else write(U8(TXF("log.error", e.c_str())) + "\n", true);
+            if (json) out("{\"event\":\"done\",\"file\":" + jsonString(U8(f)) + ",\"output\":" + jsonString(U8(currentOutput)) + "}\n", false);
+            return true;
         }
+        failed++;
+        if (json) out("{\"event\":\"error\",\"file\":" + jsonString(U8(f)) + ",\"message\":" + jsonString(U8(e)) + "}\n", false);
+        else out(U8(TXF("log.error", e.c_str())) + "\n", true);
+        return false;
     };
     for (const auto& f0 : files) {
         std::wstring ie;
         const std::wstring f = resolveShaderInput(exeDir, f0, [&](const std::wstring& m) {
-            if (json) write("{\"event\":\"log\",\"message\":" + jsonString(U8(m)) + "}\n", false);
-            else write(U8(m) + "\n", false);
+            if (json) out("{\"event\":\"log\",\"message\":" + jsonString(U8(m)) + "}\n", false);
+            else out(U8(m) + "\n", false);
         }, ie);
         if (f.empty()) {  // import impossible : compte comme un rendu en echec
             failed++;
-            if (json) write("{\"event\":\"error\",\"file\":" + jsonString(U8(f0)) + ",\"message\":" + jsonString(U8(ie)) + "}\n", false);
-            else write(U8(TXF("log.error", ie.c_str())) + "\n", true);
+            if (json) out("{\"event\":\"error\",\"file\":" + jsonString(U8(f0)) + ",\"message\":" + jsonString(U8(ie)) + "}\n", false);
+            else out(U8(TXF("log.error", ie.c_str())) + "\n", true);
             continue;
         }
-        renderOne(f, files.size());
+        renderOne(f, files.size(), base);
     }
     if (!watchDir.empty()) {  // surveillance : un shader est rendu des que sa taille ne change plus entre deux releves
-        if (json) write("{\"event\":\"watching\",\"dir\":" + jsonString(U8(watchDir)) + "}\n", false);
-        else write(U8(TXF("cli.watching", watchDir.c_str())) + "\n", false);
-        std::map<std::wstring, long long> lastSize;  // taille au dernier releve
+        if (json) out("{\"event\":\"watching\",\"dir\":" + jsonString(U8(watchDir)) + "}\n", false);
+        else out(U8(TXF("cli.watching", watchDir.c_str())) + "\n", false);
+        const std::wstring sep(1, platform::pathSeparator());
+        std::map<std::wstring, long long> lastSize;  // taille au dernier releve, par chemin complet
         std::set<std::wstring> handled;
         int rendered = 0;
+        // <nom>.glsl ou <nom>.txt ; pas les passes <nom>.bufferA.glsl
+        const auto isShaderName = [](const std::wstring& name) {
+            const size_t dot = name.find_last_of(L'.');
+            if (dot == std::wstring::npos || dot == 0 || name.find(L'.') != dot) return false;
+            std::wstring ext = name.substr(dot);
+            for (auto& ch : ext) ch = (wchar_t)towlower(ch);
+            return ext == L".glsl" || ext == L".txt";
+        };
+        // Reglages d'un dossier : config.ini et --profile, profile.ini du dossier surveille, profile.ini du sous-dossier, puis les options de la ligne de commande
+        const auto settingsFor = [&](const std::wstring& dir) {
+            Settings cfg = base;
+            bool layered = false;
+            for (const std::wstring& d : {watchDir, dir}) {
+                std::string text;
+                if (readFile(d + sep + L"profile.ini", text)) {
+                    parseLines(cfg, text, false);
+                    layered = true;
+                }
+                if (dir == watchDir) break;
+            }
+            if (layered)
+                for (const auto& kv : overrides) applySetting(cfg, kv.first, kv.second);
+            return cfg;
+        };
+        // --watch-move : le shader et ses passes (<nom>.bufferA.glsl...) vont dans done/ ou failed/ du meme dossier
+        const auto moveProcessed = [&](const std::wstring& dir, const std::wstring& name, bool succeeded) {
+            const std::wstring dest = dir + sep + (succeeded ? L"done" : L"failed");
+            platform::makeDir(dest);
+            const std::wstring stem = name.substr(0, name.find(L'.'));
+            std::vector<platform::DirEntry> all;
+            platform::listDir(dir, all);
+            for (const auto& en : all) {
+                if (en.isDir || en.name.compare(0, stem.size() + 1, stem + L".") != 0) continue;
+                std::wstring ext = en.name.substr(en.name.find_last_of(L'.'));
+                for (auto& ch : ext) ch = (wchar_t)towlower(ch);
+                if (ext != L".glsl" && ext != L".txt") continue;
+                if (platform::moveFile(dir + sep + en.name, dest + sep + en.name, true)) out(U8(TXF("cli.moved", en.name.c_str(), dest.c_str())) + "\n", false);
+            }
+        };
         while (watchCount == 0 || rendered < watchCount) {
+            struct Candidate { std::wstring dir, name; };
+            std::vector<Candidate> found;
             std::vector<platform::DirEntry> entries;
             platform::listDir(watchDir, entries);
             for (const auto& en : entries) {
-                if (en.isDir || handled.count(en.name)) continue;
-                const size_t dot = en.name.find_last_of(L'.');
-                if (dot == std::wstring::npos || dot == 0 || en.name.find(L'.') != dot) continue;  // <nom>.glsl ; pas les passes <nom>.bufferA.glsl
-                std::wstring ext = en.name.substr(dot);
-                for (auto& c : ext) c = (wchar_t)towlower(c);
-                if (ext != L".glsl" && ext != L".txt") continue;
-                const std::wstring path = watchDir + platform::pathSeparator() + en.name;
+                if (en.isDir) {  // sous-dossier : ses shaders sont surveilles aussi (done/ et failed/ sont ignores)
+                    if (en.name == L"done" || en.name == L"failed") continue;
+                    std::vector<platform::DirEntry> inner;
+                    platform::listDir(watchDir + sep + en.name, inner);
+                    for (const auto& in : inner)
+                        if (!in.isDir && isShaderName(in.name)) found.push_back({watchDir + sep + en.name, in.name});
+                } else if (isShaderName(en.name)) {
+                    found.push_back({watchDir, en.name});
+                }
+            }
+            for (const auto& cand : found) {
+                const std::wstring path = cand.dir + sep + cand.name;
+                if (handled.count(path)) continue;
                 std::string content;
                 if (!readFile(path, content)) continue;
-                auto it = lastSize.find(en.name);
+                auto it = lastSize.find(path);
                 if (it == lastSize.end() || it->second != (long long)content.size()) {
-                    lastSize[en.name] = (long long)content.size();  // vu pour la premiere fois ou encore en ecriture
+                    lastSize[path] = (long long)content.size();  // vu pour la premiere fois ou encore en ecriture
                     continue;
                 }
-                handled.insert(en.name);
-                renderOne(path, 1);
+                handled.insert(path);
+                const bool rendered_ok = renderOne(path, 1, settingsFor(cand.dir));
+                if (watchMove) moveProcessed(cand.dir, cand.name, rendered_ok);
                 if (++rendered >= watchCount && watchCount > 0) break;
             }
             if (watchCount == 0 || rendered < watchCount) platform::sleepMs(1000);
         }
     }
     if (!failed && watchDir.empty() && !files.empty())  // action de fin facultative (endaction=folder|sleep)
-        performEndAction(base.endaction, lastOutput, [&](const std::wstring& m) { write(U8(m) + "\n", false); }, true);
+        performEndAction(base.endaction, lastOutput, [&](const std::wstring& m) { out(U8(m) + "\n", false); }, true);
     destroyGLContext(gl);
-    if (json) write("{\"event\":\"end\",\"ok\":" + std::to_string(ok) + ",\"failed\":" + std::to_string(failed) + "}\n", false);
+    if (json) out("{\"event\":\"end\",\"ok\":" + std::to_string(ok) + ",\"failed\":" + std::to_string(failed) + "}\n", false);
     return failed ? kExitRenderFailed : kExitOk;
 }
 
@@ -302,13 +387,40 @@ int runDiagnosticCli(const std::wstring& exeDir, const std::function<void(const 
 // ---------------------------------------------------------------------------
 int runBenchmarkCli(const std::wstring& exeDir, const std::vector<std::wstring>& args,
                     const std::function<void(const std::string&, bool)>& write) {
-    double seconds = 2.0;
+    double seconds = 2.0, maxDrop = 15.0;
     bool json = false, quick = false;
+    std::wstring comparePath;  // --compare=fichier.json : resultat d'un --benchmark --json precedent
     for (const auto& a : args) {
         const std::string s = U8(a);
         if (s == "--json") json = true;
         else if (s == "--quick") quick = true;  // sans le 4K (machines lentes, integration continue)
         else if (s.compare(0, 10, "--seconds=") == 0) seconds = std::max(0.5, std::min(30.0, atof(s.c_str() + 10)));
+        else if (s.compare(0, 10, "--compare=") == 0) comparePath = W(s.substr(10));
+        else if (s.compare(0, 11, "--max-drop=") == 0) maxDrop = std::max(0.0, std::min(100.0, atof(s.c_str() + 11)));
+    }
+    // Resultats precedents : {"width":W,"height":H,"encoder":"E","fps":F}
+    struct Bench { int w = 0, h = 0; std::string enc; double fps = 0; bool used = false; };
+    std::vector<Bench> previous;
+    if (!comparePath.empty()) {
+        std::string prevText;
+        if (!readFile(comparePath, prevText)) {
+            write(U8(TXF("log.error", TXF("cli.bad_compare", comparePath.c_str()).c_str())) + "\n", true);
+            return kExitUsage;
+        }
+        size_t pos = 0;
+        while ((pos = prevText.find("{\"width\":", pos)) != std::string::npos) {
+            Bench b;
+            char enc[64] = {0};
+            if (sscanf(prevText.c_str() + pos, "{\"width\":%d,\"height\":%d,\"encoder\":\"%63[^\"]\",\"fps\":%lf", &b.w, &b.h, enc, &b.fps) == 4) {
+                b.enc = enc;
+                previous.push_back(b);
+            }
+            pos += 9;
+        }
+        if (previous.empty()) {
+            write(U8(TXF("log.error", TXF("cli.bad_compare", comparePath.c_str()).c_str())) + "\n", true);
+            return kExitUsage;
+        }
     }
     if (!ffmpegPresent(exeDir)) {
         write(U8(TXF("log.error", TX("cli.no_ffmpeg").c_str())) + "\n", true);
@@ -337,6 +449,8 @@ int runBenchmarkCli(const std::wstring& exeDir, const std::vector<std::wstring>&
     const Case cases[] = {{1280, 720, "cpu"}, {1920, 1080, "cpu"}, {1920, 1080, "auto"}, {3840, 2160, "cpu"}};
     const std::string hwPrefix = U8(TX("log.hw_encoder")).substr(0, U8(TX("log.hw_encoder")).find('%'));
     std::string text, js = "{\"version\":\"" + std::string(APP_VER_STR) + "\",\"results\":[";
+    std::string cmpText, cmpJs;
+    int regressions = 0;
     bool first = true;
     for (const Case& c : cases) {
         if (quick && c.w > 1920) continue;
@@ -367,11 +481,32 @@ int runBenchmarkCli(const std::wstring& exeDir, const std::vector<std::wstring>&
         text += b;
         snprintf(b, sizeof(b), "%s{\"width\":%d,\"height\":%d,\"encoder\":\"%s\",\"fps\":%.1f}", first ? "" : ",", c.w, c.h, used.c_str(), ok ? speed : 0.0);
         js += b;
+        for (Bench& pv : previous) {  // comparaison avec le meme cas du resultat precedent
+            if (pv.used || pv.w != c.w || pv.h != c.h || pv.enc != used || pv.fps <= 0) continue;
+            pv.used = true;
+            const double now = ok ? speed : 0.0, change = 100.0 * (now - pv.fps) / pv.fps;
+            const bool regression = change < -maxDrop;
+            if (regression) regressions++;
+            snprintf(b, sizeof(b), "%dx%d  %-14s  %8.1f -> %8.1f fps  %+.0f %%%s\n", c.w, c.h, used.c_str(), pv.fps, now, change, regression ? "  <-- !" : "");
+            cmpText += b;
+            snprintf(b, sizeof(b), "%s{\"width\":%d,\"height\":%d,\"encoder\":\"%s\",\"previous\":%.1f,\"fps\":%.1f,\"change_percent\":%.1f,\"regression\":%s}",
+                     cmpJs.empty() ? "" : ",", c.w, c.h, used.c_str(), pv.fps, now, change, regression ? "true" : "false");
+            cmpJs += b;
+            break;
+        }
         first = false;
     }
-    js += "]}\n";
+    js += "]";
+    if (!previous.empty())
+        js += ",\"compare\":{\"max_drop_percent\":" + std::to_string((int)maxDrop) + ",\"regressions\":" + std::to_string(regressions) + ",\"results\":[" + cmpJs + "]}";
+    js += "}\n";
     removeTree(dir);
     destroyGLContext(gl);
-    write(json ? js : U8(TX("diag.benchmark_title")) + "\n" + text, false);
-    return kExitOk;
+    std::string report = U8(TX("diag.benchmark_title")) + "\n" + text;
+    if (!previous.empty()) {
+        report += "\n" + U8(TXF("diag.bench_compare", (int)maxDrop)) + "\n" + (cmpText.empty() ? U8(TX("diag.bench_no_match")) + "\n" : cmpText);
+    }
+    write(json ? js : report, false);
+    if (regressions && !json) write(U8(TXF("diag.bench_regression", regressions)) + "\n", true);
+    return regressions ? kExitBenchRegression : kExitOk;
 }

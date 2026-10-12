@@ -6,7 +6,13 @@
 #include "gl.h"
 #include "locate.h"
 #include "montage.h"
+#include "batches.h"
+#include "channeldrop.h"
+#include "glslsyntax.h"
+#include "passfiles.h"
+#include "filesettings.h"
 #include "outputopts.h"
+#include "report.h"
 #include "overlay.h"
 #include "params.h"
 #include "passes.h"
@@ -737,7 +743,187 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                 Settings s3 = s0;
                 if (outputFieldsApply(v, s3, e) || s3.alpha || s3.title != s0.title || e.empty()) problem = bad("invalid " + std::to_string(k));
             }
+            if (problem.empty()) {  // reglages avances : nom, fichier existant, fin de lot, parties, file GPU, obturateur
+                OutputFields v;
+                outputFieldsFrom(s0, v);
+                v.name = L"{shader}_{w}x{h}";
+                v.exists = 1;
+                v.endAction = 2;
+                v.chunk = L"12,5";
+                v.pbo = L"5";
+                v.shutter = L"0,25";
+                v.metadata = false;
+                Settings s4 = s0;
+                if (!outputFieldsApply(v, s4, e) || s4.name != L"{shader}_{w}x{h}" || s4.exists != "number" || s4.endaction != "sleep" || s4.chunk != 12.5 || s4.pbo != 5 ||
+                    s4.shutter != 0.25 || s4.metadata)
+                    problem = bad("advanced");
+                v.pbo = L"9";
+                Settings s5 = s0;
+                if (problem.empty() && (outputFieldsApply(v, s5, e) || s5.pbo != s0.pbo)) problem = bad("pbo");
+            }
             check("selftest.fmt_outputopts", problem);
+        }
+        // rapport de rendu : JSON et texte a cote de la video, avec images, taille, etat ; un rendu refuse produit un rapport d'echec
+        if (formatAvailable(ffmpeg, "h264", "mp4")) {
+            std::wstring problem, e;
+            std::string logText;
+            const std::wstring shader = put(L"report_src.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(p / iResolution.xy, 0.5, 1.0); }\n");
+            Settings st = base("h264", "mp4", 8);
+            st.report = "json";
+            st.name = L"report_json";
+            std::string json;
+            if (!renderOne(shader, st, e, logText)) {
+                problem = e.empty() ? TX("selftest.render_failed") : e;
+            } else if (!readFile(outDir + sep + L"report_json.report.json", json)) {
+                problem = bad("report.json");
+            } else if (json.find("\"status\": \"ok\"") == std::string::npos || json.find("\"frames\": 5") == std::string::npos || json.find("\"width\": 64") == std::string::npos ||
+                       json.find("\"container\": \"mp4\"") == std::string::npos || json.find("\"bytes\": 0") != std::string::npos || json.find("\"warnings\": [") == std::string::npos) {
+                problem = bad("json content");
+            }
+            if (problem.empty()) {
+                st.report = "text";
+                st.name = L"report_text";
+                std::string text;
+                if (!renderOne(shader, st, e, logText) || !readFile(outDir + sep + L"report_text.report.txt", text)) problem = bad("report.txt");
+                else if (text.find(U8(TX("log.report.title"))) == std::string::npos || text.find(U8(TX("log.report.status_ok"))) == std::string::npos) problem = bad("text content");
+            }
+            if (problem.empty()) {  // echec : le conteneur refuse le codec -> rapport d'echec avec le message d'erreur
+                st.report = "json";
+                st.name = L"report_fail";
+                st.codec = "prores_hq";
+                std::string fail;
+                if (renderOne(shader, st, e, logText)) problem = bad("failure expected");
+                else if (!readFile(outDir + sep + L"report_fail.report.json", fail) || fail.find("\"status\": \"failed\"") == std::string::npos || fail.find("\"error\"") == std::string::npos)
+                    problem = bad("failure report");
+            }
+            check("selftest.fmt_report", problem);
+        }
+        {  // reglages propres a un shader : difference avec les reglages generaux, fichier jobs/, ecriture dans le shader (CRLF conserve)
+            std::wstring problem, e;
+            const std::wstring fsShader = put(L"fs_shader.glsl", "// fps=24\r\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(1.0); }\r\n");
+            Settings general;
+            Settings edited = general;
+            edited.fps = 30;
+            edited.width = 640;
+            edited.audio = W("C:/musique avec espaces.wav");
+            const std::vector<Override> diff = diffMainSettings(general, edited);
+            Settings applied = general;
+            applyOverrides(applied, diff);
+            if (diff.size() != 3 || !isOverridden(diff, "fps") || !isOverridden(diff, "width") || !isOverridden(diff, "audio") || applied.fps != 30 ||
+                applied.width != 640 || applied.audio != edited.audio) {
+                problem = bad("diff");
+            } else {
+                saveFileSettings(outDir, fsShader, diff);
+                const Settings reloaded = settingsForFile(general, outDir, fsShader);
+                if (!fileSettingsExist(outDir, fsShader) || reloaded.fps != 30 || reloaded.audio != edited.audio) problem = bad("jobs file");
+                removeFileSettings(outDir, fsShader);
+                if (problem.empty() && fileSettingsExist(outDir, fsShader)) problem = bad("remove");
+            }
+            if (problem.empty()) {
+                std::string text;
+                std::vector<Override> toWrite = {{"fps", "30"}, {"width", "640"}};
+                if (!writeSettingsIntoShader(fsShader, toWrite, e) || !readFile(fsShader, text)) problem = bad("write");
+                else if (text != "// width=640\r\n// fps=30\r\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(1.0); }\r\n") problem = bad("content " + std::to_string(text.size()));
+            }
+            check("selftest.fmt_filesettings", problem);
+        }
+        {  // fichier depose sur la fenetre : nature d'apres l'extension, ligne iChannelN (chemin relatif au shader quand le fichier s'y trouve)
+            std::wstring problem;
+            const Override a = channelOverride(L"C:/a/b/shader.glsl", L"C:\\A\\B\\tex\\wood.png", DropKind::Image, 1);
+            const Override b = channelOverride(L"C:/a/b/shader.glsl", L"D:/musique/boucle.wav", DropKind::Sound, 0);
+            const Override c = channelOverride(L"C:/a/b/shader.glsl", L"C:/a/b/clip.mp4", DropKind::Video, 9);
+            if (classifyDropped(L"x.PNG") != DropKind::Image || classifyDropped(L"y.wav") != DropKind::Sound || classifyDropped(L"z.mp4") != DropKind::Video ||
+                classifyDropped(L"s.glsl") != DropKind::Shader || classifyDropped(L"archive.zip") != DropKind::Other)
+                problem = bad("kind");
+            else if (a.key != "iChannel1" || a.value != "tex/wood.png" || b.key != "iChannel0" || b.value != "audio:D:/musique/boucle.wav" || c.key != "iChannel3" ||
+                     c.value != "video:clip.mp4")
+                problem = bad(a.key + "=" + a.value + " " + b.value + " " + c.value);
+            check("selftest.fmt_channeldrop", problem);
+        }
+        {  // editeur : coloration GLSL (nature de chaque plage) et squelettes des passes (ils compilent et se rendent)
+            std::wstring problem, e;
+            const std::wstring code = W("float x = 1.5; // note\n#define A 1\n// fps=30\nvec3 c = iTime + sin(x);\n/* a\nb */");
+            const std::vector<SyntaxSpan> spans = highlightGlsl(code);
+            auto kindOf = [&](const char* word) {
+                const size_t at = code.find(W(word));
+                for (const SyntaxSpan& s : spans)
+                    if ((size_t)s.start == at) return s.kind;
+                return SyntaxKind::Plain;
+            };
+            if (kindOf("float") != SyntaxKind::Type || kindOf("1.5") != SyntaxKind::Number || kindOf("// note") != SyntaxKind::Comment ||
+                kindOf("#define") != SyntaxKind::Preprocessor || kindOf("// fps=30") != SyntaxKind::Directive || kindOf("iTime") != SyntaxKind::Uniform ||
+                kindOf("sin") != SyntaxKind::Function || kindOf("/* a") != SyntaxKind::Comment || kindOf("x =") != SyntaxKind::Plain)
+                problem = bad("syntax");
+            if (problem.empty()) {
+                const std::wstring imageFile = put(L"tpl.glsl", "// iChannel1=bufferA\nvoid mainImage(out vec4 o, in vec2 p){ o = texture(iChannel1, p / iResolution.xy); }\n");
+                std::vector<PassTab> tabs = passTabs(imageFile);
+                int created = 0;
+                for (PassTab& t : tabs)
+                    if (t.id == "bufferA" || t.id == "common" || t.id == "post") {
+                        std::wstring perr;
+                        if (t.exists || !createPassFile(t, perr)) problem = bad("create " + t.id);
+                        created++;
+                    }
+                if (problem.empty() && (tabs.size() != 9 || created != 3 || !passTabs(imageFile)[1].exists)) problem = bad("tabs");
+                if (problem.empty()) {
+                    Settings st = base("h264", "mp4", 8);
+                    std::vector<uint8_t> got;
+                    Hooks H;
+                    H.log = [](const std::wstring&) {};
+                    H.previewFrame = [&](int, int, std::vector<uint8_t>&& px) { got = std::move(px); };
+                    if (convertFile(imageFile, exeDir, st, H, e) != Result::Ok || got.size() != 64 * 64 * 4) problem = e.empty() ? TX("selftest.render_failed") : e;
+                }
+            }
+            check("selftest.fmt_editor", problem);
+        }
+        {  // lots et reglages par fichier etendus : numeros de lot retrouves, difference sur la fenetre Sortie et les variantes
+            std::wstring problem;
+            BatchMap bm;
+            bm[L"C:/a/un.glsl"] = 2;
+            bm[L"C:/a/deux.glsl"] = 4;
+            saveBatches(outDir, bm);
+            const BatchMap back = loadBatches(outDir);
+            if (back.size() != 2 || batchOf(back, L"C:/a/un.glsl") != 2 || batchOf(back, L"C:/a/deux.glsl") != 4 || batchOf(back, L"C:/a/trois.glsl") != 0 ||
+                batchLabel(back, L"C:/a/un.glsl") != L"[2] C:/a/un.glsl")
+                problem = bad("batches");
+            saveBatches(outDir, BatchMap());
+            if (problem.empty()) {
+                Settings general;
+                Settings edited = general;
+                edited.alpha = true;
+                edited.hdr = "pq";
+                edited.title = W("Titre");
+                edited.scale = "2x";
+                edited.variants = {"720p:width=1280|height=720"};
+                const std::vector<Override> diff = diffMainSettings(general, edited);
+                Settings applied = general;
+                applied.variants = {"ancienne:crf=30"};
+                applyFileOverrides(applied, diff);
+                if (!applied.alpha || applied.hdr != "pq" || applied.title != W("Titre") || applied.scale != "2x" || applied.variants.size() != 1 || applied.variants[0] != "720p:width=1280|height=720")
+                    problem = bad("diff output");
+                Settings none = edited;
+                none.variants.clear();
+                Settings cleared = edited;
+                cleared.variants = {"x:crf=1"};
+                applyFileOverrides(cleared, diffMainSettings(edited, none));
+                if (problem.empty() && !cleared.variants.empty()) problem = bad("variants cleared");
+            }
+            check("selftest.fmt_batches", problem);
+        }
+        {  // reglages imposes par le shader (// cle=valeur) : liste, cles reconnues, valeurs appliquees (les champs de la fenetre les montrent grises)
+            std::wstring problem;
+            const std::wstring forcedShader = put(L"forced.glsl", "// fps=24\n// width=640\n// title=Mon titre\n// pas un reglage = 3\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(1.0); }\n");
+            const std::vector<Override> list = shaderOverrides(forcedShader);
+            Settings s0;
+            s0.fps = 60;
+            s0.width = 1920;
+            Settings s1 = s0;
+            applyOverrides(s1, list);
+            if (list.size() != 3 || !isOverridden(list, "fps") || !isOverridden(list, "width") || !isOverridden(list, "title") || isOverridden(list, "height"))
+                problem = bad("list");
+            else if (s1.fps != 24 || s1.width != 640 || s1.title != W("Mon titre") || s1.height != s0.height)
+                problem = bad("apply");
+            check("selftest.fmt_forced", problem);
         }
         // planche-contact 3x2 et vignette : le rouge suit iTime (duree 6 s), chaque vignette est tiree au milieu de son intervalle (0.5, 1.5, ... 5.5 s)
         if (formatAvailable(ffmpeg, "h264", "png")) {

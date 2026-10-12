@@ -156,6 +156,18 @@ foreach ($d in $docs) {
   }
 }
 
+# Chaque version du journal des modifications a sa ligne dans le tableau « fonctions par version » du README (meme langue) : une version
+# publiee sans ligne dans le README (ou l'inverse) est une documentation restee a l'etat d'avant
+foreach ($pair in @(@("CHANGELOG.md", "README.md", "Unreleased"), @("CHANGELOG.fr.md", "README.fr.md", "Non publi"))) {
+  if (-not ((Test-Path $pair[0]) -and (Test-Path $pair[1]))) { continue }
+  $log = Get-Content $pair[0] -Raw -Encoding UTF8
+  $readme = Get-Content $pair[1] -Raw -Encoding UTF8
+  foreach ($m in [regex]::Matches($log, '(?m)^## (\d+\.\d+\.\d+)')) {
+    if ($readme -notmatch ('\| ' + [regex]::Escape($m.Groups[1].Value) + ' \|')) { Fail "version $($m.Groups[1].Value) du $($pair[0]) absente du tableau des fonctions par version de $($pair[1])" }
+  }
+  if (($log -match ('(?m)^## ' + $pair[2])) -and ($readme -notmatch ('\| ' + $pair[2]))) { Fail "section non publiee du $($pair[0]) absente du tableau des fonctions par version de $($pair[1])" }
+}
+
 # --- 5. Portabilite -------------------------------------------------------------------------------
 Section "Portabilite"
 $banned = 'RegOpenKey|RegCreateKey|RegSetValue|RegQueryValue|RegDeleteKey|RegDeleteValue|SHGetFolderPath|SHGetKnownFolderPath|CSIDL_|APPDATA|SHGetSpecialFolder'

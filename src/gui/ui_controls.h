@@ -16,6 +16,7 @@ bool registerControls(HINSTANCE hi);
 void setupButton(HWND btn, int iconId, BtnStyle style, unsigned bgColor);
 void drawButton(const DRAWITEMSTRUCT* d, UINT dpi);  // reponse a WM_DRAWITEM
 void setButtonIcon(HWND btn, int iconId);
+void setButtonStyle(HWND btn, BtnStyle style);  // ex. bouton a bascule : Chip eteint, Primary allume
 
 // Messages du curseur "STSlider" : memes que le trackbar (TBM_SETRANGE, TBM_SETPOS, TBM_GETPOS), il envoie WM_HSCROLL.
 // Messages de "STProgress" : memes que la barre de progression (PBM_SETRANGE32, PBM_SETPOS, PBM_GETPOS) + etat.

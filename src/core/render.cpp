@@ -18,6 +18,7 @@
 #include "previewconv.h"
 #include "vr.h"
 #include "process.h"
+#include "report.h"
 #include "soundpass.h"
 #include "util.h"
 #include "app_info.h"
@@ -102,9 +103,64 @@ void normalizeShaderText(std::string& code, const Hooks& H) {
 // ---------------------------------------------------------------------------
 using Forced = std::vector<std::pair<std::string, std::string>>;  // reglages imposes a une variante
 
-// Un rendu (une variante si `forced` est donne : ses reglages priment sur ceux du shader).
-static Result convertOne(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H,
-                         std::wstring& err, const Forced* forced) {
+// Mesures recueillies pendant un rendu, pour le rapport (reglage `report`)
+struct ReportData {
+    bool haveSettings = false;
+    Settings s;
+    std::wstring output;
+    int width = 0, height = 0;
+    double fps = 0, mediaSeconds = 0, loopSeconds = 0, waitSeconds = 0;
+    long long frames = 0;
+    std::string encoder;
+};
+
+static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H, std::wstring& err,
+                             const Forced* forced, ReportData* rd);
+
+// Un rendu (une variante si `forced` est donne : ses reglages priment sur ceux du shader). Ecrit le rapport si le reglage `report` le demande.
+static Result convertOne(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H, std::wstring& err,
+                         const Forced* forced) {
+    ReportData rd;
+    std::vector<std::wstring> warnings;
+    Hooks H2 = H;
+    H2.log = [&](const std::wstring& line) {
+        if (isWarningLine(line)) warnings.push_back(W(trim(U8(line))));
+        H.log(line);
+    };
+    const auto t0 = std::chrono::steady_clock::now();
+    const Result result = convertOneImpl(shaderPath, exeDir, base, H2, err, forced, &rd);
+    if (!rd.haveSettings || rd.s.report == "off" || H.previewFrame) return result;
+    RenderReport rep;
+    rep.shader = shaderPath;
+    rep.output = rd.output;
+    rep.status = result == Result::Ok ? "ok" : result == Result::Cancelled ? "cancelled" : "failed";
+    rep.error = result == Result::Failed ? err : L"";
+    rep.width = rd.width;
+    rep.height = rd.height;
+    rep.fps = rd.fps;
+    rep.frames = rd.frames;
+    rep.mediaSeconds = rd.mediaSeconds;
+    rep.loopSeconds = rd.loopSeconds;
+    rep.waitSeconds = rd.waitSeconds;
+    rep.wallSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    rep.codec = rd.s.codec;
+    rep.container = rd.s.container;
+    rep.encoder = rd.encoder;
+    rep.warnings = warnings;
+    uint64_t bytes = 0;
+    if (!rd.output.empty() && platform::fileSize(rd.output, bytes)) rep.bytes = bytes;
+    // a cote de la video : <nom>.report.json / .txt (sans sortie connue : a cote du shader, dans le dossier de sortie choisi)
+    std::wstring stem = rd.output.empty() ? outputFile(shaderPath, rd.s, false) : rd.output;
+    const size_t dot = stem.find_last_of(L'.');
+    if (dot != std::wstring::npos && dot > stem.find_last_of(L"\\/") + 1) stem = stem.substr(0, dot);
+    const std::wstring path = stem + L".report" + (rd.s.report == "text" ? L".txt" : L".json");
+    if (writeRenderReport(rep, path, rd.s.report)) H.log(L"  " + TXF("log.report_written", path.c_str()));
+    else H.log(L"  " + TXF("log.report_failed", path.c_str()));
+    return result;
+}
+
+static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H,
+                             std::wstring& err, const Forced* forced, ReportData* rd) {
     if (isMontageFile(shaderPath)) {  // un montage n'est pas un shader : ni apercu ni image fixe
         err = TX("error.montage_preview");
         return Result::Failed;
@@ -129,6 +185,10 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     if (!forced && !sameSettings(s, base)) H.log(L"  " + TX("log.shader_overrides"));
     s.width = std::max(16, s.width & ~1);
     s.height = std::max(16, s.height & ~1);
+    if (rd) {
+        rd->s = s;
+        rd->haveSettings = true;
+    }
     if (s.fps <= 0) s.fps = 60;
     if (s.duration <= 0) s.duration = 10;
     s.crf = std::min(51, std::max(0, s.crf));
@@ -180,6 +240,13 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     if (s.loop > 0) duration = s.loop * std::max(1.0, std::floor(s.duration / s.loop + 0.5));
     const long long N = videoMode ? std::max(1LL, std::llround(duration * s.fps)) : sheet ? (long long)H.sheetCols * H.sheetRows : 1;
     const double totalSec = N / s.fps;
+    if (rd) {
+        rd->frames = N;
+        rd->fps = s.interp > 0 && videoMode ? s.interp : s.fps;
+        rd->mediaSeconds = totalSec;
+        rd->width = s.width;
+        rd->height = s.height;
+    }
     const int W_ = s.width, H_ = s.height;
     int OW = W_, OH = H_;  // taille de sortie : celle du rendu, ou celle de la mise a l'echelle (scale=)
     if (videoMode && !outputSize(s, OW, OH)) {
@@ -524,6 +591,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         }
     }
     const std::string enc = videoMode && kind == OutKind::Video ? resolveEncoder(s, ffmpeg, H) : "cpu";
+    if (rd) rd->encoder = enc;
 
     const std::wstring fpsStr = wfmt(L"%g", s.fps);
     // reduction du supersampling (area), puis mise a l'echelle de sortie (scale= : filtre au choix) ; les deux finissent par une virgule
@@ -845,6 +913,10 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     }
     cleanupGL();
 
+    if (rd) {
+        rd->loopSeconds = loopSec;
+        rd->waitSeconds = waitSec;
+    }
     if (result == Result::Ok) {
         if (videoMode && loopSec > 1.0 && waitSec > 0.3 * loopSec)
             H.log(L"  " + TXF("log.measure_encoder_bound",
@@ -859,6 +931,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         }
         H.log(L"  " + TXF("log.ok_output", out.c_str()));
         if (H.output) H.output(out);
+        if (rd) rd->output = out;
     }
     return result;
 }

@@ -15,6 +15,8 @@ Le code est aujourd'hui découpé en deux couches :
 - `src/core/` : le moteur de rendu (OpenGL 3.3 core, tube vers ffmpeg, parties et reprise, réglages, i18n, auto-test). Il est indépendant de l'interface et n'appelle aucune API du système : tout passe par `src/platform/`.
 - `src/gui/` : l'interface Windows (Win32 + Direct2D/DirectWrite, SVG via Direct2D).
 
+Depuis la version 1.8 le moteur contient aussi le code que les deux interfaces partagent pour les fonctions qui ne sont pas le rendu lui-même, afin qu'une fonction ne soit écrite qu'une fois : `outputopts` (champs et validation de la fenêtre Sortie), `filesettings` (réglages d'un seul shader, dans `jobs/`, et écriture de réglages dans un shader), `batches`, `channeldrop` (quoi écrire quand un fichier est déposé), `passfiles` et `glslsyntax` (onglets, squelettes et coloration de l'éditeur), `report` (rapport de rendu). Le code propre à Windows (`src/gui/editor.cpp`, éditeur RichEdit, fenêtres) et celui propre à ImGui (`src/ui_imgui/editor_imgui.cpp`) ne font que dessiner et appeler ces modules. `src/platform/posix/egl_headless.cpp` crée le contexte OpenGL par EGL quand il n'y a pas de serveur d'affichage.
+
 ## 2. Options étudiées pour l'interface
 
 | Option | Pour | Contre |

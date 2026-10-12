@@ -87,7 +87,9 @@ void Model::join() {
 }
 
 // --- Réglages ---------------------------------------------------------------------------------------------------
-void Model::fromSettings(const Settings& s) {
+void Model::fromSettings(const Settings& real) {
+    Settings s = real;
+    applyOverrides(s, forced);  // champs gris : valeurs du shader
     f.w = s.width;
     f.h = s.height;
     copyTo(f.fps, sizeof(f.fps), U8(i18n::num(s.fps)));
@@ -121,14 +123,14 @@ void Model::fromSettings(const Settings& s) {
     }
     std::vector<PostEffect> on;
     std::wstring bad;
-    if (parsePostEffects(s.post, on, bad))
+    if (parsePostEffects(real.post, on, bad))
         for (const PostEffect& e : on) {
             f.postOn[e.index] = true;
             f.postAmt[e.index] = (float)e.amount;
         }
-    copyTo(f.lut, sizeof(f.lut), U8(s.lut));
+    copyTo(f.lut, sizeof(f.lut), U8(real.lut));
     OutputFields o;
-    outputFieldsFrom(s, o);
+    outputFieldsFrom(real, o);
     f.alpha = o.alpha;
     f.hdr = o.hdr;
     f.scaleFilter = o.scaleFilter;
@@ -141,45 +143,60 @@ void Model::fromSettings(const Settings& s) {
     copyTo(f.title, sizeof(f.title), U8(o.title));
     copyTo(f.credit, sizeof(f.credit), U8(o.credit));
     copyTo(f.titleDur, sizeof(f.titleDur), U8(o.titleDur));
+    copyTo(f.name, sizeof(f.name), U8(o.name));
+    copyTo(f.chunk, sizeof(f.chunk), U8(o.chunk));
+    copyTo(f.pbo, sizeof(f.pbo), U8(o.pbo));
+    copyTo(f.shutter, sizeof(f.shutter), U8(o.shutter));
+    copyTo(f.variants, sizeof(f.variants), U8(o.variants));
+    f.exists = o.exists;
+    f.endAction = o.endAction;
+    f.metadata = o.metadata;
 }
 
 bool Model::toSettings(Settings& s, std::wstring& err) const {
-    if (f.w < 16 || f.w > 16384 || f.h < 16 || f.h > 16384) { err = TX("error.res_invalid"); return false; }
-    std::wstring ft = W(f.fps);
-    for (auto& c : ft)
-        if (c == L',') c = L'.';
-    wchar_t* end = nullptr;
-    const double fps = wcstod(ft.c_str(), &end);
-    if (end == ft.c_str() || *end != 0 || fps <= 0 || fps > 240) { err = TX("error.fps_invalid"); return false; }
-    double dur = 0, start = 0, lp = 0, fi = 0, fo = 0;
-    if (!parseSeconds(W(f.dur), dur) || dur <= 0) { err = TX("error.duration_invalid"); return false; }
-    if (!parseSeconds(W(f.start), start)) { err = TX("error.start_invalid"); return false; }
-    if (!parseSeconds(W(f.loop), lp)) { err = TX("error.loop_invalid"); return false; }
-    if (!parseSeconds(W(f.fadein), fi) || !parseSeconds(W(f.fadeout), fo)) { err = TX("error.fade_invalid"); return false; }
-    if (f.bitrate < 0 || f.bitrate > 500000) { err = TX("error.bitrate_invalid"); return false; }
-    s.width = f.w;
-    s.height = f.h;
+    const bool fW = isForced("width"), fH = isForced("height");
+    if ((!fW && (f.w < 16 || f.w > 16384)) || (!fH && (f.h < 16 || f.h > 16384))) { err = TX("error.res_invalid"); return false; }
+    double fps = s.fps, dur = s.duration, start = s.start, lp = s.loop, fi = s.fadein, fo = s.fadeout;
+    if (!isForced("fps")) {
+        std::wstring ft = W(f.fps);
+        for (auto& c : ft)
+            if (c == L',') c = L'.';
+        wchar_t* end = nullptr;
+        fps = wcstod(ft.c_str(), &end);
+        if (end == ft.c_str() || *end != 0 || fps <= 0 || fps > 240) { err = TX("error.fps_invalid"); return false; }
+    }
+    if (!isForced("duration") && (!parseSeconds(W(f.dur), dur) || dur <= 0)) { err = TX("error.duration_invalid"); return false; }
+    if (!isForced("start") && !parseSeconds(W(f.start), start)) { err = TX("error.start_invalid"); return false; }
+    if (!isForced("loop") && !parseSeconds(W(f.loop), lp)) { err = TX("error.loop_invalid"); return false; }
+    if ((!isForced("fadein") && !parseSeconds(W(f.fadein), fi)) || (!isForced("fadeout") && !parseSeconds(W(f.fadeout), fo))) { err = TX("error.fade_invalid"); return false; }
+    if (!isForced("bitrate") && (f.bitrate < 0 || f.bitrate > 500000)) { err = TX("error.bitrate_invalid"); return false; }
+    if (!fW) s.width = f.w;
+    if (!fH) s.height = f.h;
     s.fps = fps;
     s.duration = dur;
     s.start = start;
-    s.crf = f.crf;
-    s.preset = kPresetNames[std::min(8, std::max(0, f.preset))];
-    s.codec = codecAt(f.codec).id;
-    s.container = containerAt(f.container).id;
-    s.depth = f.depth == 1 ? 10 : 8;
-    s.ss = f.ss + 1;
-    std::wstring od = W(f.outdir);
-    while (!od.empty() && (od.back() == L' ' || od.back() == L'/' || od.back() == L'\\')) od.pop_back();
-    s.outdir = od;
-    s.bitrate = f.bitrate;
     s.loop = lp;
     s.fadein = fi;
     s.fadeout = fo;
-    s.color = kColors[std::min(3, std::max(0, f.color))];
-    s.blur = kBlurs[std::min(3, std::max(0, f.blur))];
-    s.audio = W(f.audio);
-    const auto& encs = encoderList();
-    s.encoder = encs[std::min((int)encs.size() - 1, std::max(0, f.encoder))];
+    if (!isForced("crf")) s.crf = f.crf;
+    if (!isForced("preset")) s.preset = kPresetNames[std::min(8, std::max(0, f.preset))];
+    if (!isForced("codec")) s.codec = codecAt(f.codec).id;
+    if (!isForced("container")) s.container = containerAt(f.container).id;
+    if (!isForced("depth")) s.depth = f.depth == 1 ? 10 : 8;
+    if (!isForced("ss")) s.ss = f.ss + 1;
+    if (!isForced("outdir")) {
+        std::wstring od = W(f.outdir);
+        while (!od.empty() && (od.back() == L' ' || od.back() == L'/' || od.back() == L'\\')) od.pop_back();
+        s.outdir = od;
+    }
+    if (!isForced("bitrate")) s.bitrate = f.bitrate;
+    if (!isForced("color")) s.color = kColors[std::min(3, std::max(0, f.color))];
+    if (!isForced("blur")) s.blur = kBlurs[std::min(3, std::max(0, f.blur))];
+    if (!isForced("audio")) s.audio = W(f.audio);
+    if (!isForced("encoder")) {
+        const auto& encs = encoderList();
+        s.encoder = encs[std::min((int)encs.size() - 1, std::max(0, f.encoder))];
+    }
     s.post.clear();
     const auto& fx = postEffectInfos();
     for (size_t i = 0; i < fx.size() && i < 8; i++)
@@ -202,6 +219,14 @@ bool Model::toSettings(Settings& s, std::wstring& err) const {
     o.title = W(f.title);
     o.credit = W(f.credit);
     o.titleDur = W(f.titleDur);
+    o.name = W(f.name);
+    o.chunk = W(f.chunk);
+    o.pbo = W(f.pbo);
+    o.shutter = W(f.shutter);
+    o.variants = W(f.variants);
+    o.exists = f.exists;
+    o.endAction = f.endAction;
+    o.metadata = f.metadata;
     return outputFieldsApply(o, s, err);
 }
 
@@ -210,10 +235,122 @@ void Model::applyQuickPreset(int idx) {
     std::wstring e;
     if (!toSettings(s, e)) s = base;
     applyBuiltinPreset(idx, s);
+    base = s;  // les reglages que le shader impose gardent la valeur du preset pour les autres shaders
     fromSettings(s);
 }
 
-void Model::save() const { writeIni(exeDir + L"config.ini", base); }
+// Reglages imposes par le shader selectionne (// cle=valeur) : relus quand la selection change, puis une fois par seconde
+void Model::refreshForced() {
+    const std::wstring cur = paths.empty() ? L"" : paths[std::min(std::max(0, selected), (int)paths.size() - 1)];
+    const auto now = std::chrono::steady_clock::now();
+    if (cur == forcedPath_ && now - forcedChecked_ < std::chrono::seconds(1)) return;
+    const bool pathChanged = cur != forcedPath_;
+    forcedPath_ = cur;
+    forcedChecked_ = now;
+    if (pathChanged) syncFileScope(cur);  // autre shader : ses reglages propres (jobs/) prennent la place
+    const std::vector<Override> next = cur.empty() ? std::vector<Override>() : shaderOverrides(cur);
+    if (next == forced && !pathChanged) return;
+    if (!pathChanged) {  // d'abord garder ce qui a ete saisi dans les champs libres (deja fait par syncFileScope quand la selection change)
+        Settings s = base;
+        std::wstring e;
+        if (toSettings(s, e)) base = s;
+    }
+    forced = next;
+    fromSettings(base);
+}
+
+// config.ini ne recoit jamais les reglages propres a un shader
+void Model::save() const { writeIni(exeDir + L"config.ini", generalSettings()); }
+
+Settings Model::generalSettings() const {
+    Settings s = base;
+    if (fileOn_) copyMainSettings(s, general_);  // les autres reglages (post-traitement, sortie...) restent communs
+    return s;
+}
+
+void Model::flushFileScope() {
+    if (!fileOn_) return;
+    Settings s = base;
+    std::wstring e;
+    if (toSettings(s, e)) base = s;
+    saveFileSettings(exeDir, filePath_, diffMainSettings(general_, base));
+}
+
+// Sort de l'etat « reglages propres » : base retrouve les reglages generaux (les champs communs modifies entre-temps sont gardes)
+void Model::leaveFileScope(bool deleteSettings) {
+    if (!fileOn_) return;
+    if (deleteSettings) removeFileSettings(exeDir, filePath_);
+    else saveFileSettings(exeDir, filePath_, diffMainSettings(general_, base));
+    Settings back = base;
+    copyMainSettings(back, general_);
+    base = back;
+    fileOn_ = false;
+    filePath_.clear();
+}
+
+void Model::enterFileScope(const std::wstring& path, const std::vector<Override>& list) {
+    general_ = base;
+    applyFileOverrides(base, list);
+    fileOn_ = true;
+    filePath_ = path;
+}
+
+// La selection a change : ce qui a ete saisi pour l'ancien shader est garde, puis l'etat du nouveau (jobs/) est pris
+void Model::syncFileScope(const std::wstring& cur) {
+    if (cur == fileShown_) return;
+    Settings s = base;
+    std::wstring e;
+    if (toSettings(s, e)) base = s;
+    leaveFileScope(false);
+    fileShown_ = cur;
+    if (!cur.empty() && fileSettingsExist(exeDir, cur)) enterFileScope(cur, loadFileSettings(exeDir, cur));
+}
+
+void Model::toggleFileScope() {
+    if (running() || paths.empty()) return;
+    const std::wstring cur = paths[std::min(std::max(0, selected), (int)paths.size() - 1)];
+    Settings s = base;
+    std::wstring e;
+    if (toSettings(s, e)) base = s;
+    if (fileOn_) {
+        leaveFileScope(true);  // rendre les reglages generaux et effacer ceux du shader
+    } else {
+        enterFileScope(cur, {});
+        saveFileSettings(exeDir, cur, {});  // le fichier marque l'etat « reglages propres », meme sans difference
+    }
+    fileShown_ = cur;
+    fromSettings(base);
+}
+
+void Model::writeScopeIntoShader() {
+    if (!fileOn_ || running()) return;
+    Settings s = base;
+    std::wstring err;
+    if (!toSettings(s, err)) {
+        dialogTitle = TX("dialog.invalid_settings");
+        dialogText = err;
+        return;
+    }
+    base = s;
+    const std::vector<Override> list = diffMainSettings(general_, base);
+    dialogTitle = TX("dialog.profile_title");
+    if (list.empty()) {
+        dialogText = TX("dialog.nothing_to_write");
+        return;
+    }
+    const std::wstring path = filePath_;
+    if (!writeSettingsIntoShader(path, list, err)) {
+        dialogText = err;
+        return;
+    }
+    appendLog(TXF("log.settings_written", (int)list.size(), path.c_str()));
+    dialogText = TXF("log.settings_written", (int)list.size(), path.c_str());
+    leaveFileScope(true);  // ces reglages sont maintenant des commentaires du shader : le fichier jobs/ ne sert plus
+    fileShown_ = path;
+    forced.clear();        // relus par refreshForced : le shader impose maintenant ces valeurs
+    forcedChecked_ = std::chrono::steady_clock::time_point{};
+    fromSettings(base);
+}
 
 bool Model::loadProfile(const std::wstring& path) {
     std::string text;
@@ -273,12 +410,77 @@ void Model::addFiles(const std::vector<std::wstring>& files) {
     saveQueue();
 }
 
+void Model::dropFiles(const std::vector<std::wstring>& files) {
+    std::vector<std::wstring> shaders;
+    for (const auto& f : files) {
+        const DropKind k = classifyDropped(f);
+        if (k == DropKind::Image || k == DropKind::Sound || k == DropKind::Video) pendingMedia.push_back(f);
+        else shaders.push_back(f);
+    }
+    if (!shaders.empty()) addFiles(shaders);
+    if (!pendingMedia.empty() && (paths.empty() || running())) {  // sans shader (ou pendant un rendu) il n'y a rien a modifier
+        appendLog(TX("log.drop_media_no_shader"));
+        pendingMedia.clear();
+    }
+}
+
+// Ecrit `// iChannelN=...` (ou `// audio=...`) dans le shader selectionne : demande explicite de l'utilisateur (depose + choix du canal)
+void Model::applyMedia(const std::wstring& file, int channel) {
+    if (paths.empty() || running()) return;
+    const std::wstring shader = paths[std::min(std::max(0, selected), (int)paths.size() - 1)];
+    const Override ov = channel < 0 ? soundtrackOverride(shader, file) : channelOverride(shader, file, classifyDropped(file), channel);
+    std::wstring err;
+    if (!writeSettingsIntoShader(shader, {ov}, err)) {
+        appendLog(TXF("log.error", err.c_str()));
+        return;
+    }
+    appendLog(TXF("log.channel_written", W(ov.key).c_str(), W(ov.value).c_str(), shader.c_str()));
+    forcedChecked_ = std::chrono::steady_clock::time_point{};  // le shader impose maintenant ce reglage : relu a la prochaine image
+    if (playing()) {
+        stopPlay();
+        togglePlay();
+    }
+}
+
 void Model::removeSelected() {
     if (running() || selected < 0 || selected >= (int)paths.size()) return;
     paths.erase(paths.begin() + selected);
     state.erase(state.begin() + selected);
     stateText.erase(stateText.begin() + selected);
     selected = std::min(selected, (int)paths.size() - 1);
+    saveQueue();
+}
+
+// Le shader selectionne monte, descend ou passe en tete de file
+void Model::moveSelected(int mode) {
+    const int n = (int)paths.size();
+    if (running() || selected < 0 || selected >= n) return;
+    const int to = mode == 0 ? 0 : std::min(n - 1, std::max(0, selected + mode));
+    if (to == selected) return;
+    const std::wstring p = paths[selected];
+    const int st = state[selected];
+    const std::wstring tx = stateText[selected];
+    paths.erase(paths.begin() + selected);
+    state.erase(state.begin() + selected);
+    stateText.erase(stateText.begin() + selected);
+    paths.insert(paths.begin() + to, p);
+    state.insert(state.begin() + to, st);
+    stateText.insert(stateText.begin() + to, tx);
+    selected = to;
+    saveQueue();
+}
+
+void Model::setBatch(int n) {
+    if (selected < 0 || selected >= (int)paths.size()) return;
+    if (n > 0) batches[paths[selected]] = n;
+    else batches.erase(paths[selected]);
+    saveBatches(exeDir, batches);
+}
+
+void Model::resetSelectedState() {
+    if (running() || selected < 0 || selected >= (int)paths.size()) return;
+    state[selected] = ST_PENDING;
+    stateText[selected] = statusOf(ST_PENDING);
     saveQueue();
 }
 
@@ -327,6 +529,7 @@ void Model::appendLog(const std::wstring& text) {
     log.push_back({text, level});
     if (log.size() > 5000) log.erase(log.begin(), log.begin() + 1000);
     logDirty = true;
+    if (logHook) logHook(text);
 }
 
 // --- Rendu ------------------------------------------------------------------------------------------------------
@@ -412,7 +615,9 @@ void Model::runJobsThread(std::vector<std::pair<int, std::wstring>> jobs) {
             post(std::move(e));
         };
         std::wstring e;
-        const Result r = convertFile(jobs[i].second, exeDir, runSettings_, H, e);
+        Settings run = settingsForFile(runSettings_, exeDir, jobs[i].second);  // reglages generaux + ceux de ce shader
+        if (snapshotRun_ && runStart_ >= 0) run.start = runStart_;
+        const Result r = convertFile(jobs[i].second, exeDir, run, H, e);
         if (r == Result::Failed) postLog(L"  " + TXF("log.error", e.c_str()));
         else if (r == Result::Cancelled) postLog(L"  " + TX("log.cancelled"));
         postFile(idx, r == Result::Ok ? ST_DONE : r == Result::Cancelled ? ST_CANCELLED : ST_FAILED);
@@ -449,7 +654,7 @@ void Model::startFfmpegDownload() {
     });
 }
 
-void Model::startJobs(bool snapshot, int imageKind, int cols, int rows) {
+void Model::startJobs(bool snapshot, int imageKind, int cols, int rows, bool atPreview, bool selectedOnly, int batch) {
     if (running()) return;
     stopPlay();
     if (ffmpegMissing()) {
@@ -468,7 +673,9 @@ void Model::startJobs(bool snapshot, int imageKind, int cols, int rows) {
         jobs.push_back({sel, paths[sel]});
     } else {
         for (size_t i = 0; i < paths.size(); i++) {
-            if (state[i] == ST_DONE) continue;
+            if (selectedOnly && (int)i != selected) continue;  // « rendre la selection »
+            if (batch > 0 && batchOf(batches, paths[i]) != batch) continue;  // « rendre le lot N »
+            if (!selectedOnly && batch == 0 && state[i] == ST_DONE) continue;
             state[i] = ST_PENDING;
             stateText[i] = statusOf(ST_PENDING);
             jobs.push_back({(int)i, paths[i]});
@@ -484,8 +691,10 @@ void Model::startJobs(bool snapshot, int imageKind, int cols, int rows) {
     }
     base = cur;
     save();
+    flushFileScope();  // les reglages propres au shader courant sont lus sur le disque par le thread de rendu
     join();
-    runSettings_ = cur;
+    runSettings_ = generalSettings();
+    runStart_ = snapshot && atPreview ? cur.start + f.previewPos * cur.duration : -1;  // image PNG au temps de l'apercu
     cancel_ = false;
     pause_ = false;
     running_ = true;
@@ -545,6 +754,7 @@ void Model::togglePlay() {
     playStart_ = cur.start;
     playDur_ = cur.duration > 0 ? cur.duration : 1;
     playPending_ = 0;
+    playMeter.reset();
     player_.reset(new PreviewPlayer);
     player_->start(playPath_, exeDir, cur, cur.start + f.previewPos * cur.duration,
                    [this](int w, int h, std::vector<uint8_t>&& px, double t) {
@@ -602,6 +812,7 @@ void Model::openOutputFolder() {
 }
 
 void Model::pump() {
+    refreshForced();
     if (playing() && !paths.empty() && selected >= 0 && selected < (int)paths.size() && paths[selected] != playPath_) {
         stopPlay();  // autre shader selectionne : la lecture repart sur celui-la
         togglePlay();
@@ -636,6 +847,7 @@ void Model::pump() {
             case Event::Preview:
                 if (e.idx == 1) {  // image du lecteur : la position suit le temps du shader
                     if (playPending_ > 0) playPending_--;
+                    playMeter.tick();
                     if (player_ && player_->running()) f.previewPos = (float)std::min(1.0, std::max(0.0, (e.speed - playStart_) / playDur_));
                 }
                 prevPixels = std::move(e.px);

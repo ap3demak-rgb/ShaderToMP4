@@ -92,6 +92,19 @@ std::wstring wfmt(const wchar_t* f, ...) {
     return b;
 }
 
+bool writeFileAtomic(const std::wstring& path, const std::string& bytes) {
+    const std::wstring tmp = path + L".tmp";
+    FILE* f = platform::openFile(tmp, "wb");
+    if (!f) return false;
+    const bool ok = fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    fclose(f);
+    if (!ok || !platform::moveFile(tmp, path, true)) {
+        platform::removeFile(tmp);
+        return false;
+    }
+    return true;
+}
+
 std::string fnvHex(const std::string& s) {
     uint64_t h = 1469598103934665603ull;
     for (unsigned char c : s) {

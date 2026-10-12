@@ -28,6 +28,16 @@ constexpr unsigned WARN = 0xFFB020;
 inline UINT dpiOverride = 0;
 inline UINT dpiFor(HWND h) { return dpiOverride ? dpiOverride : GetDpiForWindow(h); }
 
+// Rectangle de fenetre ramene dans la zone de travail de l'ecran qu'il recouvre le plus (changement d'echelle : la taille suggeree par Windows
+// peut depasser l'ecran)
+inline RECT fitToWorkArea(RECT r) {
+    MONITORINFO mi{sizeof(mi)};
+    if (!GetMonitorInfoW(MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST), &mi)) return r;
+    const int w = std::min<int>(r.right - r.left, mi.rcWork.right - mi.rcWork.left), h = std::min<int>(r.bottom - r.top, mi.rcWork.bottom - mi.rcWork.top);
+    const int x = std::max<int>(mi.rcWork.left, std::min<int>(r.left, mi.rcWork.right - w)), y = std::max<int>(mi.rcWork.top, std::min<int>(r.top, mi.rcWork.bottom - h));
+    return {x, y, x + w, y + h};
+}
+
 inline COLORREF cref(unsigned hex) { return RGB((hex >> 16) & 255, (hex >> 8) & 255, hex & 255); }
 inline int scale(int v, UINT dpi) { return MulDiv(v, (int)dpi, 96); }
 }  // namespace theme
