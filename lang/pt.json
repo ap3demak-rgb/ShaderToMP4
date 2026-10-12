@@ -400,6 +400,8 @@
   "log.duration.hm": "%lld h %02lld min",
   "log.duration.ms": "%lld min %02lld s",
   "log.duration.s": "%lld s",
+  "log.check.pattern": "Padrões regulares de listras (pelo menos 5 pares claros / escuros) em grande parte do ecrã durante %.1f s, a partir de %.2f s. Risco para pessoas sensíveis a padrões (indicativo, não uma garantia).",
+  "log.check.mediump_sim": "Simulação em meia precisão: por volta de %.0f s a entrada do relógio falharia até %.3f s e a imagem diferiria %.1f / 255 da exata (um passo normal de uma imagem difere %.1f).",
   "log.compat_vr": "mainVR (shader VR): renderizado como vídeo 360° equirretangular, mono (a largura deve ser o dobro da altura).",
   "log.vr_stereo": "mainVR (shader VR): renderizado como vídeo 360° equirretangular, estéreo com o olho esquerdo em cima (a largura deve igualar a altura).",
   "log.vr_aspect": "O tamanho %dx%d não serve para um vídeo 360°: use uma proporção de %ls (por ex. 4096x2048 em mono, 4096x4096 em estéreo).",

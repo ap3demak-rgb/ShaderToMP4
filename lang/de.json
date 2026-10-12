@@ -400,6 +400,8 @@
   "log.duration.hm": "%lld Std. %02lld Min.",
   "log.duration.ms": "%lld Min. %02lld Sek.",
   "log.duration.s": "%lld Sek.",
+  "log.check.pattern": "Regelmäßige Streifenmuster (mindestens 5 helle / dunkle Paare) über einen großen Teil des Bildschirms für %.1f s, ab %.2f s. Risiko für musterempfindliche Personen (Anhaltspunkt, keine Garantie).",
+  "log.check.mediump_sim": "Simulation mit halber Genauigkeit: um %.0f s wäre die Uhreneingabe um bis zu %.3f s falsch und das Bild würde um %.1f / 255 vom genauen abweichen (ein normaler Bildschritt weicht um %.1f ab).",
   "log.compat_vr": "mainVR (VR-Shader): Wird als equirektangulares 360°-Video gerendert, mono (die Breite sollte doppelt so groß wie die Höhe sein).",
   "log.vr_stereo": "mainVR (VR-Shader): Wird als equirektangulares 360°-Video gerendert, stereo mit dem linken Auge oben (die Breite sollte der Höhe entsprechen).",
   "log.vr_aspect": "Die Größe %dx%d passt nicht zu einem 360°-Video: Verwenden Sie das Seitenverhältnis %ls (z. B. 4096x2048 mono, 4096x4096 stereo).",

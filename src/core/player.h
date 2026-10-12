@@ -76,6 +76,7 @@ public:
     // tuile (glScissor), le GPU est vide avant et apres (glFinish), la duree moyenne par dessin est rendue en millisecondes (ordre : ligne du haut
     // d'abord). rgba recoit l'image rendue (largeur x hauteur de la sonde, premiere ligne en bas).
     bool tileCosts(double t, int cols, int rows, int repeats, std::vector<double>& ms, std::vector<uint8_t>& rgba);
+    void setHalfInputs(bool on);      // iTime et iResolution arrondis en demi-precision (simulation de mediump) : seules les entrees sont arrondies
     bool hasHistory() const;          // le shader a des passes Buffer / Cubemap (l'état dépend du chemin parcouru)
     const Settings& settings() const; // réglages du shader (// clé=valeur comprises)
     void close();

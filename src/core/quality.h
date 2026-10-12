@@ -9,6 +9,9 @@
 #include "hooks.h"
 #include "settings.h"
 
+// Arrondit au flottant de 16 bits (10 bits de mantisse) le plus proche : ce que recoit un GPU qui calcule en demi-precision (mediump)
+double roundToHalf(double v);
+
 struct CheckOptions {
     bool flash = true;        // flashs et flashs rouges saturés (principes des lignes directrices de type Harding)
     bool defects = true;      // NaN, infinis, images noires / blanches, pixels brulés

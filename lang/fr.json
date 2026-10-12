@@ -400,6 +400,8 @@
   "log.duration.hm": "%lld h %02lld min",
   "log.duration.ms": "%lld min %02lld s",
   "log.duration.s": "%lld s",
+  "log.check.pattern": "Motifs réguliers de bandes (au moins 5 paires claires / sombres) sur une grande partie de l'écran pendant %.1f s, dès %.2f s. Risque pour les personnes sensibles aux motifs (indicatif, pas une garantie).",
+  "log.check.mediump_sim": "Simulation en demi-précision : vers %.0f s l'entrée d'horloge serait fausse de %.3f s au plus et l'image différerait de %.1f / 255 de l'image exacte (un pas normal d'une image diffère de %.1f).",
   "log.compat_vr": "mainVR (shader VR) : rendu en vidéo 360° équirectangulaire, mono (la largeur doit valoir le double de la hauteur).",
   "log.vr_stereo": "mainVR (shader VR) : rendu en vidéo 360° équirectangulaire, stéréo avec l'œil gauche en haut (la largeur doit égaler la hauteur).",
   "log.vr_aspect": "La taille %dx%d ne convient pas à une vidéo 360° : prenez un rapport de %ls (par ex. 4096x2048 en mono, 4096x4096 en stéréo).",
