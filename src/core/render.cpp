@@ -9,7 +9,9 @@
 #include "passes.h"
 #include "formats.h"
 #include "i18n.h"
+#include "dateinput.h"
 #include "gl.h"
+#include "vr.h"
 #include "process.h"
 #include "soundpass.h"
 #include "util.h"
@@ -103,7 +105,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     normalizeShaderText(code, H);
     std::vector<std::wstring> notes;  // adaptations et avertissements de compatibilite, journalises avant le rendu
     code = adaptShaderCode(code, notes);
-    if (code.find("mainImage") == std::string::npos) {
+    if (code.find("mainImage") == std::string::npos && code.find("mainVR") == std::string::npos) {
         err = TX("error.no_main_image");
         return Result::Failed;
     }
@@ -194,6 +196,12 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     }
 
     // --- Shader + FBO + PBO ---------------------------------------------------
+    int vrMode = 0;  // mainVR : 360 equirectangulaire, mono (1) ou stereo haut / bas (2)
+    if (!vrModeFor(code, s, vrMode, err)) return Result::Failed;
+    if (vrMode > 0 && !preview) {
+        H.log(L"  " + TX(vrMode == 2 ? "log.vr_stereo" : "log.compat_vr"));
+        if (!vrAspectOk(W_, H_, vrMode)) H.log(L"  " + TXF("log.vr_aspect", W_, H_, vrMode == 2 ? L"1:1" : L"2:1"));
+    }
     BufferPasses bp;  // Buffer A-D et Common : fichiers a cote du shader
     bp.discover(shaderPath, [&](const std::wstring& p, std::string& out) {
         if (!readFile(p, out)) return false;
@@ -203,11 +211,12 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     }, H);
     if (!preview) {
         checkCompatibility(code + "\n" + bp.allCode(), s, notes);
+        bp.report(s, code, notes);
         for (const auto& n : notes) H.log(L"  " + n);
     }
     std::string chTypes[4];
     channelTypes(s, chTypes);
-    GLuint prog = buildProgram(bp.withCommon(code), err, false, chTypes);
+    GLuint prog = buildProgram(bp.withCommon(code), err, false, chTypes, false, false, vrMode);
     if (!prog) {  // erreurs « fichier:ligne: message », cliquables dans le journal
         err = locateGlslErrors(err, shaderPath, 1 + (int)std::count(code.begin(), code.end(), '\n'), bp.commonPath());
         return Result::Failed;
@@ -274,7 +283,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
     }
     const std::wstring shaderDir = shaderPath.find_last_of(L"\\/") == std::wstring::npos ? L"" : shaderPath.substr(0, shaderPath.find_last_of(L"\\/") + 1);
-    if (!bp.build(RW, RH, shaderDir, findFfmpeg(exeDir), H, err, s.start, s.fps)) {
+    if (!bp.build(RW, RH, shaderDir, findFfmpeg(exeDir), H, err, s.start, s.fps, &s)) {
         cleanupGL();
         return Result::Failed;
     }
@@ -291,33 +300,31 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     GLint uDate = ogl::GetUniformLocation(prog, "iDate");
     GLint uSR = ogl::GetUniformLocation(prog, "iSampleRate");
     GLint uWeight = ogl::GetUniformLocation(prog, "st_weight");
-    ogl::Uniform3f(uRes, (float)RW, (float)RH, 1.0f);
+    ogl::Uniform3f(uRes, (float)RW, (float)(vrMode == 2 ? RH / 2 : RH), 1.0f);  // stereo : iResolution = taille d'un oeil
+    ogl::Uniform1f(ogl::GetUniformLocation(prog, "st_ipd"), (float)s.vrIpd);
     ogl::Uniform1f(uDelta, (float)(1.0 / s.fps));
     ogl::Uniform1f(uRate, (float)s.fps);
-    float mouseV[4] = {0, 0, 0, 0};
-    if (s.mouseSet) {  // iMouse fixe : x, y en pixels du rendu ; z, w negatifs tant que le bouton n'est pas enfonce
-        const float mx = (float)(s.mouseX * RW), my = (float)(s.mouseY * RH);
-        mouseV[0] = mx; mouseV[1] = my; mouseV[2] = s.mouseDown ? mx : -mx; mouseV[3] = s.mouseDown ? my : -my;
-    }
-    ogl::Uniform4f(uMouse, mouseV[0], mouseV[1], mouseV[2], mouseV[3]);
+    // iMouse simule : valeur en pixels du rendu au temps t (voir mouse.h)
+    auto setMouse = [&](GLint loc, double t) {
+        float m[4];
+        mouseAt(s.mouseKeys, t, 1.0 / s.fps, RW, RH, m);
+        ogl::Uniform4f(loc, m[0], m[1], m[2], m[3]);
+    };
+    setMouse(uMouse, s.start);
     if (!loadChannels(s, shaderDir, findFfmpeg(exeDir), chans, H, err, RW, RH, s.start, s.fps)) {  // canaux d'entree (textures, tampons)
         cleanupGL();
         return Result::Failed;
     }
+    bp.fixChannelSizes(chans);
     bindChannels(chans, prog);
     ogl::Uniform1f(uSR, 44100.0f);
     ogl::Uniform1f(uWeight, 1.0f);
-    platform::DateTime st = platform::localTime();
-    if (!s.date.empty()) {  // date fixe : AAAA-MM-JJ[THH:MM[:SS]]
-        int y = 0, mo = 0, d = 0, hh = 0, mi = 0, ss = 0;
-        std::string dt = s.date;
-        for (auto& c : dt)
-            if (c == 'T' || c == 't' || c == '_') c = ' ';
-        if (sscanf(dt.c_str(), "%d-%d-%d %d:%d:%d", &y, &mo, &d, &hh, &mi, &ss) >= 3) {
-            st.year = y; st.month = mo; st.day = d; st.hour = hh; st.minute = mi; st.second = ss;
-        }
-    }
-    const float dateSec = st.hour * 3600.f + st.minute * 60.f + st.second;
+    const DateInput dateIn = dateInputFrom(s.date);  // date fixe ou reelle au depart, qui avance avec iTime
+    auto setDate = [&](GLint loc, double t) {
+        float d[4];
+        dateAt(dateIn, t, d);
+        ogl::Uniform4f(loc, d[0], d[1], d[2], d[3]);
+    };
 
     // Passes de tampon : memes variables que l'image, renseignees pour chaque programme
     auto setPassUniforms = [&](GLuint p, long long n) {
@@ -325,21 +332,22 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
         ogl::Uniform3f(ogl::GetUniformLocation(p, "iResolution"), (float)RW, (float)RH, 1.0f);
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iTime"), (float)t);
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iTimeDelta"), (float)(1.0 / s.fps));
-        ogl::Uniform1i(ogl::GetUniformLocation(p, "iFrame"), (GLint)n);
+        ogl::Uniform1i(ogl::GetUniformLocation(p, "iFrame"), (GLint)(n + s.warmup));
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iFrameRate"), (float)s.fps);
-        ogl::Uniform4f(ogl::GetUniformLocation(p, "iMouse"), mouseV[0], mouseV[1], mouseV[2], mouseV[3]);
-        ogl::Uniform4f(ogl::GetUniformLocation(p, "iDate"), (float)st.year, (float)(st.month - 1), (float)st.day, dateSec + (float)t);
+        setMouse(ogl::GetUniformLocation(p, "iMouse"), t);
+        setDate(ogl::GetUniformLocation(p, "iDate"), t);
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iSampleRate"), 44100.0f);
     };
     // Les tampons avancent image par image : si le rendu demarre plus loin (reprise, apercu), on rejoue les images
     // precedentes sans rien encoder
-    long long simFrame = 0;
+    // Chauffe (warmup) : les N images avant la premiere sont simulees aussi, et iFrame est decale de N
+    long long simFrame = -(long long)s.warmup;
     bool replayLogged = false;
     auto advanceBuffers = [&](long long n) {
         if (!bp.any()) return;
         for (; simFrame < n && !H.cancelled(); simFrame++) {
             if (!replayLogged) {
-                H.log(L"  " + TXF("log.buffers_replay", (long long)n));
+                H.log(L"  " + TXF("log.buffers_replay", (long long)(n + s.warmup)));
                 replayLogged = true;
             }
             bp.step(simFrame, s.start + (double)simFrame / s.fps, RW, RH, setPassUniforms);
@@ -352,14 +360,16 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
 
     auto drawAt = [&](double t, long long n) {
         ogl::Uniform1f(uTime, (float)t);
-        ogl::Uniform1i(uFrame, (GLint)n);
-        ogl::Uniform4f(uDate, (float)st.year, (float)(st.month - 1), (float)st.day, dateSec + (float)t);
+        setMouse(uMouse, t);
+        ogl::Uniform1i(uFrame, (GLint)(n + s.warmup));
+        setDate(uDate, t);
         glDrawArrays(GL_TRIANGLES, 0, 3);
     };
     // Rend l'image n (temps t, facteur de fondu "fade") dans fbo ;
     // avec flou : moyenne de B sous-images etalees sur l'obturateur
     auto renderFrame = [&](long long n, double t, float fade) {
-        updateChannels(chans, t, n);  // audio et video au temps exact de l'image
+        updateChannels(chans, t, n);  // audio, video et clavier au temps exact de l'image
+        setChannelTimes(chans, prog);
         if (chans.anyBuffer()) {  // le tampon le plus recent change a chaque image
             GLuint latest[5];
             bp.latest(latest);
@@ -650,7 +660,7 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
                                      s.start, s.crf, W(s.preset).c_str(), W(s.codec).c_str(), W(enc).c_str(), s.bitrate,
                                      s.blur, W(s.color).c_str(), s.shutter, s.fadein, s.fadeout, s.ss,
                                      W(s.container).c_str(), N, chunkFrames, s.depth);
-            sigSrc = code + U8(tail);
+            sigSrc = code + U8(tail) + "|vr" + std::to_string(vrMode) + (vrMode == 2 ? "|" + std::to_string(s.vrIpd) : "");
         }
         const std::string sig = fnvHex(sigSrc);
         const std::wstring sigFile = partsDir + L"/signature.txt";
@@ -728,6 +738,12 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
                        100.0 * waitSec / loopSec));
         else if (videoMode && loopSec > 1.0)
             H.log(L"  " + TXF("log.measure_gpu_bound", 100.0 * waitSec / loopSec));
+        if (vrMode > 0 && videoMode && kind == OutKind::Video && s.metadata) {  // video spherique reconnue par YouTube et les lecteurs 360
+            std::wstring metaErr;
+            if (s.container != "mp4" && s.container != "mov") H.log(L"  " + TXF("log.vr_meta_skipped", W(s.container).c_str()));
+            else if (injectSphericalMetadata(out, vrMode == 2, metaErr)) H.log(L"  " + TX("log.vr_meta_done"));
+            else H.log(L"  " + metaErr);
+        }
         H.log(L"  " + TXF("log.ok_output", out.c_str()));
         if (H.output) H.output(out);
     }

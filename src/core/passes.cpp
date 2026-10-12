@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "passes.h"
+#include "compat.h"
 #include "i18n.h"
 #include "locate.h"
 #include "util.h"
@@ -59,8 +60,67 @@ std::string BufferPasses::allCode() const {
     return all;
 }
 
+void BufferPasses::report(const Settings& imageSettings, const std::string& imageCode, std::vector<std::wstring>& notes) const {
+    struct Node {
+        const wchar_t* label;
+        const Settings* st;
+        const std::string* code;
+        bool exists;
+    };
+    const std::string imageAll = imageCode;
+    const Node nodes[6] = {{L"Buffer A", &bufs_[0].st, &bufs_[0].code, used_[0]}, {L"Buffer B", &bufs_[1].st, &bufs_[1].code, used_[1]},
+                           {L"Buffer C", &bufs_[2].st, &bufs_[2].code, used_[2]}, {L"Buffer D", &bufs_[3].st, &bufs_[3].code, used_[3]},
+                           {L"Cubemap A", &cube_.st, &cube_.code, cubeUsed_},      {L"Image", &imageSettings, &imageAll, true}};  // nom-technique
+    // passe lue par le canal i d'une passe : 0 a 3 = Buffer A a D, 4 = Cubemap A, -1 = autre chose
+    auto target = [](const std::wstring& spec) {
+        std::wstring l = spec;
+        for (auto& c : l) c = (wchar_t)towlower(c);
+        if (l == L"cubea" || l == L"cubemapa") return 4;
+        if (l.size() == 7 && l.compare(0, 6, L"buffer") == 0 && l[6] >= L'a' && l[6] <= L'd') return l[6] - L'a';
+        return -1;
+    };
+    unsigned reads[6] = {0, 0, 0, 0, 0, 0};  // passes lues (par un canal reellement utilise) par chaque noeud
+    for (int n = 0; n < 6; n++) {
+        if (!nodes[n].exists) continue;
+        for (int i = 0; i < 4; i++) {
+            const std::wstring& spec = nodes[n].st->channel[i];
+            if (spec.empty()) continue;
+            const std::string name = "iChannel" + std::to_string(i);
+            if (!codeUsesWord(*nodes[n].code, name) && !codeUsesWord(common_, name)) {
+                notes.push_back(TXF("log.compat_channel_unused", nodes[n].label, i, spec.c_str()));
+                continue;
+            }
+            const int t = target(spec);
+            if (t >= 0) reads[n] |= 1u << t;
+        }
+    }
+    unsigned reached = reads[5];  // ce que l'image lit, puis ce que lisent les passes atteintes
+    for (bool grew = true; grew;) {
+        grew = false;
+        for (int n = 0; n < 5; n++)
+            if ((reached & (1u << n)) && (reads[n] & ~reached)) {
+                reached |= reads[n];
+                grew = true;
+            }
+    }
+    for (int n = 0; n < 5; n++)
+        if (nodes[n].exists && !(reached & (1u << n))) notes.push_back(TXF("log.compat_pass_unused", nodes[n].label));
+}
+
 bool BufferPasses::build(int rw, int rh, const std::wstring& shaderDir, const std::wstring& ffmpeg, const Hooks& H, std::wstring& err,
-                         double start, double fps) {
+                         double start, double fps, const Settings* s) {
+    for (int i = 0; i < 4; i++) {  // taille propre d'un tampon : fraction de la taille du rendu, ou pixels fixes
+        sw_[i] = rw;
+        sh_[i] = rh;
+        if (!s) continue;
+        if (s->bufScale[i] > 0) {
+            sw_[i] = std::max(1, (int)std::lround(rw * s->bufScale[i]));
+            sh_[i] = std::max(1, (int)std::lround(rh * s->bufScale[i]));
+        } else if (s->bufW[i] > 0) {
+            sw_[i] = s->bufW[i];
+            sh_[i] = s->bufH[i];
+        }
+    }
     if (cubeUsed_) {  // Cubemap A : six faces RGBA32F, deux textures (lecture de l'image precedente possible)
         std::wstring e;
         std::string types[4];
@@ -71,6 +131,7 @@ bool BufferPasses::build(int rw, int rh, const std::wstring& shaderDir, const st
             return false;
         }
         if (!loadChannels(cube_.st, shaderDir, ffmpeg, cube_.chans, H, err, rw, rh, start, fps)) return false;
+        fixChannelSizes(cube_.chans);
         glGenTextures(2, cube_.tex);
         ogl::GenFramebuffers(2, cube_.fbo);
         for (int k = 0; k < 2; k++) {
@@ -107,11 +168,12 @@ bool BufferPasses::build(int rw, int rh, const std::wstring& shaderDir, const st
             return false;
         }
         if (!loadChannels(b.st, shaderDir, ffmpeg, b.chans, H, err, rw, rh, start, fps)) return false;
+        fixChannelSizes(b.chans);
         glGenTextures(2, b.tex);
         ogl::GenFramebuffers(2, b.fbo);
         for (int k = 0; k < 2; k++) {
             glBindTexture(GL_TEXTURE_2D, b.tex[k]);
-            glTexImage2D(GL_TEXTURE_2D, 0, ogl::K_RGBA32F, rw, rh, 0, GL_RGBA, GL_FLOAT, nullptr);
+            glTexImage2D(GL_TEXTURE_2D, 0, ogl::K_RGBA32F, sw_[i], sh_[i], 0, GL_RGBA, GL_FLOAT, nullptr);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, b.fbo[k]);
@@ -125,6 +187,14 @@ bool BufferPasses::build(int rw, int rh, const std::wstring& shaderDir, const st
         }
     }
     return true;
+}
+
+void BufferPasses::fixChannelSizes(ChannelSet& cs) const {
+    for (int i = 0; i < 4; i++)
+        if (cs.buffer[i] >= 0 && cs.buffer[i] < 4) {
+            cs.w[i] = sw_[cs.buffer[i]];
+            cs.h[i] = sh_[cs.buffer[i]];
+        }
 }
 
 void BufferPasses::latest(GLuint out[5]) const {
@@ -159,7 +229,9 @@ void BufferPasses::step(long long n, double t, int rw, int rh, const std::functi
         const int w = 1 - b.read;  // on ecrit dans l'autre texture : la precedente reste lisible (par ce tampon aussi)
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, b.fbo[w]);
         ogl::UseProgram(b.prog);
+        glViewport(0, 0, sw_[i], sh_[i]);
         setUniforms(b.prog, n);
+        ogl::Uniform3f(ogl::GetUniformLocation(b.prog, "iResolution"), (float)sw_[i], (float)sh_[i], 1.0f);
         GLuint src[5];
         latest(src);
         updateChannels(b.chans, t, n);
@@ -167,6 +239,7 @@ void BufferPasses::step(long long n, double t, int rw, int rh, const std::functi
         glDrawArrays(GL_TRIANGLES, 0, 3);
         b.read = w;
     }
+    glViewport(0, 0, rw, rh);  // un tampon a taille propre a change la zone de dessin
 }
 
 void BufferPasses::reset() {

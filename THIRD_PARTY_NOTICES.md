@@ -6,7 +6,7 @@
 
 ShaderToMP4 is distributed under the **GNU General Public License v3.0 or later** (`GPL-3.0-or-later`, see [COPYING](COPYING)). This document lists every third-party component the program uses, with its license and why it is compatible with the GPL-3.0. **No component may be added to the project without an entry here.**
 
-Last review: ShaderToMP4 1.7.0 (no new third-party component is shipped; Mesa is used by the continuous integration tests only and is not distributed).
+Last review: ShaderToMP4 1.8.0 (no new third-party component is shipped; Mesa is used by the continuous integration tests only and is not distributed).
 
 ## 1. Code compiled into the program
 
@@ -47,7 +47,7 @@ Last review: ShaderToMP4 1.7.0 (no new third-party component is shipped; Mesa is
 | Logo and application icon (`res/icons/logo.svg`, `res/app.ico`) | Original artwork created for ShaderToMP4 | GPL-3.0-or-later |
 | Interface icons (`res/icons/*.svg`), also used by the Linux / macOS interface | Original drawings made for the project in a geometric stroke style (24 × 24 grid, 2 px stroke). They are simple, generic pictograms (arrows, folders, eye, play...) and are not copied from an icon set. | GPL-3.0-or-later |
 | Example and test shaders (`examples/`, `tests/`) | Original code of the project | GPL-3.0-or-later |
-| Language files (`lang/en.json`, `lang/fr.json`) | Original texts of the project | GPL-3.0-or-later |
+| Language files (`lang/*.json`: English, French, German, Spanish, Italian, Portuguese) | Original texts of the project | GPL-3.0-or-later |
 | Screenshots and banner (`docs/`) | Produced from the program itself | GPL-3.0-or-later |
 
 ## 5. Rules for future components

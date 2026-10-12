@@ -6,6 +6,25 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
+## 1.8.0 — 2026-10-12
+
+### Added
+
+- Animated `iMouse`: keyframe trajectory `// mouse=0:0.2,0.2 ; 5:0.8,0.6,down` (linear interpolation, the fixed form `// mouse=x,y[,down]` still works); `iMouse.zw` follows Shadertoy (last click position, `w` > 0 only on the click frame). Applies to renders, previews and all passes.
+- Animated `iDate`: `// date=2026-03-14T15:09:26+rate=60` sets how many seconds of date pass per second of video (default 1, 0 freezes it); the day, month and year now roll over at midnight.
+- Simulated keyboard channel: `// iChannel0=keyboard` gives Shadertoy's 256×3 key texture (down, pressed, toggle), with keys pressed at given times by `// key=space:2-4.5 ; left:1-3` (nothing reads the real keyboard). Keyboard inputs of imported Shadertoy shaders now become this channel.
+- Buffers with their own size: `// bufferA.scale=0.5` or `// bufferA.size=512x512` (also for B, C, D); the pass sees it in `iResolution`, the readers in `iChannelResolution`.
+- `mainVR` shaders (VR) are rendered as 360° equirectangular videos, mono or stereo top/bottom (`// vr=mono|stereo`, `vripd`), with the spherical video metadata added to MP4 and MOV files so that YouTube and VR players treat them as 360°.
+- Compatibility report: lists the channels that are set but never read and the passes nothing reads (they run for nothing).
+- Shadertoy volume files: `// iChannel0=volume:file.bin` reads the 3D volume format (8-bit or float, 1 to 4 channels).
+- `warmup=N` (shader comment or config.ini): simulates N frames before the first one so feedback buffers settle; `iFrame` starts at N. Also applies to chunked renders, resume and the preview.
+- `iChannelTime` is now the render time for audio and video channels (it was always 0).
+
+### Changed
+
+- Documentation: the README (English and French) FAQ and the Shadertoy compatibility table now describe what is supported (channels, passes, Sound pass, JSON import).
+- Compatibility report: the cubemap and 3D texture messages now say that no channel is set, instead of “not supported yet”.
+
 ## 1.7.0 — 2026-10-12
 
 ### Added

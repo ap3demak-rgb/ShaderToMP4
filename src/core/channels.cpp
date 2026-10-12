@@ -269,8 +269,51 @@ GLuint uploadCube(const Pixels face[6], const std::string& filter) {
 
 // --- Volume (texture 3D) ---------------------------------------------------------------------------------------
 // « noise » : 32x32x32 genere ; « fichier.png@N » : N tranches cote a cote dans une image
+// Fichier .bin de Shadertoy : en-tete de 20 octets (signature, largeur, hauteur, profondeur en uint32 ; nombre de canaux, disposition en
+// uint8 ; format en uint16 : 0 = octets, 10 = flottants 32 bits), puis les valeurs x puis y puis z, canaux entrelaces.
+// Le resultat est en RGBA (1 canal : R seul, 2 : RG, 3 : RGB, alpha a 1), en octets ou en flottants (isFloat).
+static bool loadVolumeBin(const std::wstring& path, int& w, int& h, int& d, bool& isFloat, std::vector<uint8_t>& data, std::wstring& err) {
+    std::string raw;
+    if (!readFile(path, raw) || raw.size() < 20) {
+        err = TXF("error.channel_volume", path.c_str());
+        return false;
+    }
+    const uint8_t* b = (const uint8_t*)raw.data();
+    auto u32 = [&](size_t o) { return (uint32_t)b[o] | (uint32_t)b[o + 1] << 8 | (uint32_t)b[o + 2] << 16 | (uint32_t)b[o + 3] << 24; };
+    const uint32_t bw = u32(4), bh = u32(8), bd = u32(12);
+    const int ch = b[16], format = b[18] | b[19] << 8;
+    const size_t bytes = format == 10 ? 4 : 1;
+    if (bw < 1 || bh < 1 || bd < 1 || bw > 1024 || bh > 1024 || bd > 1024 || ch < 1 || ch > 4 || (format != 0 && format != 10) ||
+        raw.size() != 20 + (size_t)bw * bh * bd * ch * bytes) {
+        err = TXF("error.channel_volume", path.c_str());
+        return false;
+    }
+    w = (int)bw;
+    h = (int)bh;
+    d = (int)bd;
+    isFloat = format == 10;
+    const size_t n = (size_t)w * h * d;
+    data.assign(n * 4 * (isFloat ? 4 : 1), 0);
+    for (size_t i = 0; i < n; i++) {
+        for (int c = 0; c < 4; c++) {
+            if (isFloat) {
+                float v = c == 3 && ch < 4 ? 1.0f : 0.0f;
+                if (c < ch) memcpy(&v, &b[20 + (i * ch + c) * 4], 4);
+                memcpy(&data[(i * 4 + c) * 4], &v, 4);
+            } else {
+                data[i * 4 + c] = c < ch ? b[20 + i * ch + c] : (c == 3 ? 255 : 0);
+            }
+        }
+    }
+    return true;
+}
+
 bool loadVolumeData(const std::wstring& rest, const std::wstring& shaderDir, const std::wstring& ffmpeg, int& w, int& h, int& d,
-                    std::vector<uint8_t>& data, std::wstring& err) {
+                    bool& isFloat, std::vector<uint8_t>& data, std::wstring& err) {
+    isFloat = false;
+    if (rest.size() > 4 && towlower(rest[rest.size() - 1]) == L'n' && towlower(rest[rest.size() - 2]) == L'i' &&
+        towlower(rest[rest.size() - 3]) == L'b' && rest[rest.size() - 4] == L'.')
+        return loadVolumeBin(resolvePath(shaderDir, rest), w, h, d, isFloat, data, err);
     if (rest == L"noise") {
         w = h = d = 32;
         data.resize((size_t)w * h * d * 4);
@@ -305,12 +348,13 @@ bool loadVolumeData(const std::wstring& rest, const std::wstring& shaderDir, con
     return true;
 }
 
-GLuint uploadVolume(int w, int h, int d, const std::vector<uint8_t>& data, const std::string& filter, const std::string& wrap) {
+GLuint uploadVolume(int w, int h, int d, bool isFloat, const std::vector<uint8_t>& data, const std::string& filter, const std::string& wrap) {
     GLuint t = 0;
     glGenTextures(1, &t);
     glBindTexture(K_TEXTURE_3D, t);
     glPixelStorei(0x0CF5, 1);
-    ogl::TexImage3D(K_TEXTURE_3D, 0, (GLint)ogl::K_RGBA8, w, h, d, 0, GL_RGBA, GL_UNSIGNED_BYTE, data.data());
+    ogl::TexImage3D(K_TEXTURE_3D, 0, (GLint)(isFloat ? ogl::K_RGBA32F : ogl::K_RGBA8), w, h, d, 0, GL_RGBA, isFloat ? GL_FLOAT : GL_UNSIGNED_BYTE,
+                    data.data());
     const bool mip = filter.empty() || filter == "mipmap";
     glTexParameteri(K_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, filter == "nearest" ? GL_NEAREST : mip ? K_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
     glTexParameteri(K_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, filter == "nearest" ? GL_NEAREST : GL_LINEAR);
@@ -356,6 +400,7 @@ public:
         return true;
     }
 
+    bool timed() const override { return true; }
     void update(double t, long long) override {
         const long long end = (long long)std::floor(t * 44100.0);
         constexpr int N = 1024;  // fenetre de l'analyse : 512 raies de spectre
@@ -412,6 +457,7 @@ public:
         : tex_(tex), ffmpeg_(std::move(ffmpeg)), path_(std::move(path)), w_(w), h_(h), fps_(fps), vflip_(vflip), frame_((size_t)w * h * 4) {}
     ~VideoChannel() override { proc_.reset(); }
 
+    bool timed() const override { return true; }
     void update(double t, long long idx) override {
         if (idx == cur_) return;
         if (proc_ && idx >= next_ && idx - next_ <= 8) {  // quelques images en avant : on les lit et on jette
@@ -457,6 +503,24 @@ private:
     std::vector<uint8_t> frame_;
     std::unique_ptr<platform::Process> proc_;
     long long cur_ = -1, next_ = 0;
+};
+
+// --- Clavier simule : texture 256x3 de Shadertoy (etat, appui sur cette image, bascule), touches donnees par `// key=` ----------
+class KeyboardChannel : public DynamicChannel {
+public:
+    KeyboardChannel(GLuint tex, std::vector<KeyPress> keys, double fps) : tex_(tex), keys_(std::move(keys)), dt_(1.0 / fps) {}
+    void update(double t, long long) override {
+        uint8_t px[kKeyboardW * kKeyboardH];
+        keyboardState(keys_, t, dt_, px);
+        glBindTexture(GL_TEXTURE_2D, tex_);
+        glPixelStorei(0x0CF5, 1);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, kKeyboardW, kKeyboardH, K_RED, GL_UNSIGNED_BYTE, px);
+    }
+
+private:
+    GLuint tex_;
+    std::vector<KeyPress> keys_;
+    double dt_;
 };
 
 }  // namespace
@@ -510,8 +574,9 @@ bool loadChannels(const Settings& s, const std::wstring& shaderDir, const std::w
         if (startsWith(spec, L"volume:")) {
             int w = 0, h = 0, d = 0;
             std::vector<uint8_t> data;
-            if (!loadVolumeData(spec.substr(7), shaderDir, ffmpeg, w, h, d, data, err)) return false;
-            out.tex[i] = uploadVolume(w, h, d, data, s.chFilter[i], s.chWrap[i]);
+            bool isFloat = false;
+            if (!loadVolumeData(spec.substr(7), shaderDir, ffmpeg, w, h, d, isFloat, data, err)) return false;
+            out.tex[i] = uploadVolume(w, h, d, isFloat, data, s.chFilter[i], s.chWrap[i]);
             out.target[i] = K_TEXTURE_3D;
             out.w[i] = w;
             out.h[i] = h;
@@ -539,6 +604,23 @@ bool loadChannels(const Settings& s, const std::wstring& shaderDir, const std::w
             out.w[i] = 512;
             out.h[i] = 2;
             H.log(L"  " + TXF("log.channel_loaded", i, path.c_str(), 512, 2));
+            continue;
+        }
+        if (spec == L"keyboard") {  // clavier simule : texture 256x3, au temps exact de l'image
+            glGenTextures(1, &out.tex[i]);
+            glBindTexture(GL_TEXTURE_2D, out.tex[i]);
+            glPixelStorei(0x0CF5, 1);
+            glTexImage2D(GL_TEXTURE_2D, 0, (GLint)K_R8, kKeyboardW, kKeyboardH, 0, K_RED, GL_UNSIGNED_BYTE, nullptr);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, K_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, K_CLAMP_TO_EDGE);
+            auto kb = std::make_shared<KeyboardChannel>(out.tex[i], s.keys, fps);
+            kb->update(start, 0);  // l'etat existe des le premier usage (apercu, relecture)
+            out.dyn[i] = kb;
+            out.w[i] = kKeyboardW;
+            out.h[i] = kKeyboardH;
+            H.log(L"  " + TXF("log.channel_loaded", i, spec.c_str(), kKeyboardW, kKeyboardH));
             continue;
         }
         if (startsWith(spec, L"video:")) {
@@ -622,8 +704,12 @@ void bindChannels(const ChannelSet& cs, GLuint prog, const GLuint* bufferTex) {
     }
     ogl::ActiveTexture(K_TEXTURE0);
     ogl::Uniform3fv(ogl::GetUniformLocation(prog, "iChannelResolution"), 4, res);
-    const float zeros[4] = {0, 0, 0, 0};
-    ogl::Uniform1fv(ogl::GetUniformLocation(prog, "iChannelTime"), 4, zeros);
+    setChannelTimes(cs, prog);
+}
+
+void setChannelTimes(const ChannelSet& cs, GLuint prog) {
+    const float times[4] = {(float)cs.time[0], (float)cs.time[1], (float)cs.time[2], (float)cs.time[3]};
+    ogl::Uniform1fv(ogl::GetUniformLocation(prog, "iChannelTime"), 4, times);
 }
 
 void updateChannels(ChannelSet& cs, double t, long long frameIndex) {
@@ -633,7 +719,10 @@ void updateChannels(ChannelSet& cs, double t, long long frameIndex) {
     if (!any) return;
     ogl::ActiveTexture(K_TEXTURE0);
     for (int i = 0; i < 4; i++)
-        if (cs.dyn[i]) cs.dyn[i]->update(t, frameIndex);
+        if (cs.dyn[i]) {
+            cs.dyn[i]->update(t, frameIndex);
+            if (cs.dyn[i]->timed()) cs.time[i] = t;
+        }
 }
 
 void freeChannels(ChannelSet& cs) {

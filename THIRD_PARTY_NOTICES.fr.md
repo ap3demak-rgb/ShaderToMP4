@@ -6,7 +6,7 @@
 
 ShaderToMP4 est distribué sous la **Licence Publique Générale GNU v3.0 ou ultérieure** (`GPL-3.0-or-later`, voir [COPYING](COPYING)). Ce document liste tous les composants tiers utilisés par le programme, avec leur licence et la raison pour laquelle elle est compatible avec la GPL-3.0. **Aucun composant ne peut être ajouté au projet sans une entrée ici.**
 
-Dernière revue : ShaderToMP4 1.7.0 (aucun nouveau composant tiers n'est livré ; Mesa ne sert qu'aux tests de l'intégration continue et n'est pas distribué).
+Dernière revue : ShaderToMP4 1.8.0 (aucun nouveau composant tiers n'est livré ; Mesa ne sert qu'aux tests de l'intégration continue et n'est pas distribué).
 
 ## 1. Code compilé dans le programme
 
@@ -47,7 +47,7 @@ Dernière revue : ShaderToMP4 1.7.0 (aucun nouveau composant tiers n'est livré 
 | Logo et icône de l'application (`res/icons/logo.svg`, `res/app.ico`) | Création originale pour ShaderToMP4 | GPL-3.0-or-later |
 | Icônes de l'interface (`res/icons/*.svg`), aussi utilisées par l'interface Linux / macOS | Dessins originaux faits pour le projet dans un style de traits géométriques (grille 24 × 24, trait de 2 px). Ce sont des pictogrammes simples et génériques (flèches, dossiers, œil, lecture...) qui ne sont pas copiés d'un jeu d'icônes. | GPL-3.0-or-later |
 | Shaders d'exemple et de test (`examples/`, `tests/`) | Code original du projet | GPL-3.0-or-later |
-| Fichiers de langue (`lang/en.json`, `lang/fr.json`) | Textes originaux du projet | GPL-3.0-or-later |
+| Fichiers de langue (`lang/*.json` : anglais, français, allemand, espagnol, italien, portugais) | Textes originaux du projet | GPL-3.0-or-later |
 | Captures d'écran et bannière (`docs/`) | Produites à partir du programme lui-même | GPL-3.0-or-later |
 
 ## 5. Règles pour les futurs composants

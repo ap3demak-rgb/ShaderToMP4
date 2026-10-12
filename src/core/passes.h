@@ -27,10 +27,18 @@ public:
     int commonLines() const;
     // Tout le code des passes (commun + tampons), pour le rapport de compatibilite.
     std::string allCode() const;
+    // Rapport de compatibilite sur les passes : canaux declares mais jamais lus (image comprise) et passes que ni l'image ni une
+    // passe utile ne lit. imageSettings / imageCode : l'image principale.
+    void report(const Settings& imageSettings, const std::string& imageCode, std::vector<std::wstring>& notes) const;
 
     // Compile les passes, charge leurs canaux, cree les cibles RGBA32F (rw x rh) remises a zero. false + err en cas d'echec.
+    // s : taille propre de chaque tampon (bufferA.scale / .size), sinon la taille du rendu.
     bool build(int rw, int rh, const std::wstring& shaderDir, const std::wstring& ffmpeg, const Hooks& H, std::wstring& err,
-               double start = 0, double fps = 60);
+               double start = 0, double fps = 60, const Settings* s = nullptr);
+    // Taille du tampon i (0 a 3) apres build : les canaux qui le lisent (iChannelResolution) doivent la connaitre.
+    void bufferSize(int i, int& w, int& h) const { w = sw_[i]; h = sh_[i]; }
+    // Corrige la taille des canaux de cs qui lisent un tampon (loadChannels les a crees a la taille du rendu).
+    void fixChannelSizes(ChannelSet& cs) const;
     // Textures les plus recentes des quatre tampons (0 si absent), pour lier les canaux de l'image.
     void latest(GLuint out[5]) const;  // [0..3] tampons A-D, [4] cubemap de la passe Cubemap A
     // Execute les tampons pour l'image n. setUniforms(prog, n) renseigne iTime, iFrame, iMouse, iDate... de chaque programme.
@@ -67,4 +75,5 @@ private:
     std::wstring commonPath_;
     Buf bufs_[4];
     bool used_[4] = {false, false, false, false};
+    int sw_[4] = {0, 0, 0, 0}, sh_[4] = {0, 0, 0, 0};  // taille de chaque tampon
 };

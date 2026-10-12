@@ -42,6 +42,8 @@ bool usesWord(const std::string& code, const std::string& word) {
 
 }  // namespace
 
+bool codeUsesWord(const std::string& code, const std::string& word) { return usesWord(stripComments(code), word); }
+
 std::string adaptShaderCode(const std::string& code, std::vector<std::wstring>& notes) {
     std::string out;
     out.reserve(code.size());
@@ -69,16 +71,18 @@ std::string adaptShaderCode(const std::string& code, std::vector<std::wstring>& 
 
 void checkCompatibility(const std::string& allCode, const Settings& s, std::vector<std::wstring>& notes) {
     const std::string c = stripComments(allCode);
-    if (usesWord(c, "mainVR") && !usesWord(c, "mainImage")) notes.push_back(TX("log.compat_vr"));
     if (usesWord(c, "mainSound")) notes.push_back(TX("log.compat_sound"));
-    bool hasCube = false, hasVolume = false;
+    bool hasCube = false, hasVolume = false, hasTimed = false;
     for (int i = 0; i < 4; i++) {
+        const std::wstring& ch = s.channel[i];
+        hasTimed = hasTimed || ch == L"audio" || ch.compare(0, 6, L"audio:") == 0 || ch.compare(0, 6, L"video:") == 0;
+        if (ch == L"keyboard" && s.keys.empty()) notes.push_back(TXF("log.compat_keyboard", i));
         hasCube = hasCube || s.channel[i].compare(0, 4, L"cube") == 0;
         hasVolume = hasVolume || s.channel[i].compare(0, 7, L"volume:") == 0;
     }
     if (usesWord(c, "samplerCube") && !hasCube) notes.push_back(TX("log.compat_cubemap"));
     if (usesWord(c, "sampler3D") && !hasVolume) notes.push_back(TX("log.compat_volume"));
-    if (usesWord(c, "iMouse") && !s.mouseSet) notes.push_back(TX("log.compat_mouse"));
+    if (usesWord(c, "iMouse") && s.mouseKeys.empty()) notes.push_back(TX("log.compat_mouse"));
     if (usesWord(c, "iDate") && s.date.empty()) notes.push_back(TX("log.compat_date"));
-    if (usesWord(c, "iChannelTime")) notes.push_back(TX("log.compat_channel_time"));
+    if (usesWord(c, "iChannelTime") && !hasTimed) notes.push_back(TX("log.compat_channel_time"));
 }

@@ -12,7 +12,7 @@ ShaderToMP4 must run on **Windows, Linux and macOS**, as a **portable** program 
 
 Today the code is split in two layers:
 
-- `src/core/`: the rendering engine (OpenGL 3.3 core, ffmpeg pipe, chunking and resume, settings, i18n, self-test). It is independent of the interface but still calls Windows APIs here and there.
+- `src/core/`: the rendering engine (OpenGL 3.3 core, ffmpeg pipe, chunking and resume, settings, i18n, self-test). It is independent of the interface and calls no operating system API: everything goes through `src/platform/`.
 - `src/gui/`: the Windows interface (Win32 + Direct2D/DirectWrite, SVG through Direct2D).
 
 ## 2. Options considered for the interface
@@ -28,7 +28,7 @@ Today the code is split in two layers:
 
 - **Windows keeps the current interface** (Direct2D/DirectWrite, SVG icons, dark theme, OLE drag and drop, taskbar progress). It is the reference experience and stays untouched.
 - **Linux and macOS use a new front-end** built on **GLFW** (window, input, OpenGL context, file drop), **Dear ImGui** (widgets, styled to match the Windows look: dark cards, rounded corners, gradient accent) and **NanoSVG** (rasterises the same `res/icons/*.svg` files into textures). One font is embedded in the executable so that text renders identically on both systems.
-- **Both front-ends share everything below them**: the engine, the translations, the settings, the job queue and the status logic.
+- **Both front-ends share everything below them**: the engine, the translations, the settings and the presets. Each front-end keeps its own window state (`g` in `src/gui`, `Model` in `src/ui_imgui`) and talks to the engine through `Hooks`.
 
 ```
  +--------------------------+     +--------------------------+
@@ -39,12 +39,8 @@ Today the code is split in two layers:
               +---------------+----------------+
                               |
                   +-----------v-----------+
-                  |  src/app  (shared)    |   job queue, settings <-> UI mapping,
-                  |                       |   statuses, quick presets, preview
-                  +-----------+-----------+
-                              |
-                  +-----------v-----------+
-                  |  src/core (engine)    |   render, encoder, settings, i18n, ...
+                  |  src/core (engine)    |   render, encoder, settings, formats, passes,
+                  |                       |   channels, queue, cli, i18n, ...
                   +-----------+-----------+
                               |
                   +-----------v-----------+

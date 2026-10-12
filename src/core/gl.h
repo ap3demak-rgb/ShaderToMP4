@@ -82,7 +82,9 @@ bool createGLContext(GLContext& c, std::wstring& err);  // contexte 3.3 core + c
 // chType : type GLSL des quatre canaux (sampler2D, samplerCube, sampler3D) ; nullptr = quatre sampler2D.
 // cubemapOut : passe « Cubemap A » (mainCubemap) : le programme est execute une fois par face (uniform st_face 0 a 5).
 // soundOut : passe « Sound » (mainSound) : un pixel = un echantillon stereo 16 bits (uniform st_sampleBase = indice du premier).
+// vrMode : image en realite virtuelle (mainVR) rendue en 360 equirectangulaire : 1 = mono, 2 = stereo haut / bas (oeil gauche en haut,
+// iResolution = taille d'un oeil, uniform st_ipd = ecart des yeux).
 GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut = false, const std::string* chType = nullptr,
-                    bool cubemapOut = false, bool soundOut = false);
+                    bool cubemapOut = false, bool soundOut = false, int vrMode = 0);
 // Programme de recopie : accumulation flottante (flou de mouvement) -> image 8 bits
 GLuint buildPresentProgram(std::wstring& err);

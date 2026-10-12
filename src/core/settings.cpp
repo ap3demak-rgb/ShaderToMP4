@@ -9,7 +9,8 @@
 
 static bool sameChannels(const Settings& a, const Settings& b) {
     for (int i = 0; i < 4; i++)
-        if (a.channel[i] != b.channel[i] || a.chFilter[i] != b.chFilter[i] || a.chWrap[i] != b.chWrap[i] || a.chVflip[i] != b.chVflip[i])
+        if (a.bufScale[i] != b.bufScale[i] || a.bufW[i] != b.bufW[i] || a.bufH[i] != b.bufH[i] ||
+a.channel[i] != b.channel[i] || a.chFilter[i] != b.chFilter[i] || a.chWrap[i] != b.chWrap[i] || a.chVflip[i] != b.chVflip[i])
             return false;
     return true;
 }
@@ -20,9 +21,8 @@ bool sameSettings(const Settings& a, const Settings& b) {
            a.container == b.container && a.ss == b.ss && a.outdir == b.outdir &&
            a.bitrate == b.bitrate && a.color == b.color && a.blur == b.blur && a.shutter == b.shutter &&
            a.loop == b.loop && a.audio == b.audio && a.fadein == b.fadein && a.fadeout == b.fadeout &&
-           sameChannels(a, b) && a.mouseSet == b.mouseSet && a.mouseX == b.mouseX && a.mouseY == b.mouseY &&
-           a.mouseDown == b.mouseDown && a.date == b.date && a.variants == b.variants && a.gpu == b.gpu && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
-           a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.metadata == b.metadata;
+           sameChannels(a, b) && formatMouseKeys(a.mouseKeys) == formatMouseKeys(b.mouseKeys) && formatKeyPresses(a.keys) == formatKeyPresses(b.keys) && a.date == b.date && a.variants == b.variants && a.gpu == b.gpu && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
+           a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.metadata == b.metadata;
 }
 
 // Valeur complete d'une cle qui garde ses espaces (chemin, modele de nom) : le commentaire `      ; texte` que writeIni peut
@@ -39,9 +39,22 @@ static std::string withoutIniComment(const std::string& raw) {
 
 static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn) {
     std::string k = lower(trim(kIn)), v = trim(vIn);
-    if (k == "outdir" || k == "audio" || k == "name" || k == "variant" || (k.size() == 9 && k.compare(0, 8, "ichannel") == 0)) v = withoutIniComment(vIn);
+    if (k == "outdir" || k == "audio" || k == "name" || k == "variant" || k == "mouse" || k == "key" || (k.size() == 9 && k.compare(0, 8, "ichannel") == 0)) v = withoutIniComment(vIn);
     if (k == "variant") {  // « nom:cle=valeur|cle=valeur » : une ligne par variante
         if (!v.empty()) s.variants.push_back(v);
+        return;
+    }
+    if (k == "mouse") {  // « x,y[,down] » ou « t:x,y[,down] ; t:x,y[,down] » : fractions de la taille, origine en bas a gauche
+        if (lower(v) == "off") s.mouseKeys.clear();
+        else {
+            std::vector<MouseKey> keys;
+            if (parseMouseKeys(v, keys)) s.mouseKeys = keys;
+        }
+        return;
+    }
+    if (k == "key") {  // « touche:debut-fin ; ... » : plusieurs lignes s'ajoutent, `off` efface
+        if (lower(v) == "off") s.keys.clear();
+        else parseKeyPresses(v, s.keys);
         return;
     }
     if (k == "outdir") { s.outdir = W(v); return; }  // chemin complet (peut contenir des espaces)
@@ -71,6 +84,9 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "fadein") s.fadein = std::stod(v);
         else if (k == "fadeout") s.fadeout = std::stod(v);
         else if (k == "pbo") s.pbo = std::stoi(v);
+        else if (k == "vr") s.vr = (lower(v) == "off" || lower(v) == "mono" || lower(v) == "stereo") ? lower(v) : "auto";
+        else if (k == "vripd") s.vrIpd = std::max(0.0, std::min(10.0, std::stod(v)));
+        else if (k == "warmup") s.warmup = std::max(0, std::min(3600, std::stoi(v)));
         else if (k == "metadata") s.metadata = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
         else if (k.size() > 9 && k.compare(0, 8, "ichannel") == 0 && k[8] >= '0' && k[8] <= '3' && k[9] == '.') {
             const int i = k[8] - '0';
@@ -79,15 +95,23 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
             else if (sub == "wrap") s.chWrap[i] = val == "clamp" ? val : "repeat";
             else if (sub == "vflip") s.chVflip[i] = !(val == "0" || val == "false" || val == "off" || val == "no");
         }
-        else if (k == "mouse") {  // x,y[,down] : fractions de la taille, origine en bas a gauche
-            double x = 0, y = 0;
-            if (sscanf(v.c_str(), "%lf,%lf", &x, &y) == 2) {
-                s.mouseSet = true;
-                s.mouseX = std::min(1.0, std::max(0.0, x));
-                s.mouseY = std::min(1.0, std::max(0.0, y));
-                s.mouseDown = lower(v).find("down") != std::string::npos;
-            } else if (lower(v) == "off") {
-                s.mouseSet = false;
+        else if (k.size() > 8 && k.compare(0, 6, "buffer") == 0 && k[6] >= 'a' && k[6] <= 'd' && k[7] == '.') {  // bufferA.scale / .size
+            const int i = k[6] - 'a';
+            const std::string sub = k.substr(8), val = lower(v);
+            int w = 0, h = 0;
+            if (sub == "scale") {
+                const double sc = std::stod(val);
+                s.bufScale[i] = sc > 0 ? std::min(sc, 16.0) : 0;
+                s.bufW[i] = s.bufH[i] = 0;
+            } else if (sub == "size") {
+                const int got = sscanf(val.c_str(), "%dx%d", &w, &h);
+                if (got >= 1 && w > 0 && (got == 1 || h > 0)) {
+                    s.bufW[i] = std::min(w, 16384);
+                    s.bufH[i] = std::min(got == 2 ? h : w, 16384);
+                    s.bufScale[i] = 0;
+                } else if (val == "off") {
+                    s.bufW[i] = s.bufH[i] = 0;
+                }
             }
         }
         else if (k == "gpu") s.gpu = (lower(v) == "high" || lower(v) == "low") ? lower(v) : "default";
@@ -114,13 +138,15 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
 
 bool isSettingKey(const std::string& key) {
     static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
-                                        "blur", "shutter", "loop", "fadein", "fadeout", "pbo", "chunk", "encoder", "color", "container",
-                                        "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "date", "endaction", "variant", "gpu"};
+                                        "blur", "shutter", "loop", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "chunk", "encoder", "color", "container",
+                                        "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "key", "date", "endaction", "variant", "gpu"};
     for (const char* k : kKeys)
         if (key == k) return true;
     // ichannel0 a ichannel3, avec .filter .wrap .vflip
     if (key.size() >= 9 && key.compare(0, 8, "ichannel") == 0 && key[8] >= '0' && key[8] <= '3')
         return key.size() == 9 || key.substr(9) == ".filter" || key.substr(9) == ".wrap" || key.substr(9) == ".vflip";
+    // buffera a bufferd, avec .scale .size
+    if (key.size() >= 8 && key.compare(0, 6, "buffer") == 0 && key[6] >= 'a' && key[6] <= 'd') return key.substr(7) == ".scale" || key.substr(7) == ".size";
     return false;
 }
 
@@ -143,7 +169,7 @@ std::wstring shaderOverridesOf(const std::wstring& shaderPath) {
         const std::string key = lower(trim(body.substr(0, eq)));
         if (!isSettingKey(key)) continue;
         std::string val = trim(body.substr(eq + 1));
-        if (key != "outdir" && key != "audio" && key != "name" && key.compare(0, 8, "ichannel") != 0) val = val.substr(0, val.find_first_of(" \t"));
+        if (key != "outdir" && key != "audio" && key != "name" && key != "mouse" && key != "key" && key.compare(0, 8, "ichannel") != 0) val = val.substr(0, val.find_first_of(" \t"));
         if (val.empty()) continue;
         out += (out.empty() ? "" : ", ") + key + "=" + val;
     }
@@ -185,7 +211,7 @@ void writeIni(const std::wstring& path, const Settings& s) {
         fputs(l.c_str(), f);
     };
     fputs(("; " + i18n::tr8("ini.header1") + "\r\n; " + i18n::tr8("ini.header2") + "\r\n").c_str(), f);
-    fputs(("; name: " + i18n::tr8("ini.name") + "\r\n; iChannel0-3: " + i18n::tr8("ini.ichannel") + "\r\n; variant: " + i18n::tr8("ini.variant") + "\r\n").c_str(), f);
+    fputs(("; name: " + i18n::tr8("ini.name") + "\r\n; iChannel0-3: " + i18n::tr8("ini.ichannel") + "\r\n; variant: " + i18n::tr8("ini.variant") + "\r\n; mouse: " + i18n::tr8("ini.mouse") + "\r\n; key: " + i18n::tr8("ini.key") + "\r\n").c_str(), f);
     put("width", std::to_string(s.width));
     put("height", std::to_string(s.height));
     put("fps", num(s.fps));
@@ -218,12 +244,21 @@ void writeIni(const std::wstring& path, const Settings& s) {
         if (!s.chWrap[i].empty()) put(key + ".wrap", s.chWrap[i]);
         put(key + ".vflip", s.chVflip[i] ? "1" : "0");
     }
-    if (s.mouseSet) put("mouse", num(s.mouseX) + "," + num(s.mouseY) + (s.mouseDown ? ",down" : ""), "ini.mouse");
+    for (int i = 0; i < 4; i++) {
+        const std::string key = std::string("buffer") + (char)('A' + i);
+        if (s.bufScale[i] > 0) put(key + ".scale", num(s.bufScale[i]));
+        else if (s.bufW[i] > 0) put(key + ".size", std::to_string(s.bufW[i]) + "x" + std::to_string(s.bufH[i]));
+    }
+    if (!s.mouseKeys.empty()) put("mouse", formatMouseKeys(s.mouseKeys));  // pas de commentaire : la valeur garde ses espaces
+    if (!s.keys.empty()) put("key", formatKeyPresses(s.keys));  // pas de commentaire : la valeur garde ses espaces
     if (!s.date.empty()) put("date", s.date, "ini.date");
     for (const auto& v : s.variants) put("variant", v);
     put("gpu", s.gpu, "ini.gpu");
     put("endaction", s.endaction, "ini.endaction");
     put("chunk", num(s.chunk), "ini.chunk");
+    put("warmup", std::to_string(s.warmup), "ini.warmup");
+    put("vr", s.vr, "ini.vr");
+    put("vripd", num(s.vrIpd), "ini.vripd");
     put("metadata", s.metadata ? "1" : "0", "ini.metadata");
     fclose(f);
 }
