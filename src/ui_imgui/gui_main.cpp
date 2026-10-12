@@ -312,6 +312,8 @@ void drawShaders(App& a, float height) {
             if (ImGui::Selectable(T("ui.menu.png_now").c_str())) m.startJobs(true, 0, 0, 0, true);
             if (ImGui::Selectable(T("ui.menu.thumb").c_str())) m.startJobs(true, 1);
             if (ImGui::Selectable(T("ui.menu.thumb_smart").c_str())) m.startJobs(true, 3);
+            if (ImGui::Selectable(T("ui.menu.cubefaces").c_str())) m.startJobs(true, 5);
+            if (ImGui::Selectable(T("ui.menu.heatmap").c_str())) m.startJobs(true, 6);
             ImGui::Separator();
             for (int i = 0; i < kSheetGridCount; i++)
                 if (ImGui::Selectable(TXF8("ui.menu.sheet", kSheetGrids[i][0], kSheetGrids[i][1]).c_str())) m.startJobs(true, 2, kSheetGrids[i][0], kSheetGrids[i][1]);
@@ -704,6 +706,12 @@ void drawOutput(App& a) {
     row("ui.output.samples");
     ImGui::SetNextItemWidth(width);
     ImGui::InputText("##samples", f.samples, sizeof(f.samples));
+    row("ui.output.tile");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##tile", f.tile, sizeof(f.tile));
+    row("ui.output.dpi");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##dpi", f.dpi, sizeof(f.dpi));
     note("ui.output.hint_time");
     if (button("ui.output.findloop_btn", "eye", 0, !a.model.running() && !a.model.paths.empty(), 0, "ui.output.hint_time")) a.model.startJobs(true, 4);
 }

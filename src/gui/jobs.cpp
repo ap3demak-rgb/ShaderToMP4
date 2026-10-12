@@ -9,6 +9,7 @@
 #include "core/params.h"
 #include "core/looptools.h"
 #include "core/render.h"
+#include "core/vr.h"
 #include "core/util.h"
 #include "ui_controls.h"
 #include "../../res/resource.h"
@@ -72,6 +73,19 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
         if (g.snapshotRun && g.imageKind == 3) {  // vignette intelligente : les trois images les plus riches
             std::vector<std::wstring> made;
             r = renderSmartThumbnails(jobs[i].second, g.exeDir, run, H, made, e) ? Result::Ok : g.cancel ? Result::Cancelled : Result::Failed;
+        } else if (g.snapshotRun && g.imageKind == 6) {  // carte de chaleur du cout GPU par zone
+            HeatStats hs;
+            std::wstring heatFile;
+            if (renderHeatmap(jobs[i].second, g.exeDir, run, 16, 9, -1, H, hs, heatFile, e)) {
+                postLog(L"  " + describeHeat(hs));
+            } else {
+                r = g.cancel ? Result::Cancelled : Result::Failed;
+            }
+        } else if (g.snapshotRun && g.imageKind == 5) {  // les six faces d'une cubemap (shader mainVR), carrees
+            Settings sq = run;
+            sq.width = sq.height = std::min(run.width, run.height);
+            std::vector<std::wstring> made;
+            r = renderCubeFaces(jobs[i].second, g.exeDir, sq, H, made, e) ? Result::Ok : g.cancel ? Result::Cancelled : Result::Failed;
         } else if (g.snapshotRun && g.imageKind == 4) {  // recherche de la periode du shader, sans rendu
             LoopFound lf;
             if (findLoop(jobs[i].second, g.exeDir, run, 0, H, lf, e)) {
@@ -99,6 +113,8 @@ void showImageMenu() {
     AppendMenuW(m, MF_STRING, 3, TX("ui.menu.png_now").c_str());
     AppendMenuW(m, MF_STRING, 2, TX("ui.menu.thumb").c_str());
     AppendMenuW(m, MF_STRING, 4, TX("ui.menu.thumb_smart").c_str());
+    AppendMenuW(m, MF_STRING, 5, TX("ui.menu.cubefaces").c_str());
+    AppendMenuW(m, MF_STRING, 6, TX("ui.menu.heatmap").c_str());
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     for (int i = 0; i < kSheetGridCount; i++)
         AppendMenuW(m, MF_STRING, (UINT_PTR)(10 + i), TXF("ui.menu.sheet", kSheetGrids[i][0], kSheetGrids[i][1]).c_str());
@@ -110,6 +126,8 @@ void showImageMenu() {
     else if (cmd == 2) startJobs(true, 1);
     else if (cmd == 3) startJobs(true, 0, 0, 0, true);
     else if (cmd == 4) startJobs(true, 3);
+    else if (cmd == 5) startJobs(true, 5);
+    else if (cmd == 6) startJobs(true, 6);
     else if (cmd >= 10 && cmd < 10 + kSheetGridCount) startJobs(true, 2, kSheetGrids[cmd - 10][0], kSheetGrids[cmd - 10][1]);
 }
 
@@ -185,7 +203,7 @@ void startJobs(bool snapshot, int imageKind, int cols, int rows, bool atPreview,
     g.sheetRows = rows;
     g.previewRun = false;
     if (snapshot) {
-        g.snapshotPath = imageKind == 4 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : L".png");
+        g.snapshotPath = imageKind == 4 || imageKind == 5 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
     }
     setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot ? "status.rendering_image" : "status.rendering"));
     g.worker = std::thread(runJobs, std::move(jobs));

@@ -47,6 +47,32 @@ static GLuint compileShader(GLenum type, const std::string& src, std::wstring& e
     return sh;
 }
 
+// main() des modes mainVR : 1 equirectangulaire mono, 2 stereo haut / bas, 3 stereo cote a cote, 4 anaglyphe (st_eye choisit l'oeil : -1 gauche,
+// 1 droit ; le moteur dessine deux fois avec des masques de couleur), 5 fulldome (fisheye 180 degres : centre = zenith, bas de l'image = devant,
+// rayon 1 = horizon, noir au-dela), 6 une face de cubemap (st_face 0 a 5 = +x -x +y -y +z -z, image a l'endroit vue de l'interieur).
+// Oeil gauche : cote -1 (haut ou gauche de l'image) ; le decalage de l'origine suit la direction du regard.
+static std::string vrMainSource(int mode, const std::string& finalColor) {
+    std::string m = "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); vec2 fc = gl_FragCoord.xy + st_offset; float side = 0.0; vec3 o = vec3(0.0); vec3 d = vec3(0.0, 0.0, -1.0); bool inside = true;";
+    if (mode == 2) m += " if (fc.y >= iResolution.y) { fc.y -= iResolution.y; side = -1.0; } else side = 1.0;";
+    else if (mode == 3) m += " if (fc.x >= iResolution.x) { fc.x -= iResolution.x; side = 1.0; } else side = -1.0;";
+    else if (mode == 4) m += " side = st_eye;";
+    if (mode == 5) {
+        m += " vec2 q = fc / iResolution.xy * 2.0 - 1.0; float r = length(q); inside = r <= 1.0; float th = r * 1.57079632679; float ph = r > 1e-5 ? atan(q.x, -q.y) : 0.0;"
+             " d = vec3(sin(th) * sin(ph), cos(th), -sin(th) * cos(ph));";
+    } else if (mode == 6) {
+        m += " vec2 q = fc / iResolution.xy * 2.0 - 1.0;"
+             " if (st_face == 0) d = vec3(1.0, q.y, q.x); else if (st_face == 1) d = vec3(-1.0, q.y, -q.x);"
+             " else if (st_face == 2) d = vec3(q.x, 1.0, q.y); else if (st_face == 3) d = vec3(q.x, -1.0, -q.y);"
+             " else if (st_face == 4) d = vec3(-q.x, q.y, 1.0); else d = vec3(q.x, q.y, -1.0);"
+             " d = normalize(d);";
+    } else {
+        m += " vec2 uv = fc / iResolution.xy; float lon = (uv.x - 0.5) * 6.28318530718; float lat = (uv.y - 0.5) * 3.14159265359;"
+             " d = vec3(sin(lon) * cos(lat), sin(lat), -cos(lon) * cos(lat));"
+             " o = side * 0.5 * st_ipd * vec3(cos(lon), 0.0, sin(lon));";
+    }
+    return m + " if (inside) mainVR(c, fc, o, d); " + finalColor + " }\n";
+}
+
 GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut, const std::string* chType, bool cubemapOut, bool soundOut,
                     int vrMode, const std::string& preamble, bool alphaOut) {
     std::string channels;
@@ -75,6 +101,8 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         "uniform int   st_face;\n"
         "uniform int   st_sampleBase;\n"
         "uniform float st_ipd;\n"
+        "uniform float st_eye;\n"
+        "uniform vec2  st_offset;\n"
         "uniform int   st_premul;\n"
         + channels +
         "uniform vec3  iChannelResolution[4];\n"
@@ -96,14 +124,9 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
                       " else if (st_face == 2) d = vec3(q.x, 1.0, q.y); else if (st_face == 3) d = vec3(q.x, -1.0, -q.y);"
                       " else if (st_face == 4) d = vec3(q.x, -q.y, 1.0); else d = vec3(-q.x, -q.y, -1.0);"
                       " mainCubemap(c, gl_FragCoord.xy, vec3(0.0), normalize(d)); st_outColor = c; }\n"
-         : vrMode > 0 ? std::string("\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); vec2 fc = gl_FragCoord.xy; float side = 0.0;") +
-                        (vrMode == 2 ? " if (fc.y >= iResolution.y) { fc.y -= iResolution.y; side = -1.0; } else side = 1.0;" : "") +
-                        " vec2 uv = fc / iResolution.xy; float lon = (uv.x - 0.5) * 6.28318530718; float lat = (uv.y - 0.5) * 3.14159265359;"
-                        " vec3 d = vec3(sin(lon) * cos(lat), sin(lat), -cos(lon) * cos(lat));"
-                        " vec3 o = side * 0.5 * st_ipd * vec3(cos(lon), 0.0, sin(lon));"
-                        " mainVR(c, fc, o, d); " + finalColor + " }\n"
+         : vrMode > 0 ? vrMainSource(vrMode, finalColor)
          : bufferOut ? std::string("\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy); st_outColor = c; }\n")
-                   : "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy); " + finalColor + " }\n");
+                   : "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy + st_offset); " + finalColor + " }\n");
 
     GLuint v = compileShader(ogl::K_VERTEX_SHADER, vs, err);
     if (!v) return 0;

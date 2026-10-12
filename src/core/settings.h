@@ -64,6 +64,8 @@ struct Settings {
     int warmup = 0;               // images simulees avant la premiere (tampons chauffes, iFrame decale de N) ; 0 = aucune
     double chunk = 30;             // rendu par parties de N secondes, reprenables (0 = jamais)
     std::string report = "off";    // rapport de rendu a cote de la video : off | json | text
+    int tile = 0;                  // image fixe : cote des tuiles en pixels (0 = automatique : tuiles des que l'image depasse 8192 pixels ou la limite du GPU)
+    int dpi = 0;                   // image fixe PNG : resolution ecrite dans le fichier (points par pouce), 0 = rien
     int samples = 1;               // image fixe (PNG) : moyenne de N echantillons independants du meme instant (iFrame different), 1..100000
 };
 

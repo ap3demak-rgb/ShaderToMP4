@@ -87,7 +87,7 @@ struct App {
     FpsMeter playMeter;         // cadence reelle de l'apercu en lecture
     double snapshotAt = -1;     // image PNG au temps de l'apercu : temps du shader (secondes), -1 = au temps de debut
     bool snapshotRun = false;  // le lot en cours est une image (PNG, vignette ou planche-contact) (UI uniquement)
-    int imageKind = 0;         // 0 image PNG au temps de début, 1 vignette de couverture, 2 planche-contact, 3 vignette intelligente, 4 recherche de boucle
+    int imageKind = 0;         // 0 image PNG au temps de début, 1 vignette de couverture, 2 planche-contact, 3 vignette intelligente, 4 recherche de boucle, 5 faces de cubemap
     int sheetCols = 0, sheetRows = 0;
     std::wstring snapshotPath;
     std::wstring exeDir;
@@ -166,7 +166,7 @@ void applyQuickPreset(int idx);  // 0 brouillon, 1 YouTube 1080p60, 2 4K 60, 3 v
 
 // --- jobs.cpp : rendus, apercu, telechargement ---
 void promptDownload();               // propose de telecharger ffmpeg.exe
-void startJobs(bool snapshot = false, int imageKind = 0, int cols = 0, int rows = 0, bool atPreview = false, bool selectedOnly = false, int batch = 0);  // snapshot : une image (0 PNG, 1 vignette, 2 planche cols x rows, 3 vignette intelligente, 4 recherche de boucle)
+void startJobs(bool snapshot = false, int imageKind = 0, int cols = 0, int rows = 0, bool atPreview = false, bool selectedOnly = false, int batch = 0);  // snapshot : une image (0 PNG, 1 vignette, 2 planche cols x rows, 3 vignette intelligente, 4 recherche de boucle, 5 faces de cubemap)
 void showImageMenu();                // menu du bouton « Images » : PNG, vignette, planches-contact
 void updatePrevLabel();
 void runPreview();

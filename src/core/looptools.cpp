@@ -5,6 +5,7 @@
 #include "i18n.h"
 #include "player.h"
 #include "process.h"
+#include "formats.h"
 #include "render.h"
 #include "util.h"
 #include "platform/platform.h"
@@ -141,6 +142,99 @@ std::wstring describeLoop(const LoopFound& lf) {
     if (lf.isStatic) return TX("log.loop_static");
     if (lf.found) return TXF(lf.quality == 2 ? "log.loop_found" : "log.loop_found_approx", lf.period, lf.distance, lf.period, lf.period);
     return TXF("log.loop_not_found", lf.searched);
+}
+
+std::wstring describeHeat(const HeatStats& st) {
+    return TXF("log.heat_stats", st.cols, st.rows, st.totalMs, st.minMs, st.maxMs, st.hotCol + 1, st.hotRow + 1, 100.0 * st.hotShare);
+}
+
+void heatColor(double x, uint8_t& r, uint8_t& g, uint8_t& b) {
+    x = std::min(1.0, std::max(0.0, x));
+    // bleu (0) -> cyan -> vert -> jaune -> rouge (1)
+    const double stops[5][3] = {{0.0, 0.1, 0.9}, {0.0, 0.75, 0.85}, {0.1, 0.85, 0.2}, {0.95, 0.9, 0.1}, {0.95, 0.1, 0.1}};
+    const double p = x * 4.0;
+    const int i = std::min(3, (int)p);
+    const double f = p - i;
+    auto mix = [&](int c) { return (uint8_t)std::lround(255.0 * (stops[i][c] * (1 - f) + stops[i + 1][c] * f)); };
+    r = mix(0);
+    g = mix(1);
+    b = mix(2);
+}
+
+bool renderHeatmap(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& s, int cols, int rows, double t, const Hooks& H,
+                   HeatStats& stats, std::wstring& outFile, std::wstring& err) {
+    stats = HeatStats();
+    cols = std::max(1, std::min(64, cols));
+    rows = std::max(1, std::min(64, rows));
+    ShaderProbe probe;
+    if (!probe.open(shaderPath, exeDir, s, 960, err)) return false;
+    const Settings& st = probe.settings();
+    if (t < 0) t = st.start + st.duration / 2;
+    std::vector<double> ms;
+    std::vector<uint8_t> img;
+    // la mesure est repetee (trois passes, la meilleure retenue) pour ecarter les accidents du pilote
+    std::vector<double> best;
+    for (int pass = 0; pass < 3; pass++) {
+        if (H.cancelled()) {
+            err = TX("error.loop_find_cancelled");
+            return false;
+        }
+        if (!probe.tileCosts(t, cols, rows, 6, ms, img)) {
+            err = TX("error.framebuffer");
+            return false;
+        }
+        if (best.empty()) best = ms;
+        else
+            for (size_t i = 0; i < ms.size(); i++) best[i] = std::min(best[i], ms[i]);
+        if (H.progress) H.progress(pass + 1, 3, 0, 0);
+    }
+    stats.cols = cols;
+    stats.rows = rows;
+    stats.tileMs = best;
+    stats.minMs = *std::min_element(best.begin(), best.end());
+    stats.maxMs = *std::max_element(best.begin(), best.end());
+    for (double v : best) stats.totalMs += v;
+    stats.meanMs = stats.totalMs / (double)best.size();
+    const size_t hot = (size_t)(std::max_element(best.begin(), best.end()) - best.begin());
+    stats.hotCol = (int)(hot % cols);
+    stats.hotRow = (int)(hot / cols);
+    stats.hotShare = stats.totalMs > 0 ? stats.maxMs / stats.totalMs : 0.0;
+    // image teintee : 55 % de la couleur du cout, 45 % de l'image ; premiere ligne en haut
+    const int w = probe.width(), h = probe.height();
+    std::vector<uint8_t> out((size_t)w * h * 3);
+    const double span = std::max(1e-9, stats.maxMs - stats.minMs);
+    for (int y = 0; y < h; y++) {
+        const int row = std::min(rows - 1, y * rows / h);
+        const uint8_t* src = &img[(size_t)(h - 1 - y) * w * 4];
+        for (int x = 0; x < w; x++) {
+            const int col = std::min(cols - 1, x * cols / w);
+            uint8_t hr, hg, hb;
+            heatColor((best[(size_t)row * cols + col] - stats.minMs) / span, hr, hg, hb);
+            uint8_t* dst = &out[((size_t)y * w + x) * 3];
+            dst[0] = (uint8_t)((src[x * 4] * 45 + hr * 55) / 100);
+            dst[1] = (uint8_t)((src[x * 4 + 1] * 45 + hg * 55) / 100);
+            dst[2] = (uint8_t)((src[x * 4 + 2] * 45 + hb * 55) / 100);
+        }
+    }
+    if (!s.outdir.empty()) platform::makeDir(s.outdir);
+    outFile = outputPath(shaderPath, s.outdir, L"_heat.png");
+    const std::wstring cmd = L"\"" + findFfmpeg(exeDir) + L"\" -hide_banner -loglevel error -y -f rawvideo -pix_fmt rgb24 -video_size " + std::to_wstring(w) + L"x" +
+                             std::to_wstring(h) + L" -i - -frames:v 1 \"" + outFile + L"\"";
+    auto proc = platform::Process::start(platform::splitCommand(cmd), true, true);
+    if (!proc) {
+        err = TX("error.ffmpeg_launch");
+        return false;
+    }
+    const bool wrote = proc->writeStdin(out.data(), out.size());
+    proc->closeStdin();
+    char drain[1024];
+    while (proc->readOutput(drain, sizeof(drain)) > 0) {}
+    if (!wrote || proc->wait() != 0) {
+        err = TX("error.ffmpeg_failed");
+        return false;
+    }
+    if (H.output) H.output(outFile);
+    return true;
 }
 
 double frameRichness(const uint8_t* p, int w, int h) {

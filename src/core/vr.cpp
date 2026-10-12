@@ -4,7 +4,9 @@
 #include "vr.h"
 #include "app_info.h"
 #include "compat.h"
+#include "hooks.h"
 #include "i18n.h"
+#include "render.h"
 #include "util.h"
 #include "platform/platform.h"
 
@@ -12,12 +14,12 @@ bool vrModeFor(const std::string& code, const Settings& s, int& mode, std::wstri
     const bool hasVR = codeUsesWord(code, "mainVR"), hasImage = codeUsesWord(code, "mainImage");
     mode = 0;
     if (s.vr == "off") return true;
-    if (s.vr == "mono" || s.vr == "stereo") {
+    if (s.vr == "mono" || s.vr == "stereo" || s.vr == "sbs" || s.vr == "anaglyph" || s.vr == "fulldome") {
         if (!hasVR) {
             err = TX("error.vr_missing");
             return false;
         }
-        mode = s.vr == "stereo" ? 2 : 1;
+        mode = s.vr == "stereo" ? 2 : s.vr == "sbs" ? 3 : s.vr == "anaglyph" ? 4 : s.vr == "fulldome" ? 5 : 1;
         return true;
     }
     if (hasVR && !hasImage) mode = 1;
@@ -26,8 +28,39 @@ bool vrModeFor(const std::string& code, const Settings& s, int& mode, std::wstri
 
 bool vrAspectOk(int width, int height, int mode) {
     if (mode == 0 || height <= 0) return true;
-    const double want = mode == 2 ? 1.0 : 2.0, got = (double)width / height;
+    const double want = mode == 2 || mode == 5 || mode == 6 ? 1.0 : mode == 3 ? 4.0 : 2.0, got = (double)width / height;
     return std::fabs(got - want) <= 0.01 * want;
+}
+
+const wchar_t* vrAspectText(int mode) { return mode == 2 || mode == 5 || mode == 6 ? L"1:1" : mode == 3 ? L"4:1" : L"2:1"; }
+
+void vrEyeSize(int mode, int width, int height, int& eyeW, int& eyeH) {
+    eyeW = mode == 3 ? width / 2 : width;
+    eyeH = mode == 2 ? height / 2 : height;
+}
+
+bool renderCubeFaces(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& s, const Hooks& H, std::vector<std::wstring>& files,
+                     std::wstring& err) {
+    files.clear();
+    for (int face = 0; face < 6; face++) {
+        Hooks H2 = H;
+        H2.snapshot = true;
+        H2.cubeFace = face;
+        H2.thumbTime = -1;
+        H2.sheetCols = H2.sheetRows = 0;
+        H2.progress = nullptr;
+        H2.output = [&](const std::wstring& path) {
+            files.push_back(path);
+            if (H.output) H.output(path);
+        };
+        if (convertFile(shaderPath, exeDir, s, H2, err) != Result::Ok) return false;
+    }
+    return true;
+}
+
+const wchar_t* vrFaceName(int face) {
+    static const wchar_t* const names[6] = {L"px", L"nx", L"py", L"ny", L"pz", L"nz"};
+    return names[face < 0 || face > 5 ? 0 : face];
 }
 
 // --- Metadonnees « Spherical Video V1 » dans un MP4 / MOV --------------------------------------------------------------
@@ -121,7 +154,7 @@ bool copyRange(FILE* in, FILE* out, int64_t from, int64_t to) {
 
 }  // namespace
 
-bool injectSphericalMetadata(const std::wstring& path, bool stereo, std::wstring& err) {
+bool injectSphericalMetadata(const std::wstring& path, int stereoMode, std::wstring& err) {
     FILE* in = platform::openFile(path, "rb");
     if (!in) {
         err = TXF("error.vr_meta", path.c_str());
@@ -191,7 +224,8 @@ bool injectSphericalMetadata(const std::wstring& path, bool stereo, std::wstring
         "xmlns:GSpherical=\"http://ns.google.com/videos/1.0/spherical/\"><GSpherical:Spherical>true</GSpherical:Spherical>"
         "<GSpherical:Stitched>true</GSpherical:Stitched><GSpherical:StitchingSoftware>" APP_NAME_STR "</GSpherical:StitchingSoftware>"
         "<GSpherical:ProjectionType>equirectangular</GSpherical:ProjectionType>";
-    if (stereo) xml += "<GSpherical:StereoMode>top-bottom</GSpherical:StereoMode>";
+    if (stereoMode == 1) xml += "<GSpherical:StereoMode>top-bottom</GSpherical:StereoMode>";
+    else if (stereoMode == 2) xml += "<GSpherical:StereoMode>left-right</GSpherical:StereoMode>";
     xml += "</rdf:SphericalVideo>";
     Bytes box(8 + 16 + xml.size());
     put32(&box[0], (uint32_t)box.size());

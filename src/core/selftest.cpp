@@ -8,6 +8,7 @@
 #include "montage.h"
 #include "looptools.h"
 #include "timemap.h"
+#include "vr.h"
 #include "batches.h"
 #include "channeldrop.h"
 #include "glslsyntax.h"
@@ -1332,6 +1333,257 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                     if (problem.empty() && best[0].score < best[1].score) problem = bad("order");
                 }
                 check("selftest.fmt_smartthumb", problem);
+            }
+        }
+        // --- Tres grandes images et projections (phase 17) -----------------------------------------------------------------------------------------
+        {
+            auto seqSettings = [&](double duration) {
+                Settings st = base("h264", "png", 8);
+                st.duration = duration;
+                return st;
+            };
+            // affiche par tuiles : identique a un rendu d'un seul tenant (exact), avec sur-echantillonnage (a un niveau pres), en 16 bits, bandes gardees pour reprendre
+            if (formatAvailable(ffmpeg, "h264", "png")) {
+                std::wstring problem;
+                const std::wstring grad = put(L"p17_grad.glsl", "void mainImage(out vec4 o, in vec2 p){ vec2 u = p / iResolution.xy; float k = mod(floor(p.x / 7.0) + floor(p.y / 5.0), 2.0); o = vec4(u.x, u.y, k * 0.5 + 0.25 * sin(iResolution.x * 0.01), 1.0); }\n");
+                auto still = [&](Settings st, const std::atomic<bool>* cancel, std::wstring& e, std::string& logText) {
+                    Hooks Hs;
+                    Hs.snapshot = true;
+                    Hs.log = [&](const std::wstring& l) { logText += U8(l) + "\n"; };
+                    long long tiles = 0;
+                    std::atomic<bool> stop{false};
+                    if (cancel) {  // interrompu apres trois tuiles
+                        Hs.cancel = &stop;
+                        Hs.progress = [&](long long n, long long, double, double) {
+                            tiles = n;
+                            if (n >= 3) stop = true;
+                        };
+                    }
+                    return convertFile(grad, exeDir, st, Hs, e);
+                };
+                auto bytesOf = [&](const Settings& st, const wchar_t* pix) { return decodeRaw(outputPath(grad, st.outdir, L".png"), pix, L""); };
+                Settings plain = seqSettings(1);
+                plain.width = 96;
+                plain.height = 64;
+                std::wstring e;
+                std::string logText;
+                if (still(plain, nullptr, e, logText) != Result::Ok) problem = e.empty() ? TX("selftest.render_failed") : e;
+                const std::string ref8 = problem.empty() ? bytesOf(plain, L"rgb24") : std::string();
+                if (problem.empty()) {  // 3 x 2 tuiles de 32 pixels
+                    Settings tiled = plain;
+                    tiled.tile = 32;
+                    if (still(tiled, nullptr, e, logText) != Result::Ok) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else if (logText.find("3 x 2") == std::string::npos && logText.find("tiles") == std::string::npos && logText.find("tuiles") == std::string::npos) problem = bad("not tiled");
+                    else if (bytesOf(tiled, L"rgb24") != ref8 || ref8.size() != 96 * 64 * 3) problem = bad("tiled differs");
+                }
+                if (problem.empty()) {  // sur-echantillonnage x2 : moyenne par blocs, a un niveau pres de la reduction de ffmpeg
+                    Settings a = plain, b = plain;
+                    a.ss = b.ss = 2;
+                    b.tile = 64;
+                    if (still(a, nullptr, e, logText) != Result::Ok || still(b, nullptr, e, logText) != Result::Ok) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else {
+                        Settings bb = b;
+                        const std::string tb = bytesOf(bb, L"rgb24");
+                        still(a, nullptr, e, logText);
+                        const std::string ta = bytesOf(a, L"rgb24");
+                        int worst = 0;
+                        for (size_t i = 0; i < ta.size() && i < tb.size(); i++) worst = std::max(worst, std::abs((int)(uint8_t)ta[i] - (int)(uint8_t)tb[i]));
+                        if (ta.size() != tb.size() || ta.size() != 96 * 64 * 3 || worst > 1) problem = bad("supersampling " + std::to_string(worst));
+                    }
+                }
+                if (problem.empty()) {  // 16 bits par composante : exact aussi
+                    Settings d1 = plain, d2 = plain;
+                    d1.depth = d2.depth = 10;
+                    d2.tile = 32;
+                    if (still(d1, nullptr, e, logText) != Result::Ok) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else {
+                        const std::string r16 = bytesOf(d1, L"rgb48le");
+                        if (still(d2, nullptr, e, logText) != Result::Ok) problem = e.empty() ? TX("selftest.render_failed") : e;
+                        else if (r16.size() != 96 * 64 * 6 || bytesOf(d2, L"rgb48le") != r16) problem = bad("16-bit differs");
+                    }
+                }
+                for (int tile : {0, 32}) {  // resolution ecrite dans le PNG (300 ppp = 11811 points par metre), avec et sans tuiles
+                    if (!problem.empty()) break;
+                    Settings d = plain;
+                    d.dpi = 300;
+                    d.tile = tile;
+                    std::string png;
+                    if (still(d, nullptr, e, logText) != Result::Ok) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else if (!readFile(outputPath(grad, d.outdir, L".png"), png)) problem = bad("png unreadable");
+                    else {
+                        const size_t at = png.find("pHYs");
+                        const unsigned ppu = at == std::string::npos || at + 12 > png.size() ? 0u : ((unsigned)(uint8_t)png[at + 4] << 24 | (unsigned)(uint8_t)png[at + 5] << 16 | (unsigned)(uint8_t)png[at + 6] << 8 | (uint8_t)png[at + 7]);
+                        if (ppu < 11810 || ppu > 11812) problem = bad("dpi " + std::to_string(ppu));
+                    }
+                }
+                if (problem.empty()) {  // interruption puis reprise : la bande du haut est gardee, le resultat est le meme, le dossier disparait
+                    Settings t = plain;
+                    t.tile = 32;
+                    t.outdir = outDir + sep + L"resume";
+                    platform::makeDir(t.outdir);
+                    std::atomic<bool> any{true};
+                    const Result first = still(t, &any, e, logText);
+                    const std::wstring pngPath = outputPath(grad, t.outdir, L".png");
+                    const std::wstring tilesDir = pngPath.substr(0, pngPath.find_last_of(L'.')) + L".tiles";
+                    if (first != Result::Cancelled) problem = bad("interruption not seen");
+                    else if (!platform::fileExists(tilesDir + L"/band_00000.png")) problem = bad("band not kept");
+                    else if (still(t, nullptr, e, logText) != Result::Ok) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else if (bytesOf(t, L"rgb24") != ref8) problem = bad("resumed differs");
+                    else if (platform::dirExists(tilesDir)) problem = bad("tiles folder left");
+                }
+                check("selftest.fmt_tiles", problem);
+            }
+            // modes VR : yeux cote a cote, haut / bas, anaglyphe, repères du fulldome, six faces de cubemap a l'endroit
+            if (formatAvailable(ffmpeg, "h264", "png")) {
+                std::wstring problem;
+                auto stillOf = [&](const std::wstring& shader, const Settings& st, std::wstring& e) {
+                    Hooks Hs;
+                    Hs.snapshot = true;
+                    Hs.log = [](const std::wstring&) {};
+                    return convertFile(shader, exeDir, st, Hs, e) == Result::Ok;
+                };
+                // niveau (r, g, b) du pixel (x, y), premiere ligne en haut, d'une image PNG ; {-1} si illisible
+                auto pixelOf = [&](const std::wstring& file, int w, int h, int x, int y, int rgb[3]) {
+                    const std::string px = decodeRaw(file, L"rgb24", L"");
+                    if (px.size() != (size_t)w * h * 3) return false;
+                    for (int c = 0; c < 3; c++) rgb[c] = (uint8_t)px[((size_t)y * w + x) * 3 + c];
+                    return true;
+                };
+                const std::wstring eye = put(L"p17_eye.glsl", "void mainVR(out vec4 o, in vec2 fc, in vec3 ro, in vec3 rd){ o = vec4(vec3(clamp(0.5 + 10.0 * ro.x, 0.0, 1.0)), 1.0); }\n");
+                struct EyeCase {
+                    const char* mode;
+                    int w, h, x, y, want;
+                };
+                std::wstring e;
+                int px[3] = {0, 0, 0};
+                for (const EyeCase& c : {EyeCase{"stereo", 64, 128, 32, 32, 46}, EyeCase{"stereo", 64, 128, 32, 96, 209}, EyeCase{"sbs", 128, 64, 32, 32, 46},
+                                         EyeCase{"sbs", 128, 64, 96, 32, 209}}) {
+                    Settings st = seqSettings(1);
+                    st.vr = c.mode;
+                    st.width = c.w;
+                    st.height = c.h;
+                    if (!stillOf(eye, st, e)) {
+                        problem = e.empty() ? TX("selftest.render_failed") : e;
+                        break;
+                    }
+                    if (!pixelOf(outputPath(eye, st.outdir, L".png"), c.w, c.h, c.x, c.y, px) || std::abs(px[0] - c.want) > 6) {
+                        problem = bad(std::string(c.mode) + " eye " + std::to_string(px[0]) + " want " + std::to_string(c.want));
+                        break;
+                    }
+                }
+                if (problem.empty()) {  // anaglyphe : le rouge vient de l'oeil gauche, le vert et le bleu de l'oeil droit
+                    Settings st = seqSettings(1);
+                    st.vr = "anaglyph";
+                    st.width = st.height = 64;
+                    if (!stillOf(eye, st, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else if (!pixelOf(outputPath(eye, st.outdir, L".png"), 64, 64, 32, 32, px) || std::abs(px[0] - 46) > 6 || std::abs(px[1] - 209) > 6 || std::abs(px[2] - 209) > 6)
+                        problem = bad("anaglyph " + std::to_string(px[0]) + "," + std::to_string(px[1]) + "," + std::to_string(px[2]));
+                }
+                const std::wstring dirs = put(L"p17_dirs.glsl", "void mainVR(out vec4 o, in vec2 fc, in vec3 ro, in vec3 rd){ o = vec4(0.5 + 0.5 * rd, 1.0); }\n");
+                if (problem.empty()) {  // fulldome : zenith au centre, devant en bas, droite = +x, noir hors du cercle
+                    Settings st = seqSettings(1);
+                    st.vr = "fulldome";
+                    st.width = st.height = 64;
+                    const std::wstring file = outputPath(dirs, st.outdir, L".png");
+                    if (!stillOf(dirs, st, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else if (!pixelOf(file, 64, 64, 32, 32, px) || px[1] < 250 || std::abs(px[0] - 128) > 8 || std::abs(px[2] - 128) > 8)
+                        problem = bad("zenith " + std::to_string(px[0]) + "," + std::to_string(px[1]) + "," + std::to_string(px[2]));
+                    else if (!pixelOf(file, 64, 64, 32, 60, px) || px[2] > 14 || std::abs(px[1] - 149) > 12 || std::abs(px[0] - 128) > 8)
+                        problem = bad("front " + std::to_string(px[0]) + "," + std::to_string(px[1]) + "," + std::to_string(px[2]));
+                    else if (!pixelOf(file, 64, 64, 62, 32, px) || px[0] < 245)
+                        problem = bad("right " + std::to_string(px[0]));
+                    else if (!pixelOf(file, 64, 64, 1, 1, px) || px[0] > 3 || px[1] > 3 || px[2] > 3)
+                        problem = bad("corner not black");
+                }
+                if (problem.empty()) {  // six faces : l'axe de chaque face au centre, et la haut / droite de l'image
+                    Settings st = seqSettings(1);
+                    st.width = st.height = 32;
+                    Hooks Hs;
+                    Hs.log = [](const std::wstring&) {};
+                    std::vector<std::wstring> made;
+                    if (!renderCubeFaces(dirs, exeDir, st, Hs, made, e) || made.size() != 6) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else {
+                        struct Face {
+                            int face, x, y;
+                            int ch;       // composante a verifier
+                            bool high;    // vraie : proche de 255 ; fausse : proche de 0
+                        };
+                        // centre de chaque face : px -> r haut, nx -> r bas, py -> g haut, ny -> g bas, pz -> b haut, nz -> b bas ;
+                        // haut de la face +x : g haut ; droite de la face +x : b haut (+z) ; haut de la face +y : b haut (+z) ; droite de la face +z : r bas (-x)
+                        const Face cases[] = {{0, 16, 16, 0, true}, {1, 16, 16, 0, false}, {2, 16, 16, 1, true}, {3, 16, 16, 1, false}, {4, 16, 16, 2, true}, {5, 16, 16, 2, false},
+                                              {0, 16, 1, 1, true}, {0, 30, 16, 2, true}, {2, 16, 1, 2, true}, {4, 30, 16, 0, false}};
+                        for (const Face& c : cases) {
+                            if (!pixelOf(made[(size_t)c.face], 32, 32, c.x, c.y, px)) {
+                                problem = bad("face file " + std::to_string(c.face));
+                                break;
+                            }
+                            const bool ok = c.high ? px[c.ch] >= 190 : px[c.ch] <= 65;
+                            if (!ok) {
+                                problem = bad("face " + std::to_string(c.face) + " at " + std::to_string(c.x) + "," + std::to_string(c.y) + " ch" + std::to_string(c.ch) + "=" + std::to_string(px[c.ch]));
+                                break;
+                            }
+                        }
+                    }
+                }
+                check("selftest.fmt_vrmodes", problem);
+            }
+            // carte de chaleur : la moitie droite de l'ecran est chere, l'image est teintee, les chiffres sont rendus
+            {
+                std::wstring problem;
+                const std::wstring heavy = put(L"p17_heavy.glsl",
+                                               "void mainImage(out vec4 o, in vec2 p){ vec2 u = p / iResolution.xy; float a = 0.0;"
+                                               " if (u.x > 0.5) { for (int i = 0; i < 900; i++) a += sin(float(i) * u.x + iTime) * cos(a + u.y); }"
+                                               " o = vec4(u, 0.5 + 0.5 * sin(a), 1.0); }\n");
+                Settings sp = base("h264", "png", 8);
+                sp.width = 1920;
+                sp.height = 1080;
+                Hooks H;
+                H.log = [](const std::wstring&) {};
+                HeatStats hs;
+                std::wstring file, e;
+                if (!renderHeatmap(heavy, exeDir, sp, 8, 4, -1, H, hs, file, e)) problem = bad("heatmap " + U8(e));
+                else {
+                    double left = 0, right = 0;
+                    for (int r = 0; r < hs.rows; r++)
+                        for (int c = 0; c < hs.cols; c++) (c < hs.cols / 2 ? left : right) += hs.tileMs[(size_t)r * hs.cols + c];
+                    uint8_t r0, g0, b0, r1, g1, b1;
+                    heatColor(0, r0, g0, b0);
+                    heatColor(1, r1, g1, b1);
+                    const std::string img = decodeRaw(file, L"rgb24", L"");
+                    if (hs.tileMs.size() != 32 || right < 1.5 * left || hs.hotCol < hs.cols / 2 || hs.hotShare <= 0 || hs.maxMs < hs.minMs)
+                        problem = bad("tiles left " + std::to_string(left) + " right " + std::to_string(right));
+                    else if (b0 <= r0 || r1 <= b1) problem = bad("colour ramp");
+                    else if (img.size() != (size_t)960 * 540 * 3) problem = bad("image size " + std::to_string(img.size()));
+                    else if (describeHeat(hs).empty()) problem = bad("figures");
+                }
+                check("selftest.fmt_heatmap", problem);
+            }
+            // temps GPU par passe dans le rapport de rendu
+            if (formatAvailable(ffmpeg, "h264", "mp4")) {
+                std::wstring problem;
+                const std::wstring hist = put(L"p17_hist.glsl", "// iChannel0=bufferA\nvoid mainImage(out vec4 o, in vec2 p){ o = texture(iChannel0, p / iResolution.xy); }\n");
+                put(L"p17_hist.bufferA.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(0.25, 0.5, 0.75, 1.0); }\n");
+                Settings sv = base("h264", "mp4", 8);
+                sv.duration = 1;
+                sv.report = "json";
+                std::wstring e;
+                std::string logText;
+                if (!renderOne(hist, sv, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    std::string js;
+                    const std::wstring file = outputFile(hist, sv, false);
+                    readFile(file.substr(0, file.find_last_of(L'.')) + L".report.json", js);
+                    const size_t g = js.find("\"gpu_ms\": {");
+                    if (g == std::string::npos || js.find("\"sampled_frames\": 10", g) == std::string::npos) problem = bad("gpu_ms missing");
+                    else {
+                        double image = 0, buffers = -1;
+                        const size_t pi = js.find("\"image\": ", g), pb = js.find("\"buffers\": ", g);
+                        if (pi != std::string::npos) image = atof(js.c_str() + pi + 9);
+                        if (pb != std::string::npos) buffers = atof(js.c_str() + pb + 11);
+                        if (image <= 0 || buffers <= 0) problem = bad("passes " + std::to_string(image) + "," + std::to_string(buffers));
+                    }
+                }
+                check("selftest.fmt_gpupasses", problem);
             }
         }
     }
