@@ -25,6 +25,11 @@ Format: one section per version, newest first. The section of a tagged version i
 - Poster by tiles: a still image larger than 8192 pixels (or than the GPU allows, up to 65536) is computed tile by tile with the whole `iResolution` and a shifted `fragCoord`, identical to a single render; PNG bands kept to resume, supersampling, 16 bits (`depth=10`), `samples`, `printdpi=300`; `tile=` to choose the tile size.
 - GPU cost map (`--heatmap[=16x9]`, Images menu): the image tinted from blue to red by the GPU time of each zone, with the figures in the log; average GPU time per frame of the image, the buffers and the post-processing in the log and in the render report (`gpu_ms`).
 - VR projections for `mainVR`: `vr=sbs` (side by side), `vr=anaglyph` (red-cyan), `vr=fulldome` (180° fisheye square), spherical metadata for the stereo modes; `--cubefaces[=size]` writes the six upright cubemap faces.
+- Publication targets (`target=tiktok`, `youtube-shorts`, `instagram-reels`, `discord-8mb`… and your own in `presets/targets.ini`): size, cadence, codec and weight of the platform, with a warning when the duration or the shader goes beyond; target file size (`targetsize=8MB`, two passes, corrected until the file fits); centred crop (`crop=9:16`).
+- Master cache (`mastercache=1`): one lossless render, every format derived from it by ffmpeg without the GPU, bounded by `cachemax` GB, emptied by `--cache-purge` or a button.
+- Reproducible video (`embed=1`, `--reproduce`), license and credit read in the header of the shader (`autocredit=1`, warning for non-commercial licenses), integrity check (`--verify`, Images menu) against the SHA-256 written in the render report, animated GIF / WebP preview (`animpreview`).
+- Standalone HTML page (WebGL 2) from a shader and its passes (`--export-html`, Images menu), checked against the render of the program in a headless browser.
+- “Publication” page of the Output window (Windows) and section of the settings card (Linux and macOS); eight new self-test cases.
 
 ## 1.9.0 — 2026-10-12
 

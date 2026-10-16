@@ -26,6 +26,10 @@ struct OutputFields {
     // Temps et boucle : boucle sans couture (0 aucune, 1 fondu, 2 aller-retour), duree du fondu, courbe de temps, vitesse, echantillons de l'image fixe
     int loopMode = 0;
     std::wstring loopFade, timemap, speed, samples;
+    // Publication : cible, poids cible, recadrage, maitre en cache et sa taille maximale, source embarquee, apercu anime (0 aucun, 1 GIF, 2 WebP), credit du shader
+    std::wstring target, targetSize, crop, cacheMax;
+    bool masterCache = false, embed = false, autoCredit = false;
+    int animPreview = 0;
     bool precheck = false;       // controle qualite avant le rendu
     int stillFormat = 0;         // 0 PNG, 1 TIFF
     bool audioFollow = false;    // le son suit la vitesse constante

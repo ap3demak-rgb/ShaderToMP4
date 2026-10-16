@@ -89,6 +89,7 @@ std::string reportJson(const RenderReport& r) {
     field("bottleneck", bn.empty() ? "null" : jstr(bn));
     field("encoder_wait_percent", jnum(reportWaitPercent(r)));
     field("bytes", std::to_string(r.bytes));
+    field("sha256", r.sha256.empty() ? std::string("null") : jstr(r.sha256));
     field("codec", jstr(r.codec));
     field("container", jstr(r.container));
     field("encoder", jstr(r.encoder));
@@ -120,6 +121,7 @@ std::string reportText(const RenderReport& r) {
     const std::string bn = reportBottleneck(r);
     if (!bn.empty()) line("log.report.bottleneck", TXF(bn == "encoder" ? "log.report.bn_encoder" : "log.report.bn_gpu", i18n::fixed(reportWaitPercent(r), 0).c_str()));
     if (r.bytes > 0) line("log.report.bytes", sizeText(r.bytes));
+    if (!r.sha256.empty()) line("log.report.sha", W(r.sha256));
     if (!r.container.empty()) line("log.report.format", W(r.codec) + L" / " + W(r.container) + L" / " + W(r.encoder));
     if (r.gpuSamples > 0)
         line("log.report.gpu", TXF("log.report.gpu_value", i18n::fixed(r.gpuImageMs, 2).c_str(), i18n::fixed(r.gpuBufferMs, 2).c_str(), i18n::fixed(r.gpuPostMs, 2).c_str(), r.gpuSamples));

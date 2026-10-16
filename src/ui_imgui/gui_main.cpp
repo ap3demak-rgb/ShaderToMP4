@@ -318,6 +318,8 @@ void drawShaders(App& a, float height) {
             ImGui::Separator();
             if (ImGui::Selectable(T("ui.menu.check").c_str())) m.startJobs(true, 7);
             if (ImGui::Selectable(T("ui.menu.estimate").c_str())) m.startJobs(true, 8);
+            if (ImGui::Selectable(T("ui.menu.exporthtml").c_str())) m.startJobs(true, 10);
+            if (ImGui::Selectable(T("ui.menu.verify").c_str())) m.startJobs(true, 11);
             ImGui::Separator();
             for (int i = 0; i < kSheetGridCount; i++)
                 if (ImGui::Selectable(TXF8("ui.menu.sheet", kSheetGrids[i][0], kSheetGrids[i][1]).c_str())) m.startJobs(true, 2, kSheetGrids[i][0], kSheetGrids[i][1]);
@@ -750,6 +752,36 @@ void drawOutput(App& a) {
     ImGui::InputText("##dpi", f.dpi, sizeof(f.dpi));
     note("ui.output.hint_time");
     if (button("ui.output.findloop_btn", "eye", 0, !a.model.running() && !a.model.paths.empty(), 0, "ui.output.hint_time")) a.model.startJobs(true, 4);
+
+    section("ui.output.sec_publish");
+    row("ui.output.target");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##target", f.target, sizeof(f.target));
+    row("ui.output.targetsize");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##targetsize", f.targetSize, sizeof(f.targetSize));
+    row("ui.output.crop");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##crop", f.crop, sizeof(f.crop));
+    row("ui.output.autocredit");
+    int ac = f.autoCredit ? 1 : 0;
+    if (comboList("##autocredit", &ac, offOn, width)) f.autoCredit = ac == 1;
+    row("ui.output.animpreview");
+    comboList("##animpreview", &f.animPreview, {T("ui.output.off"), "GIF", "WebP"}, width);
+    note("ui.output.hint_publish");
+
+    section("ui.output.sec_trace");
+    row("ui.output.embed");
+    int em = f.embed ? 1 : 0;
+    if (comboList("##embed", &em, offOn, width)) f.embed = em == 1;
+    row("ui.output.mastercache");
+    int mc = f.masterCache ? 1 : 0;
+    if (comboList("##mastercache", &mc, offOn, width)) f.masterCache = mc == 1;
+    row("ui.output.cachemax");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##cachemax", f.cacheMax, sizeof(f.cacheMax));
+    note("ui.output.hint_trace");
+    if (button("ui.output.purge_btn", "trash", 0, !a.model.running(), 0, "ui.output.hint_trace")) a.model.purgeCache();
 }
 
 // Reglage impose par le shader selectionne : le champ est grise (il montre la valeur du shader)

@@ -16,6 +16,7 @@ struct RenderReport {
     double wallSeconds = 0;             // duree totale du rendu, preparation et assemblage compris
     double loopSeconds = 0;             // duree de la boucle de rendu (images seulement)
     double waitSeconds = 0;             // temps passe par le rendu a attendre l'encodeur
+    std::string sha256;                 // somme de controle du fichier produit (verifiee par --verify)
     uint64_t bytes = 0;                 // taille du fichier produit
     std::string codec, container, encoder;
     double gpuImageMs = 0, gpuBufferMs = 0, gpuPostMs = 0;  // temps GPU moyen par image (ms), mesure sur quelques images ; 0 = non mesure

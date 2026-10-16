@@ -65,6 +65,15 @@ struct Settings {
     int warmup = 0;               // images simulees avant la premiere (tampons chauffes, iFrame decale de N) ; 0 = aucune
     double chunk = 30;             // rendu par parties de N secondes, reprenables (0 = jamais)
     std::string report = "off";    // rapport de rendu a cote de la video : off | json | text
+    // Publication : cible, poids, recadrage, fichier maitre en cache, source embarquee, apercu anime, credit pris dans le shader
+    std::string target;              // identifiant d'une cible de publication (core/publish.h) ; "" = aucune
+    double targetSizeMB = 0;         // poids cible du fichier en Mo (1 Mo = 1 000 000 octets), 0 = qualite constante ou debit donne
+    std::string crop;                // recadrage centre apres le rendu, « 9:16 » : version verticale ou carree sans nouveau calcul
+    bool masterCache = false;        // rend une fois vers un maitre sans perte (cache/) dont tous les formats sont tires
+    double cacheMaxGB = 10;          // taille maximale du cache en Go
+    bool embed = false;              // le shader, ses passes et les reglages voyagent dans le fichier (--reproduce)
+    std::string animPreview = "off"; // off | gif | webp : apercu anime de 3 s a cote de la video
+    bool autoCredit = false;         // credit incruste et metadonnees d'auteur et de licence pris dans l'en-tete du shader
     bool precheck = false;           // controle qualite rapide (flashs, valeurs invalides) avant chaque rendu video : avertit, ne bloque jamais
     std::string stillFormat = "png";  // image fixe : png | tiff (16 bits par composante avec depth=10)
     int tile = 0;                  // image fixe : cote des tuiles en pixels (0 = automatique : tuiles des que l'image depasse 8192 pixels ou la limite du GPU)

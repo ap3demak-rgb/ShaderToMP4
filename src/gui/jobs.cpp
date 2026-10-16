@@ -7,6 +7,9 @@
 #include "core/gl.h"
 #include "core/outputopts.h"
 #include "core/params.h"
+#include "core/formats.h"
+#include "core/publish.h"
+#include "core/webexport.h"
 #include "core/compare.h"
 #include "core/looptools.h"
 #include "core/quality.h"
@@ -129,6 +132,23 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
                 delete cd;
                 r = Result::Failed;
             }
+        } else if (g.imageKind == 10) {  // page HTML autonome a cote du shader, sans rendu
+            std::wstring page;
+            if (exportHtmlBeside(jobs[i].second, g.exeDir, run, page, e)) postLog(L"  " + TXF("log.html_written", page.c_str()));
+            else r = Result::Failed;
+        } else if (g.imageKind == 11) {  // controle d'integrite de la video deja produite
+            std::vector<std::wstring> lines;
+            bool same = true;
+            const std::wstring video = outputFile(jobs[i].second, run, false);
+            if (!fileExists(video)) {
+                e = TXF("error.verify_read", video.c_str());
+                r = Result::Failed;
+            } else if (verifyLines(findFfmpeg(g.exeDir), video, lines, same, e)) {
+                for (const std::wstring& l : lines) postLog(L"  " + l);
+                if (!same) r = Result::Failed, e = TX("log.report.status_failed");
+            } else {
+                r = Result::Failed;
+            }
         } else if (g.snapshotRun && g.imageKind == 6) {  // carte de chaleur du cout GPU par zone
             HeatStats hs;
             std::wstring heatFile;
@@ -178,6 +198,8 @@ void showImageMenu() {
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, 7, TX("ui.menu.check").c_str());
     AppendMenuW(m, MF_STRING, 8, TX("ui.menu.estimate").c_str());
+    AppendMenuW(m, MF_STRING, 9, TX("ui.menu.exporthtml").c_str());
+    AppendMenuW(m, MF_STRING, 12, TX("ui.menu.verify").c_str());
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     for (int i = 0; i < kSheetGridCount; i++)
         AppendMenuW(m, MF_STRING, (UINT_PTR)(10 + i), TXF("ui.menu.sheet", kSheetGrids[i][0], kSheetGrids[i][1]).c_str());
@@ -193,6 +215,8 @@ void showImageMenu() {
     else if (cmd == 6) startJobs(true, 6);
     else if (cmd == 7) startJobs(true, 7);
     else if (cmd == 8) startJobs(true, 8);
+    else if (cmd == 9) startJobs(true, 10);
+    else if (cmd == 12) startJobs(true, 11);
     else if (cmd >= 10 && cmd < 10 + kSheetGridCount) startJobs(true, 2, kSheetGrids[cmd - 10][0], kSheetGrids[cmd - 10][1]);
 }
 
@@ -273,7 +297,7 @@ void startJobs(bool snapshot, int imageKind, int cols, int rows, bool atPreview,
     if (snapshot) {
         g.snapshotPath = imageKind == 3 || imageKind == 4 || imageKind == 5 || imageKind == 6 || imageKind >= 7 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
     }
-    setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot && imageKind == 7 ? "status.checking" : snapshot && imageKind == 8 ? "status.estimating" : snapshot && imageKind == 9 ? "status.comparing" : snapshot ? "status.rendering_image" : "status.rendering"));
+    setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot && imageKind == 7 ? "status.checking" : snapshot && imageKind == 8 ? "status.estimating" : snapshot && imageKind == 9 ? "status.comparing" : snapshot && imageKind == 10 ? "status.exporting_html" : snapshot && imageKind == 11 ? "status.verifying" : snapshot ? "status.rendering_image" : "status.rendering"));
     g.worker = std::thread(runJobs, std::move(jobs));
 }
 

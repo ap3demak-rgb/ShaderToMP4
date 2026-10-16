@@ -13,6 +13,8 @@
 #include "core/looptools.h"
 #include "core/quality.h"
 #include "core/outputopts.h"
+#include "core/publish.h"
+#include "core/webexport.h"
 #include "core/i18n.h"
 #include "core/postfx.h"
 #include "core/render.h"
@@ -157,6 +159,14 @@ void Model::fromSettings(const Settings& real) {
     copyTo(f.timemap, sizeof(f.timemap), U8(o.timemap));
     copyTo(f.speed, sizeof(f.speed), U8(o.speed));
     f.precheck = o.precheck;
+    copyTo(f.target, sizeof(f.target), U8(o.target));
+    copyTo(f.targetSize, sizeof(f.targetSize), U8(o.targetSize));
+    copyTo(f.crop, sizeof(f.crop), U8(o.crop));
+    copyTo(f.cacheMax, sizeof(f.cacheMax), U8(o.cacheMax));
+    f.masterCache = o.masterCache;
+    f.embed = o.embed;
+    f.autoCredit = o.autoCredit;
+    f.animPreview = o.animPreview;
     f.stillFormat = o.stillFormat;
     f.audioFollow = o.audioFollow;
     copyTo(f.samples, sizeof(f.samples), U8(o.samples));
@@ -243,6 +253,14 @@ bool Model::toSettings(Settings& s, std::wstring& err) const {
     o.timemap = W(f.timemap);
     o.speed = W(f.speed);
     o.precheck = f.precheck;
+    o.target = W(f.target);
+    o.targetSize = W(f.targetSize);
+    o.crop = W(f.crop);
+    o.cacheMax = W(f.cacheMax);
+    o.masterCache = f.masterCache;
+    o.embed = f.embed;
+    o.autoCredit = f.autoCredit;
+    o.animPreview = f.animPreview;
     o.stillFormat = f.stillFormat;
     o.audioFollow = f.audioFollow;
     o.samples = W(f.samples);
@@ -703,6 +721,23 @@ void Model::runJobsThread(std::vector<std::pair<int, std::wstring>> jobs) {
             ev.kind = Event::Compare;
             if (::compareVersions(jobs[i].second, cmpBefore_, cmpAfter_, exeDir, run, run.start, ev.px, ev.px2, ev.w, ev.h, e)) post(std::move(ev));
             else r = Result::Failed;
+        } else if (imageKind_ == 10) {  // page HTML autonome a cote du shader, sans rendu
+            std::wstring page;
+            if (exportHtmlBeside(jobs[i].second, exeDir, run, page, e)) postLog(L"  " + TXF("log.html_written", page.c_str()));
+            else r = Result::Failed;
+        } else if (imageKind_ == 11) {  // controle d'integrite de la video deja produite
+            std::vector<std::wstring> lines;
+            bool same = true;
+            const std::wstring video = outputFile(jobs[i].second, run, false);
+            if (!fileExists(video)) {
+                e = TXF("error.verify_read", video.c_str());
+                r = Result::Failed;
+            } else if (verifyLines(findFfmpeg(exeDir), video, lines, same, e)) {
+                for (const std::wstring& l : lines) postLog(L"  " + l);
+                if (!same) r = Result::Failed, e = TX("log.report.status_failed");
+            } else {
+                r = Result::Failed;
+            }
         } else if (snapshotRun_ && imageKind_ == 6) {  // carte de chaleur du cout GPU par zone
             HeatStats hs;
             std::wstring heatFile;
@@ -860,7 +895,7 @@ void Model::startJobs(bool snapshot, int imageKind, int cols, int rows, bool atP
     progress = 0;
     progressFailed = false;
     if (snapshot) snapshotPath_ = imageKind == 3 || imageKind == 4 || imageKind == 5 || imageKind == 6 || imageKind >= 7 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
-    setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot && imageKind == 7 ? "status.checking" : snapshot && imageKind == 8 ? "status.estimating" : snapshot && imageKind == 9 ? "status.comparing" : snapshot ? "status.rendering_image" : "status.rendering"));
+    setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot && imageKind == 7 ? "status.checking" : snapshot && imageKind == 8 ? "status.estimating" : snapshot && imageKind == 9 ? "status.comparing" : snapshot && imageKind == 10 ? "status.exporting_html" : snapshot && imageKind == 11 ? "status.verifying" : snapshot ? "status.rendering_image" : "status.rendering"));
     worker_ = std::thread(&Model::runJobsThread, this, std::move(jobs));
 }
 
@@ -947,6 +982,10 @@ void Model::cancelRun() {
     cancel_ = true;
     pause_ = false;
     setStatus(TX("status.cancelling"));
+}
+
+void Model::purgeCache() {
+    appendLog(TXF("log.cache_purged", (double)cachePurge(exeDir) / 1e6));
 }
 
 void Model::openOutputFolder() {

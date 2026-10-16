@@ -24,6 +24,8 @@
 #include "timemap.h"
 #include "looptools.h"
 #include "quality.h"
+#include "publish.h"
+#include "keyboard.h"
 #include "util.h"
 #include "app_info.h"
 #include "platform/platform.h"
@@ -167,7 +169,10 @@ static Result convertOne(const std::wstring& shaderPath, const std::wstring& exe
     rep.loopPerfect = rd.loopPerfect;
     rep.warnings = warnings;
     uint64_t bytes = 0;
-    if (!rd.output.empty() && platform::fileSize(rd.output, bytes)) rep.bytes = bytes;
+    if (!rd.output.empty() && platform::fileSize(rd.output, bytes)) {
+        rep.bytes = bytes;
+        if (result == Result::Ok) platform::sha256File(rd.output, rep.sha256);
+    }
     // a cote de la video : <nom>.report.json / .txt (sans sortie connue : a cote du shader, dans le dossier de sortie choisi)
     std::wstring stem = rd.output.empty() ? outputFile(shaderPath, rd.s, false) : rd.output;
     const size_t dot = stem.find_last_of(L'.');
@@ -202,6 +207,23 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         if (s.channel[i].empty() && code.find("iChannel" + std::to_string(i)) != std::string::npos)
             H.log(L"  " + TXF("log.warn_ichannel", i, i));
     if (!forced && !sameSettings(s, base)) H.log(L"  " + TX("log.shader_overrides"));
+    Target activeTarget;  // cible de publication : ses valeurs s'appliquent, sauf celles que le shader impose
+    bool haveTarget = false;
+    if (!s.target.empty() && !H.previewFrame && !H.snapshot) {
+        const std::vector<Target> all = publishTargets(exeDir);
+        if (const Target* tg = findTarget(all, s.target)) {
+            std::vector<std::string> skip;
+            for (const Override& o : shaderOverrides(shaderPath)) skip.push_back(o.key);
+            if (forced)
+                for (const auto& kv : *forced) skip.push_back(kv.first);
+            activeTarget = *tg;
+            haveTarget = true;
+            applyTarget(s, *tg, skip);
+            H.log(L"  " + TXF("log.target_applied", tg->label.c_str()));
+        } else {
+            H.log(L"  " + TXF("log.target_unknown", W(s.target).c_str()));
+        }
+    }
     s.width = std::max(16, s.width & ~1);
     s.height = std::max(16, s.height & ~1);
     if (rd) {
@@ -250,6 +272,18 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             H.log(L"  " + TX("log.interp_8bit"));
         }
     }
+    LicenseInfo lic;  // licence et auteur lus dans l'en-tete du shader
+    if (videoMode) {
+        lic = detectLicense(code);
+        if (lic.found) {
+            H.log(L"  " + TXF(lic.assumed ? "log.license_assumed" : "log.license", lic.id.empty() ? L"?" : licenseText(lic).c_str(), lic.author.empty() ? L"?" : lic.author.c_str()));
+            if (lic.nonCommercial) H.log(L"  " + TX("log.license_nc"));
+            if (s.autoCredit && s.credit.empty() && (!lic.author.empty() || !lic.title.empty())) {  // credit incruste : titre, auteur et licence
+                s.credit = (lic.title.empty() ? L"" : lic.title + L" - ") + lic.author + (lic.id.empty() ? L"" : L" (" + licenseText(lic) + L")");
+                H.log(L"  " + TXF("log.credit_auto", s.credit.c_str()));
+            }
+        }
+    }
     const bool deep = s.depth >= 10;
     const size_t bpc = deep ? 2 : 1;  // octets par composante lue sur le GPU
     const int B = std::min(64, std::max(1, s.blur));  // sous-images par image (flou de mouvement)
@@ -290,11 +324,24 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         rd->height = s.height;
     }
     const int W_ = s.width, H_ = s.height;
-    int OW = W_, OH = H_;  // taille de sortie : celle du rendu, ou celle de la mise a l'echelle (scale=)
-    if (videoMode && !outputSize(s, OW, OH)) {
-        err = TXF("error.scale_invalid", W(s.scale).c_str());
+    int CW = W_, CH = H_;  // zone gardee apres le recadrage (crop=) : tout le rendu sans recadrage
+    if (videoMode && !s.crop.empty() && !cropSize(s.crop, W_, H_, CW, CH)) {
+        err = TXF("error.crop_invalid", W(s.crop).c_str());
         return Result::Failed;
     }
+    int OW = CW, OH = CH;  // taille de sortie : celle de la zone gardee, ou celle de la mise a l'echelle (scale=)
+    if (videoMode) {
+        Settings sc = s;
+        sc.width = CW;
+        sc.height = CH;
+        if (!outputSize(sc, OW, OH)) {
+            err = TXF("error.scale_invalid", W(s.scale).c_str());
+            return Result::Failed;
+        }
+    }
+    if (videoMode && haveTarget)
+        for (const std::wstring& w : checkTarget(activeTarget, s, totalSec, OW, OH)) H.log(L"  " + w);
+    if (videoMode && (CW != W_ || CH != H_)) H.log(L"  " + TXF("log.crop_applied", W_, H_, CW, CH));
     const int SS = preview ? 1 : std::min(4, std::max(1, s.ss));  // supersampling : reduit par ffmpeg
     const int FW = W_ * SS, FH = H_ * SS;  // taille complete du rendu
     // Image fixe plus grande que le GPU ne le permet (ou `tile` demande) : calculee par tuiles
@@ -373,7 +420,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             err = TXF("error.gif_too_big", OW, OH, (long long)N);
             return Result::Failed;
         }
-        if (OW != W_ || OH != H_) H.log(L"  " + TXF("log.scale_output", W_, H_, OW, OH, W(s.scaleFilter).c_str()));
+        if (OW != CW || OH != CH) H.log(L"  " + TXF("log.scale_output", CW, CH, OW, OH, W(s.scaleFilter).c_str()));
         if (s.interp > 0) H.log(L"  " + TXF("log.interp", s.fps, s.interp));
         if (s.alpha) H.log(L"  " + TX("log.alpha_on"));
         if (s.hdr != "off") H.log(L"  " + TXF("log.hdr_on", s.hdr == "pq" ? L"HDR10 (PQ, BT.2020)" : L"HLG (BT.2020)", s.hdrWhite));
@@ -1003,8 +1050,9 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
 
     const std::wstring fpsStr = wfmt(L"%g", s.fps);
     // reduction du supersampling (area), puis mise a l'echelle de sortie (scale= : filtre au choix) ; les deux finissent par une virgule
-    const std::wstring ssFilter = (SS > 1 ? L"scale=" + std::to_wstring(W_) + L":" + std::to_wstring(H_) + L":flags=area," : L"") +
-                                  (videoMode ? outScaleFilter(s, W_, H_, OW, OH) : L"");
+    const std::wstring cropFilter = (videoMode && (CW != W_ || CH != H_)) ? wfmt(L"crop=%d:%d,", CW, CH) : std::wstring();
+    const std::wstring stageB = cropFilter + (videoMode ? outScaleFilter(s, CW, CH, OW, OH) : L"");  // ce qui reste a faire apres le rendu : recadrage, mise a l'echelle
+    const std::wstring ssFilter = (SS > 1 ? L"scale=" + std::to_wstring(W_) + L":" + std::to_wstring(H_) + L":flags=area," : L"") + stageB;
     const std::wstring head = L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -y" +
         std::wstring(deep ? L" -f rawvideo -pix_fmt rgba64le -video_size " : L" -f rawvideo -pix_fmt rgba -video_size ") + std::to_wstring(RW) + L"x" + std::to_wstring(RH) +
         L" -framerate " + fpsStr + L" -i -";
@@ -1076,17 +1124,29 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         title.erase(std::remove(title.begin(), title.end(), L'"'), title.end());
         metaArgs = L" -metadata \"title=" + title + L"\" -metadata \"comment=" + wfmt(L"%dx%d, %g fps, ", OW, OH, s.interp > 0 ? s.interp : s.fps) +
                    APP_NAME_WSTR + L" " + APP_VER_WSTR + L"\"";
+        if (lic.found) {  // auteur et licence du shader dans le fichier
+            auto clean = [](std::wstring v) {
+                v.erase(std::remove(v.begin(), v.end(), L'"'), v.end());
+                return v;
+            };
+            if (!lic.author.empty()) metaArgs += L" -metadata \"author=" + clean(lic.author) + L"\"";
+            if (!lic.id.empty()) metaArgs += L" -metadata \"license=" + licenseText(lic) + L"\" -metadata \"copyright=" + clean(lic.author) + L" (" + licenseText(lic) + L")\"";
+        }
     }
 
+    const std::wstring masterPix = deep ? L"rgba64le" : s.alpha ? L"bgra" : L"bgr0";  // format des pixels du maitre sans perte
     // Tout ce qui est regle pour une image depuis la boucle de rendu
     using clk = std::chrono::steady_clock;
     double waitSec = 0, loopSec = 0;  // mesure : temps bloque sur ffmpeg / temps total de rendu
 
     // Rend les images [n0, n1) vers ffmpeg -> dest (muxAudio : son inclus). doneBefore : images deja faites (progression).
     auto encodeRange = [&](long long n0, long long n1, const std::wstring& dest, bool muxAudio, long long doneBefore,
-                           std::wstring& e) -> Result {
+                           std::wstring& e, bool master = false) -> Result {
         std::wstring cmd;
-        if (sheet) {  // planche-contact : les N images sont assemblees en grille par le filtre tile (vignettes de 1920 pixels de large au total au plus)
+        if (master) {  // maitre : les images retournees et reduites du sur-echantillonnage, sans perte
+            cmd = head + L" -vf \"vflip" + (SS > 1 ? L",scale=" + std::to_wstring(W_) + L":" + std::to_wstring(H_) + L":flags=area" : std::wstring()) + L"\" -c:v ffv1 -level 3 -pix_fmt " +
+                  masterPix + L" \"" + dest + L"\"";
+        } else if (sheet) {  // planche-contact : les N images sont assemblees en grille par le filtre tile (vignettes de 1920 pixels de large au total au plus)
             const int tw = std::max(160, std::min(W_, 1920 / H.sheetCols)) & ~1;
             cmd = head + L" -vf \"vflip," + ssFilter + wfmt(L"scale=%d:-2:flags=area,tile=%dx%d:padding=4:margin=4:color=0x202020,format=rgb24\"", tw, H.sheetCols, H.sheetRows) +
                   L" -frames:v 1 -pix_fmt rgb24 \"" + dest + L"\"";
@@ -1243,9 +1303,246 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     };
 
     // --- Plan : un seul fichier, ou des parties reprenables puis assemblees ----------
+    // --- Maitre sans perte en cache, taille cible, formats tires du maitre ---------------------------------------------------------------------
+    const bool masterKind = videoMode && (kind == OutKind::Video || kind == OutKind::Gif || kind == OutKind::Webp);
+    const bool wantTarget = videoMode && kind == OutKind::Video && s.targetSizeMB > 0;
+    const bool useMaster = masterKind && (s.masterCache || wantTarget);
+    if (videoMode && !masterKind && (s.masterCache || s.targetSizeMB > 0)) H.log(L"  " + TX("log.master_unsupported"));
+    // Tout ce qui change les images rendues (et rien de ce qui ne change que l'encodage) : l'empreinte du maitre
+    auto frameSig = [&]() {
+        char nums[256];
+        snprintf(nums, sizeof(nums), "|%d|%d|%d|%.9g|%.9g|%lld|%d|%.9g|%.9g|%.9g|%d|%d|%d|%.9g|%d", W_, H_, SS, s.fps, s.start, (long long)N, B, s.shutter, fi, fo, (int)deep, (int)s.alpha,
+                 vrMode, s.vrIpd, s.warmup);
+        std::string sg = code + "|fr|" + bp.allCode() + params.signature() + nums + "|" + tm.canonical() + "|loop:" + s.loopMode + "," + std::to_string(loopFade) + "|" + APP_VER_STR;
+        std::string lutBytes;
+        if (!s.lut.empty()) {
+            const bool absolute = s.lut.size() > 1 && (s.lut[1] == L':' || s.lut[0] == L'/' || s.lut[0] == L'\\');
+            readFile(absolute ? s.lut : shaderDir + s.lut, lutBytes);
+        }
+        sg += "|post:" + s.post + "|" + fnvHex(bp.postCode()) + "|" + fnvHex(lutBytes) + "|" + s.date + "|" + formatMouseKeys(s.mouseKeys) + "|" + formatKeyPresses(s.keys);
+        for (int i = 0; i < 4; i++) {
+            sg += "|ch" + std::to_string(i) + ":" + U8(s.channel[i]) + s.chFilter[i] + s.chWrap[i] + std::to_string(s.chVflip[i]);
+            sg += "|buf" + std::to_string(i) + ":" + std::to_string(s.bufScale[i]) + "," + std::to_string(s.bufW[i]) + "x" + std::to_string(s.bufH[i]);
+        }
+        return sg;
+    };
+    // Lance une commande ffmpeg ; la progression et l'annulation sont suivies. Rend le code de sortie, ou -1 si annule.
+    auto runFfmpeg = [&](const std::wstring& cmd, long long frameTotal) -> int {
+        auto proc = platform::Process::start(platform::splitCommand(cmd), false, true);
+        if (!proc) return -2;
+        std::atomic<long long> frameNow{0};
+        std::atomic<bool> finished{false};
+        std::thread reader([&] {
+            std::string acc;
+            char buf[4096];
+            size_t got;
+            while ((got = proc->readOutput(buf, sizeof(buf))) > 0) {
+                acc.append(buf, got);
+                size_t p;
+                while ((p = acc.find_first_of("\r\n")) != std::string::npos) {
+                    const std::string line = trim(acc.substr(0, p));
+                    acc.erase(0, p + 1);
+                    if (line.compare(0, 6, "frame=") == 0) frameNow = atoll(line.c_str() + 6);
+                    else if (!line.empty()) H.log(TX("log.ffmpeg_prefix") + W(line));
+                }
+            }
+            finished = true;
+        });
+        bool cancelledRun = false;
+        while (!finished) {
+            if (H.cancelled()) {
+                proc->terminate();
+                cancelledRun = true;
+                break;
+            }
+            if (H.progress) H.progress(std::min(frameNow.load(), frameTotal), frameTotal, 0.0, 0.0);
+            platform::sleepMs(100);
+        }
+        reader.join();
+        const int rc = proc->wait();
+        return cancelledRun ? -1 : rc;
+    };
+    // Rend le maitre : par parties reprenables (comme une video), puis assemblage sans reencodage
+    auto renderMaster = [&](const std::wstring& masterPath) -> Result {
+        platform::makeDir(cacheDir(exeDir));
+        const std::wstring base = masterPath.substr(0, masterPath.find_last_of(L'.'));
+        const std::wstring tmpMaster = base + L".part.mkv";
+        const long long cf = s.chunk > 0 ? std::max(1LL, std::llround(s.chunk * s.fps)) : 0;
+        Result r = Result::Ok;
+        if (cf == 0 || N <= cf) {
+            r = encodeRange(0, N, tmpMaster, false, 0, err, true);
+        } else {
+            const std::wstring partsDir = base + L".parts";
+            platform::makeDir(partsDir);
+            const long long nChunks = (N + cf - 1) / cf;
+            long long done = 0;
+            int resumed = 0;
+            std::vector<std::wstring> parts;
+            for (long long i = 0; i < nChunks && r == Result::Ok; i++) {
+                const long long n0 = i * cf, n1 = std::min(N, n0 + cf);
+                const std::wstring part = partsDir + L"/" + wfmt(L"%05lld", i) + L".mkv";
+                parts.push_back(part);
+                if (fileExists(part)) {
+                    done += n1 - n0;
+                    resumed++;
+                    continue;
+                }
+                if (resumed) {
+                    H.log(L"  " + TXF("log.resume", resumed, (long long)nChunks));
+                    resumed = 0;
+                }
+                const std::wstring tmp = partsDir + L"/" + wfmt(L"%05lld", i) + L".part.mkv";
+                r = encodeRange(n0, n1, tmp, false, done, err, true);
+                if (r == Result::Ok && !platform::moveFile(tmp, part, true)) {
+                    err = TXF("error.part_finalize", partsDir.c_str());
+                    r = Result::Failed;
+                }
+                done += n1 - n0;
+            }
+            if (r == Result::Ok) {
+                H.log(L"  " + TX("log.assembling"));
+                std::string list;
+                for (const auto& p : parts) list += "file '" + U8(p.substr(p.find_last_of(L"\\/") + 1)) + "'\n";
+                writeFileAtomic(partsDir + L"/list.txt", list);
+                const int rc = runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -f concat -safe 0 -i \"" + partsDir + L"/list.txt\" -c copy \"" + tmpMaster + L"\"",
+                                          [&](const std::wstring& line) { H.log(TX("log.ffmpeg_prefix") + line); });
+                if (rc != 0) {
+                    err = TX("error.assemble_failed");
+                    r = Result::Failed;
+                } else {
+                    clearDir(partsDir);
+                    platform::removeDir(partsDir);
+                }
+            } else if (r == Result::Cancelled) {
+                H.log(L"  " + TXF("log.interrupted", (long long)std::count_if(parts.begin(), parts.end(), [](const std::wstring& p) { return fileExists(p); }), (long long)nChunks, partsDir.c_str()));
+            }
+        }
+        if (r == Result::Ok && !platform::moveFile(tmpMaster, masterPath, true)) {
+            err = TXF("error.part_finalize", cacheDir(exeDir).c_str());
+            r = Result::Failed;
+        }
+        return r;
+    };
+    // Commande qui tire le fichier final du maitre : memes filtres, memes encodeurs que le rendu direct, sans le retournement ni la reduction du
+    // sur-echantillonnage (deja faits dans le maitre). pass : 0 normal, 1 premiere passe (rien n'est ecrit), 2 seconde passe.
+    auto deriveCmd = [&](const std::wstring& masterPath, int pass, const std::wstring& passLog, int kbps) -> std::wstring {
+        Settings sd = s;
+        if (kbps > 0) sd.bitrate = kbps;
+        std::wstring cmd = L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -stats -y -i \"" + masterPath + L"\"";
+        std::wstring text, oe;
+        overlayFilter(sd, 0.0, OW, OH, ffmpeg, text, oe);
+        if (kind != OutKind::Video) return cmd + L" -vf \"" + stageB + text + imageFilterTail(sd) + L"\"" + imageEncoderArgs(sd) + L" \"" + out + L"\"";
+        const bool withAudio = hasAudio && pass != 1;
+        if (withAudio) cmd += audioArgs;
+        cmd += L" -vf \"" + stageB + text + L"scale=in_range=full:out_range=" + cs.range + L":out_color_matrix=" + cs.matrix + L":flags=accurate_rnd+full_chroma_int," +
+               interpFilter(sd) + outFormat(sd, enc) + L"\"";
+        if (withAudio) cmd += L" -map 0:v -map 1:a" + audioCodecArgs(s.container) + L" -af \"" + audioFilter + L"\" -shortest";
+        else cmd += L" -an";
+        cmd += encoderArgs(sd, enc) + outPixFmtArg(sd, enc) + L" " + cs.tags;
+        if (pass == 1) return cmd + L" -pass 1 -passlogfile \"" + passLog + L"\" -f null -";
+        if (pass == 2) cmd += L" -pass 2 -passlogfile \"" + passLog + L"\"";
+        return cmd + containerArgs(s.container) + metaArgs + L" \"" + out + L"\"";
+    };
+    auto deriveFlow = [&](const std::wstring& masterPath, const std::wstring& fp) -> Result {
+        if (!wantTarget) {
+            const int rc = runFfmpeg(deriveCmd(masterPath, 0, L"", 0), N);
+            if (rc == -1) {
+                platform::removeFile(out);
+                return Result::Cancelled;
+            }
+            if (rc != 0) {
+                err = TX("error.ffmpeg_failed");
+                return Result::Failed;
+            }
+            return Result::Ok;
+        }
+        // Taille cible : debit calcule a partir de la duree, du son et du conteneur ; deux passes pour les encodeurs logiciels ; le fichier obtenu est
+        // mesure et, s'il depasse, l'encodage recommence avec un debit corrige
+        const int audioK = hasAudio ? (s.container == "webm" ? 160 : 192) : 0;
+        BitratePlan plan;
+        if (!planBitrate(s.targetSizeMB, totalSec, audioK, plan)) {
+            err = TXF("error.targetsize_small", s.targetSizeMB, totalSec);
+            return Result::Failed;
+        }
+        const uint64_t targetBytes = (uint64_t)(s.targetSizeMB * 1e6);
+        const bool twoPass = enc == "cpu" && (s.codec == "h264" || s.codec == "h265" || s.codec == "vp9" || s.codec == "av1");
+        const std::wstring passLog = cacheDir(exeDir) + L"/" + fp + L"_pass";
+        int kbps = plan.videoKbps;
+        H.log(L"  " + TXF("log.targetsize_plan", s.targetSizeMB, kbps, audioK, TX(twoPass ? "log.targetsize_2pass" : "log.targetsize_1pass").c_str()));
+        auto cleanPassFiles = [&] {
+            std::vector<platform::DirEntry> files;
+            platform::listDir(cacheDir(exeDir), files);
+            for (const auto& en : files)
+                if (!en.isDir && en.name.compare(0, fp.size() + 5, fp + L"_pass") == 0) platform::removeFile(cacheDir(exeDir) + L"/" + en.name);
+        };
+        for (int attempt = 1; attempt <= 4; attempt++) {
+            if (twoPass) {
+                const int rc1 = runFfmpeg(deriveCmd(masterPath, 1, passLog, kbps), N);
+                if (rc1 == -1) {
+                    cleanPassFiles();
+                    return Result::Cancelled;
+                }
+                if (rc1 != 0) {
+                    cleanPassFiles();
+                    err = TX("error.ffmpeg_failed");
+                    return Result::Failed;
+                }
+            }
+            const int rc = runFfmpeg(deriveCmd(masterPath, twoPass ? 2 : 0, passLog, kbps), N);
+            if (rc == -1) {
+                platform::removeFile(out);
+                cleanPassFiles();
+                return Result::Cancelled;
+            }
+            if (rc != 0) {
+                cleanPassFiles();
+                err = TX("error.ffmpeg_failed");
+                return Result::Failed;
+            }
+            uint64_t sz = 0;
+            platform::fileSize(out, sz);
+            H.log(L"  " + TXF("log.targetsize_attempt", attempt, kbps, (double)sz / 1e6, s.targetSizeMB));
+            if (sz <= targetBytes) {
+                cleanPassFiles();
+                return Result::Ok;
+            }
+            kbps = correctedBitrate(kbps, sz, targetBytes);
+            if (kbps < 20 || attempt == 4) {
+                platform::removeFile(out);
+                cleanPassFiles();
+                err = TXF("error.targetsize_miss", s.targetSizeMB, (double)sz / 1e6);
+                return Result::Failed;
+            }
+        }
+        return Result::Failed;
+    };
+    auto masterFlow = [&]() -> Result {
+        const std::string sg = frameSig();
+        const std::wstring fp = W(fnvHex(sg) + fnvHex(sg + "#2"));
+        const std::wstring masterPath = cacheDir(exeDir) + L"/" + fp + L".mkv";
+        if (fileExists(masterPath)) {  // meme empreinte : aucun calcul GPU
+            H.log(L"  " + TXF("log.master_reuse", masterPath.c_str()));
+        } else {
+            const Result r = renderMaster(masterPath);
+            if (r != Result::Ok) return r;
+        }
+        cacheTouch(masterPath, shaderPath);
+        const Result r = deriveFlow(masterPath, fp);
+        cacheTrim(exeDir, (uint64_t)(std::max(0.1, s.cacheMaxGB) * 1e9), masterPath);
+        if (!s.masterCache) {  // maitre demande seulement par la taille cible : il n'est pas garde
+            platform::removeFile(masterPath);
+            platform::removeFile(masterPath.substr(0, masterPath.find_last_of(L'.')) + L".txt");
+        }
+        return r;
+    };
     const long long chunkFrames = (videoMode && kind == OutKind::Video && s.chunk > 0) ? std::max(1LL, std::llround(s.chunk * s.fps)) : 0;
     Result result = Result::Ok;
-    if (chunkFrames == 0 || N <= chunkFrames) {
+    if (wantTarget && (s.codec.compare(0, 7, "prores_") == 0 || isDnxhr(s.codec))) {  // ces codecs n'ont pas de debit : le poids est fixe par l'image
+        err = TXF("error.targetsize_codec", codecLabel(s.codec));
+        result = Result::Failed;
+    } else if (useMaster) {
+        result = masterFlow();
+    } else if (chunkFrames == 0 || N <= chunkFrames) {
         if (sequence && !platform::dirExists(seqDir)) platform::makeDir(seqDir);
         result = encodeRange(0, N, sequence ? seqPattern : out, hasAudio, 0, err);
     } else {
@@ -1356,6 +1653,40 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     }
     if (result == Result::Ok && videoMode && gpuSamples > 0)
         H.log(L"  " + TXF("log.gpu_passes", gpuSamples, gpuMs[0] / gpuSamples, gpuMs[1] / gpuSamples, gpuMs[2] / gpuSamples));
+    if (result == Result::Ok && videoMode && kind == OutKind::Video && s.embed) {  // source embarquee : le fichier est copie avec la balise shadertomp4
+        const std::wstring iniFile = cacheDir(exeDir) + L"/embed.ini", metaFile = cacheDir(exeDir) + L"/embed.ffmetadata";
+        platform::makeDir(cacheDir(exeDir));
+        writeIni(iniFile, s);
+        std::string ini;
+        readFile(iniFile, ini);
+        const SourceBundle bundle = makeBundle(shaderPath, ini);
+        std::vector<std::pair<std::string, std::string>> extra;
+        extra.push_back({"title", U8(shaderPath.substr(shaderPath.find_last_of(L"\\/") + 1))});
+        extra.push_back({"comment", U8(wfmt(L"%dx%d, %g fps, ", OW, OH, s.interp > 0 ? s.interp : s.fps) + APP_NAME_WSTR + L" " + APP_VER_WSTR)});
+        if (lic.found && !lic.author.empty()) extra.push_back({"author", U8(lic.author)});
+        if (lic.found && !lic.id.empty()) extra.push_back({"license", U8(licenseText(lic))});
+        const std::wstring tmpOut = out.substr(0, out.find_last_of(L'.')) + L".embed" + out.substr(out.find_last_of(L'.'));
+        const bool tags = s.container == "mp4" || s.container == "mov";
+        if (writeBundleMetadata(metaFile, bundle, extra) &&
+            runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -i \"" + out + L"\" -i \"" + metaFile + L"\" -map 0 -c copy -map_metadata 1" +
+                           (tags ? L" -movflags +faststart+use_metadata_tags" : L"") + L" \"" + tmpOut + L"\"",
+                       [&](const std::wstring& line) { H.log(TX("log.ffmpeg_prefix") + line); }) == 0 &&
+            platform::moveFile(tmpOut, out, true)) {
+            H.log(L"  " + TXF("log.embed_done", (long long)bundle.files.size()));
+        } else {
+            platform::removeFile(tmpOut);
+            H.log(L"  " + TX("log.embed_failed"));
+        }
+        platform::removeFile(iniFile);
+        platform::removeFile(metaFile);
+        if (platform::dirExists(cacheDir(exeDir))) platform::removeDir(cacheDir(exeDir));  // sans effet si le cache contient des maitres
+    }
+    if (result == Result::Ok && videoMode && kind == OutKind::Video && s.animPreview != "off" && !s.alpha) {  // apercu anime : tire de la video produite
+        const bool webp = s.animPreview == "webp";
+        const std::wstring dest = out.substr(0, out.find_last_of(L'.')) + L"_preview" + (webp ? L".webp" : L".gif");
+        if (makeAnimPreview(ffmpeg, out, dest, webp, totalSec)) H.log(L"  " + TXF("log.anim_preview", dest.c_str()));
+        else H.log(L"  " + TX("log.anim_preview_failed"));
+    }
     if (result == Result::Ok) {
         if (videoMode && loopSec > 1.0 && waitSec > 0.3 * loopSec)
             H.log(L"  " + TXF("log.measure_encoder_bound",
