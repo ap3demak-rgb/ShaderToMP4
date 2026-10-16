@@ -15,7 +15,7 @@
 <p align="center">
   <img alt="Version" src="https://img.shields.io/badge/version-2.0.0-FF5A96?style=flat-square">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-0078D4?style=flat-square">
-  <img alt="Portable" src="https://img.shields.io/badge/portable-no%20installer-3DDC97?style=flat-square">
+  <img alt="Portable" src="https://img.shields.io/badge/portable-installer%20optional-3DDC97?style=flat-square">
   <img alt="Languages" src="https://img.shields.io/badge/languages-6-7C6CFF?style=flat-square">
   <img alt="C++" src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0--or--later-3DDC97?style=flat-square"></a>
@@ -27,7 +27,7 @@
 
 **ShaderToMP4** converts a [Shadertoy](https://www.shadertoy.com) shader (*Image* tab, with its Buffer A–D, Common, Cubemap A and Sound passes) into a video, **frame by frame**, with exact timing (`iTime = frame / fps`). No screen capture, so no stutter and no loss, whatever the power of your graphics card: a shader that runs at 5 frames per second in real time still gives a perfectly smooth video.
 
-One portable program for **Windows, Linux and macOS**, **no installer**, with a modern dark interface in English and French.
+One portable program for **Windows, Linux and macOS** (nothing to install; an optional **installer** for Windows), with a modern dark interface in English and French.
 
 ---
 
@@ -103,6 +103,8 @@ The [`examples`](examples) folder contains four shaders ready to convert: plasma
    | Linux x86-64 | `ShaderToMP4-<version>-linux-x86_64.tar.gz` | `./ShaderToMP4` |
    | Linux ARM64 | `ShaderToMP4-<version>-linux-aarch64.tar.gz` | `./ShaderToMP4` |
    | macOS 10.13+, Apple Silicon and Intel | `ShaderToMP4-<version>-macos-universal.zip` | `ShaderToMP4.app` |
+
+   **Windows installer (optional).** `ShaderToMP4-<version>-win64-setup.exe` does the same as the archive with Start menu and desktop shortcuts, an entry in *Apps & features* to uninstall, and `ffmpeg.exe` already inside (version 9.0.2, GPL build, nothing to download). It installs for your account only, without administrator rights, by default in `%LOCALAPPDATA%\Programs\ShaderToMP4` (Program Files is refused: the program keeps its settings next to itself and must be able to write there). It writes only: the program files, `HKCU\Software\ShaderToMP4` (folder and version), the uninstall entry, the Start menu shortcut and, if you tick them, a desktop shortcut and “Open with” for `.glsl` and `.montage` (`HKCU\Software\Classes`, your default programs are not changed). Installing a newer version over it keeps your settings and presets; an older version is refused; an `ffmpeg.exe` you put there yourself is never replaced or removed. Uninstalling keeps your settings unless you tick the box (`/DELETE_SETTINGS` when silent); your shaders and videos are never touched. Silent use: `setup.exe /S /D=C:\folder` (also `/LANG=1033`, `/DESKTOP`, `/ASSOC`), `Uninstall.exe /S`. The installer is **not code-signed**: Windows SmartScreen may warn about an unknown publisher; compare the SHA-256 of the file with `SHA256SUMS.txt` of the release. The program itself is unchanged and stays portable: the zip archive remains the reference. Tried on this PC only (Windows 10: silent install, update, refusal of an older version, running program, optional components, uninstall with and without settings, no trace left); other Windows versions and other accounts were not tried, and the pages of the installer were looked at in English and French only.
 
 2. If `ffmpeg` is missing, the program offers to download it (Windows: about 80 MB from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/); Linux: a static build from [BtbN](https://github.com/BtbN/FFmpeg-Builds); SHA-256 checked) and installs it next to itself. On macOS, install it with Homebrew (`brew install ffmpeg`) or place the `ffmpeg` binary next to the `.app`: no source publishes a verifiable SHA-256 for macOS builds, so there is no automatic download there.
 3. **Drop** one or more shader files (`.glsl` or `.txt`) in the window, or click **Add**.
@@ -400,6 +402,7 @@ Taken from [CHANGELOG.md](CHANGELOG.md), which has the details; the list is chec
 
 | Version | Main additions |
 |---|---|
+| Unreleased | Windows installer (NSIS, per user, ffmpeg included, optional) |
 | 2.0.0 | Quality check (flashes, NaN, flicker, aliasing, precision), shader comparison and reference frames, render time estimate with alert; seamless loops (crossfade, ping-pong), time curve and real slow motion, loop period search, seam check, smart thumbnail, averaged still image; posters by tiles up to 65536 pixels, GPU cost map and GPU time per pass, side-by-side / anaglyph / fulldome VR, cubemap faces; publication targets, target file size, master cache, reproducible video, standalone HTML page; sound and rhythm (tempo, beat variables, markers, beat editor); parts rendered in parallel and a render farm without a server |
 | 1.9.0 | Transparency, HDR10 / HLG, output size, interpolation, loudness, title and credit, montage, contact sheets; animated parameters and post-processing; Output window; editor with passes; settings of one shader, batches, queue order, dropped media; render report; advanced watch folder and benchmark comparison; EGL headless rendering; Dutch, Japanese and Chinese |
 | 1.8.0 | Animated `iMouse` and `iDate`, simulated keyboard, buffers with their own size, `mainVR` 360° videos, Shadertoy volume files, `warmup` |

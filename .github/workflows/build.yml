@@ -62,10 +62,19 @@ jobs:
       - name: Package
         shell: pwsh
         run: ./scripts/package-windows.ps1
+      # Optional installer: NSIS from Chocolatey (the package checks the installer checksum), pinned ffmpeg checked by SHA-256 in the script
+      - name: Installer (NSIS, ffmpeg included) and its checks
+        shell: pwsh
+        run: |
+          choco install nsis --version=3.11 -y --no-progress
+          ./scripts/package-installer.ps1
+          ./scripts/verify-installer.ps1 -SkipRender
       - uses: actions/upload-artifact@v4
         with:
           name: package-windows
-          path: dist/*.zip
+          path: |
+            dist/*.zip
+            dist/*-setup.exe
 
   linux:
     strategy:
@@ -213,7 +222,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd dist
-          sha256sum *.zip *.tar.gz > SHA256SUMS.txt
+          sha256sum *.zip *.tar.gz *-setup.exe > SHA256SUMS.txt
           cd ..
           # guards: the tag must be the program version, and both changelogs must have a section for it
           version="${GITHUB_REF_NAME#v}"
@@ -228,5 +237,5 @@ jobs:
           for f in CHANGELOG.md CHANGELOG.fr.md; do
             awk -v v="$version" '/^## /{p=index($0,"## " v)==1; next} p' "$f" >> notes.md || true
           done
-          gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/*.tar.gz dist/SHA256SUMS.txt \
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/*.tar.gz dist/*-setup.exe dist/SHA256SUMS.txt \
             --title "ShaderToMP4 ${GITHUB_REF_NAME#v}" --notes-file notes.md

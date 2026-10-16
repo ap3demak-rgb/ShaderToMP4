@@ -1010,5 +1010,20 @@
   "ui.output.sec_distributed": "Gedistribueerd rekenen",
   "ui.output.parallel": "Parallelle contexten",
   "ui.output.farm": "Farmmap",
-  "ui.output.hint_distributed": "Beide vereisen renderen in delen (Delen, in seconden, korter dan de video). Parallelle contexten renderen meerdere delen tegelijk op deze pc (niet voor shaders met Buffer-passes, en niet op Linux en macOS). Met een farmmap kunnen meerdere computers dezelfde video renderen: voer op elk hetzelfde commando uit met dezelfde gedeelde map; --farm-status toont de delen. Buiten de gedeelde map gaat er niets over het netwerk."
+  "ui.output.hint_distributed": "Beide vereisen renderen in delen (Delen, in seconden, korter dan de video). Parallelle contexten renderen meerdere delen tegelijk op deze pc (niet voor shaders met Buffer-passes, en niet op Linux en macOS). Met een farmmap kunnen meerdere computers dezelfde video renderen: voer op elk hetzelfde commando uit met dezelfde gedeelde map; --farm-status toont de delen. Buiten de gedeelde map gaat er niets over het netwerk.",
+  "installer.sec_program": "Programmabestanden (verplicht)",
+  "installer.sec_startmenu": "Snelkoppelingen in het menu Start",
+  "installer.sec_desktop": "Snelkoppeling op het bureaublad",
+  "installer.sec_assoc": "‘Openen met’ voor .glsl en .montage",
+  "installer.desc_program": "Het programma, ffmpeg (videoencoder, GPL), de licenties en de taalbestanden.",
+  "installer.desc_startmenu": "Voegt ShaderToMP4 en het verwijderprogramma toe aan het menu Start.",
+  "installer.desc_desktop": "Voegt een snelkoppeling naar ShaderToMP4 toe aan het bureaublad.",
+  "installer.desc_assoc": "Zet ShaderToMP4 onder ‘Openen met’ voor deze bestanden, alleen voor uw account. Uw standaardprogramma wordt niet vervangen.",
+  "installer.running": "ShaderToMP4 wordt uitgevoerd. Sluit het af en kies Opnieuw proberen.",
+  "installer.older": "Er is al een nieuwere versie (%ls) geïnstalleerd. Dit installatieprogramma bevat een oudere (%ls) en vervangt die niet.",
+  "installer.progfiles": "ShaderToMP4 bewaart zijn instellingen naast het programma en heeft dus een map nodig waarin u kunt schrijven. Kies een map in uw gebruikersprofiel of op een andere schijf, niet Program Files.",
+  "installer.purge_title": "Opties voor verwijderen",
+  "installer.purge_sub": "Kies wat naast het programma wordt verwijderd.",
+  "installer.purge_check": "Verwijder ook mijn instellingen, voorinstellingen, parameterwaarden en de mastercache (uw shaders en video's worden nooit verwijderd).",
+  "installer.finish_run": "ShaderToMP4 starten"
 }

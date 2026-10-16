@@ -1010,5 +1010,20 @@
   "ui.output.sec_distributed": "Distributed computing",
   "ui.output.parallel": "Parallel contexts",
   "ui.output.farm": "Farm folder",
-  "ui.output.hint_distributed": "Both need the render by parts (Parts, in seconds, shorter than the video). Parallel contexts render several parts at the same time on this PC (not for shaders with Buffer passes, nor on Linux and macOS). A farm folder lets several computers render the same video: run the same command on each one with the same shared folder; --farm-status lists the parts. Nothing goes through the network except what the shared folder does."
+  "ui.output.hint_distributed": "Both need the render by parts (Parts, in seconds, shorter than the video). Parallel contexts render several parts at the same time on this PC (not for shaders with Buffer passes, nor on Linux and macOS). A farm folder lets several computers render the same video: run the same command on each one with the same shared folder; --farm-status lists the parts. Nothing goes through the network except what the shared folder does.",
+  "installer.sec_program": "Program files (required)",
+  "installer.sec_startmenu": "Start menu shortcuts",
+  "installer.sec_desktop": "Desktop shortcut",
+  "installer.sec_assoc": "“Open with” for .glsl and .montage",
+  "installer.desc_program": "The program, ffmpeg (video encoder, GPL), the licences and the language files.",
+  "installer.desc_startmenu": "Adds ShaderToMP4 and its uninstaller to the Start menu.",
+  "installer.desc_desktop": "Adds a ShaderToMP4 shortcut to the desktop.",
+  "installer.desc_assoc": "Lists ShaderToMP4 in “Open with” for these files, for your account only. It does not replace your default program.",
+  "installer.running": "ShaderToMP4 is running. Close it, then choose Retry.",
+  "installer.older": "A newer version (%ls) is already installed. This installer holds an older one (%ls) and does not replace it.",
+  "installer.progfiles": "ShaderToMP4 keeps its settings next to the program, so it needs a folder you can write to. Choose a folder in your user profile or on another disk, not in Program Files.",
+  "installer.purge_title": "Uninstall options",
+  "installer.purge_sub": "Choose what is removed besides the program.",
+  "installer.purge_check": "Also delete my settings, presets, parameter values and the master cache (your shaders and videos are never deleted).",
+  "installer.finish_run": "Start ShaderToMP4"
 }

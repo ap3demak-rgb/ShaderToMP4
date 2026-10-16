@@ -6,6 +6,12 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
+## Unreleased
+
+### Added
+
+- Windows installer (`ShaderToMP4-<version>-win64-setup.exe`, NSIS), in addition to the portable archive, which stays the reference. Per-user, no administrator rights (Program Files refused), `ffmpeg.exe` 9.0.2 (GPL build, pinned and SHA-256 checked, never nonfree) included, interface in the nine languages, Start menu and optional desktop shortcut, optional “Open with” for `.glsl` and `.montage`, entry in Apps & features, update in place that keeps the settings, refusal of an older version, an `ffmpeg.exe` of the user never replaced, uninstall that keeps the settings unless asked (`/DELETE_SETTINGS`). `scripts/package-installer.ps1` builds it, `scripts/verify-installer.ps1` tries it. Not code-signed.
+
 ## 2.0.0 — 2026-10-16
 
 ### Added
