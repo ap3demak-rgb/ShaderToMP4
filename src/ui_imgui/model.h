@@ -70,6 +70,10 @@ struct Fields {
     char source[512] = "", source2[512] = "", sourceFps[16] = "", transDur[16] = "1", transOffset[16] = "";
     int sourceMatch = 0;
     bool sourceAudio = true, reverse = false;
+    // Sorties multicouches : passes de sortie, bornes de profondeur, compression EXR (0 zip, 1 zips, 2 aucune), EXR 32 bits, alpha premultiplie, TIFF flottant
+    char aov[512] = "", depthRange[32] = "", vectorBlur[16] = "";
+    int exrComp = 0;
+    bool exrFloat = false, premult = false, tiffFloat = false;
 };
 
 struct LogLine {

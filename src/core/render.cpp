@@ -2,9 +2,14 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "render.h"
+#include <future>
 #include "channels.h"
 #include "compat.h"
+#include "aov.h"
+#include "dpx.h"
 #include "encoder.h"
+#include "tifffloat.h"
+#include "exr.h"
 #include "locate.h"
 #include "passes.h"
 #include "formats.h"
@@ -433,6 +438,17 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     const std::wstring seqDir = sequence ? sequenceDir(out) : L"";
     const std::wstring seqPattern = sequence ? sequencePattern(out) : L"";
     const std::wstring& outRef = sequence ? seqDir : out;
+    // Sortie EXR : ecrite par le programme (virgule flottante, couches nommees), pas par ffmpeg ; les passes de sortie (aov) n'existent que pour elle
+    const bool tiffOut = sequence && s.container == "tiff" && s.tiffFloat && !partMode;
+    const bool nativeFloat = (sequence && s.container == "exr" && !partMode) || tiffOut;
+    std::vector<AovSpec> aovs;
+    if (!parseAovs(s, aovs, err)) return Result::Failed;
+    if (!aovs.empty() && !(nativeFloat && !tiffOut)) {
+        H.log(L"  " + TX("log.aov_exr_only"));
+        aovs.clear();
+    }
+    for (const AovSpec& a : aovs)
+        if (a.kind == AovSpec::Kind::Alpha) s.alpha = true;  // l'alpha de l'image principale est ecrit : il faut qu'il soit rendu
     const std::wstring outDir = outRef.substr(0, outRef.find_last_of(L"\\/"));
 
     // --- Verifications avant de commencer : espace disque ------------------------
@@ -617,7 +633,8 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     ogl::BindVertexArray(vao);
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, deep ? ogl::K_RGBA16 : ogl::K_RGBA8, RW, RH, 0, GL_RGBA, deep ? GL_UNSIGNED_SHORT : GL_UNSIGNED_BYTE, nullptr);
+    if (nativeFloat) glTexImage2D(GL_TEXTURE_2D, 0, ogl::K_RGBA32F, RW, RH, 0, GL_RGBA, GL_FLOAT, nullptr);  // image flottante : les valeurs au-dela de 1 sont gardees
+    else glTexImage2D(GL_TEXTURE_2D, 0, deep ? ogl::K_RGBA16 : ogl::K_RGBA8, RW, RH, 0, GL_RGBA, deep ? GL_UNSIGNED_SHORT : GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     ogl::GenFramebuffers(1, &fbo);
@@ -1070,7 +1087,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
 
     // --- ffmpeg (ffmpeg.exe a cote du programme) ------------------------------
     const std::wstring ffmpeg = findFfmpeg(exeDir);
-    if (videoMode && !formatAvailable(ffmpeg, s.codec, s.container)) {
+    if (videoMode && !nativeFloat && !formatAvailable(ffmpeg, s.codec, s.container)) {
         err = TXF("error.encoder_missing", W(requiredEncoders(s.codec, s.container).front()).c_str());
         cleanupGL();
         return Result::Failed;
@@ -1169,8 +1186,9 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     audioFilter += loudnormFilter(s);  // normalisation du son (LUFS), puis fondus
     if (fi > 0) audioFilter += wfmt(L"afade=t=in:st=0:d=%g,", fi);
     if (fo > 0) audioFilter += wfmt(L"afade=t=out:st=%g:d=%g,", totalSec - fo, fo);
-    // son plus court que la video : complete par du silence, puis borne a la duree exacte de la video (un apad infini avec -shortest laissait parfois depasser le son)
-    audioFilter += wfmt(L"apad=whole_dur=%g,atrim=end=%g", totalSec, totalSec);
+    // son plus court que la video : complete par du silence ; la duree exacte est fixee par -t (et non -shortest : il laissait parfois depasser le son, ou
+    // arretait la lecture des images avant la derniere)
+    audioFilter += L"apad";
     const std::wstring audioArgs = (audioSeek ? wfmt(L" -ss %g", s.start) : std::wstring()) + (reverseAudio ? wfmt(L" -t %g", totalSec) : std::wstring()) + L" -i \"" + audioFile + L"\"";
     bool subsDropped = false;
     const std::wstring extraMaps = hasAudio ? sourceExtraMaps(s, subsDropped) : std::wstring();  // sous-titres et chapitres de la source
@@ -1218,7 +1236,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             std::wstring text;  // texte incruste (le temps de la video : une image par 1/fps)
             std::wstring oe;
             overlayFilter(s, (double)n0 / s.fps, OW, OH, ffmpeg, text, oe);
-            cmd = head + L" -vf \"vflip," + ssFilter + text + imageFilterTail(s) + L"\"" + imageEncoderArgs(s) + L" \"" + dest + L"\"";
+            cmd = head + L" -vf \"vflip," + ssFilter + text + imageFilterTail(s, ffmpegHasAlphaMode(ffmpeg)) + L"\"" + imageEncoderArgs(s) + L" \"" + dest + L"\"";
         } else {
             std::wstring text, oe;
             overlayFilter(s, (double)n0 / s.fps, OW, OH, ffmpeg, text, oe);  // la partie commence a n0 / fps dans la video
@@ -1226,7 +1244,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             if (muxAudio) cmd += audioArgs;
             cmd += L" -vf \"vflip," + ssFilter + text + L"scale=in_range=full:out_range=" + cs.range +
                    L":out_color_matrix=" + cs.matrix + L":flags=accurate_rnd+full_chroma_int," + interpFilter(s) + outFormat(s, enc) + L"\"";
-            if (muxAudio) cmd += L" -map 0:v -map 1:a" + audioCodecArgs(s.container) + extraMaps + L" -af \"" + audioFilter + L"\" -shortest";
+            if (muxAudio) cmd += L" -map 0:v -map 1:a" + audioCodecArgs(s.container) + extraMaps + L" -af \"" + audioFilter + L"\"" + wfmt(L" -t %g", totalSec);
             cmd += encoderArgs(s, enc) + outPixFmtArg(s, enc) + L" " + cs.tags + containerArgs(s.container) + metaArgs + L" \"" + dest + L"\"";
         }
 
@@ -1362,6 +1380,272 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         return Result::Ok;
     };
 
+    // --- Sequence OpenEXR multicouche : couleur flottante + passes de sortie lues dans les tampons, ecrites par le programme ----------------------------
+    auto renderExrSequence = [&](std::wstring& e) -> Result {
+        for (const AovSpec& a : aovs) {
+            if (a.kind == AovSpec::Kind::Buffer && !bp.bufferUsed(a.buffer)) {
+                e = TXF("error.aov_buffer_missing", W(a.name).c_str(), std::wstring(1, (wchar_t)(L'A' + a.buffer)).c_str());
+                return Result::Failed;
+            }
+            if (a.kind == AovSpec::Kind::Buffer) {
+                int bw = 0, bh = 0;
+                bp.bufferSize(a.buffer, bw, bh);
+                if (bw != RW || bh != RH) {
+                    e = TXF("error.aov_buffer_size", W(a.name).c_str(), bw, bh, RW, RH);
+                    return Result::Failed;
+                }
+            }
+        }
+        double depthNear = 0, depthFar = 0;
+        bool depthNorm = false;
+        if (!s.depthRange.empty()) {
+            if (sscanf(s.depthRange.c_str(), "%lf:%lf", &depthNear, &depthFar) != 2 || !(depthFar > depthNear)) {
+                e = TXF("error.depthrange_invalid", W(s.depthRange).c_str());
+                return Result::Failed;
+            }
+            depthNorm = true;
+        }
+        if (OW != W_ || OH != H_ || CW != W_ || CH != H_ || s.interp > 0 || !s.title.empty() || !s.credit.empty()) H.log(L"  " + TX("log.exr_native_ignored"));
+        if (SS > 1) H.log(L"  " + TXF("log.exr_native_ss", SS));
+        if (!platform::dirExists(seqDir)) platform::makeDir(seqDir);
+        const exr::Compression comp = s.exrCompression == "none" ? exr::Compression::None : s.exrCompression == "zips" ? exr::Compression::Zips : exr::Compression::Zip;
+        const bool fullAll = s.exrPrecision == "float";
+        const size_t rpx = (size_t)RW * RH, opx = (size_t)W_ * H_;
+        bool needBuf[4] = {false, false, false, false};
+        bool wantMotion = false;
+        for (const AovSpec& a : aovs) {
+            if (a.kind == AovSpec::Kind::Buffer) needBuf[a.buffer] = true;
+            if (a.kind == AovSpec::Kind::MotionEstimate) wantMotion = true;
+        }
+        if (wantMotion) H.log(L"  " + TX("log.aov_motion_estimate"));
+        bool motionSource = wantMotion;  // une passe de mouvement existe (estimee ou lue dans un tampon)
+        for (const AovSpec& a : aovs)
+            if (a.kind == AovSpec::Kind::Buffer && a.name == "motion" && a.components.size() >= 2) motionSource = true;
+        if (s.vectorBlur > 0 && !motionSource) H.log(L"  " + TX("log.vectorblur_nomotion"));
+        std::vector<float> beauty(rpx * 4), bufData[4];
+        for (int i = 0; i < 4; i++)
+            if (needBuf[i]) bufData[i].resize(rpx * 4);
+        ogl::BindBuffer(ogl::K_PIXEL_PACK_BUFFER, 0);  // la lecture se fait en memoire, pas dans la file de lecture asynchrone
+        GLuint readFbo = 0;
+        ogl::GenFramebuffers(1, &readFbo);
+        // Plan d'une image reduite du sur-echantillonnage : moyenne SSxSS, lignes de haut en bas (le GPU lit de bas en haut)
+        auto reduce = [&](const float* src, size_t stride, size_t offset, std::vector<float>& dst) {
+            dst.assign(opx, 0.0f);
+            const float k = 1.0f / (float)(SS * SS);
+            for (int y = 0; y < H_; y++)
+                for (int x = 0; x < W_; x++) {
+                    float sum = 0;
+                    for (int dy = 0; dy < SS; dy++) {
+                        const int sy = RH - 1 - (y * SS + dy);
+                        for (int dx = 0; dx < SS; dx++) sum += src[((size_t)sy * RW + (size_t)(x * SS + dx)) * stride + offset];
+                    }
+                    dst[(size_t)y * W_ + x] = sum * k;
+                }
+        };
+        std::vector<float> prevLuma, curLuma, mvx, mvy;
+        std::future<std::wstring> pending;  // ecriture de l'image precedente, pendant le calcul de la suivante
+        auto drain = [&]() -> std::wstring {
+            if (!pending.valid()) return L"";
+            return pending.get();
+        };
+        std::string desc;
+        for (const AovSpec& a : aovs) desc += (desc.empty() ? "" : ",") + a.name;
+        std::vector<std::pair<std::string, std::string>> texts;
+        texts.push_back({"software", std::string(APP_NAME_STR) + " " + APP_VER_STR});
+        texts.push_back({"comment", U8(shaderPath.substr(shaderPath.find_last_of(L"\\/") + 1)) + ", " + std::to_string(W_) + "x" + std::to_string(H_) + ", " + std::to_string((int)std::llround(s.fps)) + " fps"});
+        texts.push_back({"alphaMode", s.alpha ? (s.alphaMode == "premult" ? "premultiplied" : "straight") : "none"});
+        if (!desc.empty()) texts.push_back({"aov", desc});
+        if (wantMotion) texts.push_back({"motionConvention", "estimated, pixels from the previous frame to this one, x to the right, y downward"});
+        if (lic.found && !lic.author.empty()) texts.push_back({"owner", U8(lic.author)});
+        if (lic.found && !lic.id.empty()) texts.push_back({"license", U8(licenseText(lic))});
+        std::vector<std::pair<std::string, float>> numbers;
+        if (depthNorm) {
+            numbers.push_back({"depthNear", (float)depthNear});
+            numbers.push_back({"depthFar", (float)depthFar});
+        }
+        auto t0 = clk::now(), tLast = t0;
+        Result res = Result::Ok;
+        for (long long n = 0; n < N; n++) {
+            if (H.paused()) {
+                while (H.paused() && !H.cancelled()) platform::sleepMs(50);
+            }
+            if (H.cancelled()) {
+                res = Result::Cancelled;
+                break;
+            }
+            const double t = shaderTime((double)n / s.fps);
+            advanceBuffers(n);
+            renderFrame(n, t, fadeAt(n));
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
+            glReadPixels(0, 0, RW, RH, GL_RGBA, GL_FLOAT, beauty.data());
+            if (bp.any()) {
+                GLuint latest[5] = {0, 0, 0, 0, 0};
+                bp.latest(latest);
+                ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, readFbo);
+                for (int i = 0; i < 4; i++) {
+                    if (!needBuf[i]) continue;
+                    ogl::FramebufferTexture2D(ogl::K_FRAMEBUFFER, ogl::K_COLOR_ATTACHMENT0, GL_TEXTURE_2D, latest[i], 0);
+                    glReadPixels(0, 0, RW, RH, GL_RGBA, GL_FLOAT, bufData[i].data());
+                }
+                ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
+            }
+            // couleur : l'alpha droit se reduit premultiplie, puis revient droit ; en premultiplie on l'ecrit tel quel
+            exr::Image img;
+            img.width = W_;
+            img.height = H_;
+            img.text = texts;
+            img.numbers = numbers;
+            std::vector<float> pr, pg, pb, pa;
+            {
+                std::vector<float> r, g, b, a;
+                if (s.alpha) {
+                    std::vector<float> mul(rpx * 4);
+                    for (size_t i = 0; i < rpx; i++) {
+                        const float al = beauty[i * 4 + 3];
+                        mul[i * 4] = beauty[i * 4] * al;
+                        mul[i * 4 + 1] = beauty[i * 4 + 1] * al;
+                        mul[i * 4 + 2] = beauty[i * 4 + 2] * al;
+                        mul[i * 4 + 3] = al;
+                    }
+                    reduce(mul.data(), 4, 0, r);
+                    reduce(mul.data(), 4, 1, g);
+                    reduce(mul.data(), 4, 2, b);
+                    reduce(mul.data(), 4, 3, a);
+                    if (s.alphaMode != "premult")
+                        for (size_t i = 0; i < opx; i++)
+                            if (a[i] > 0.0f) {
+                                r[i] /= a[i];
+                                g[i] /= a[i];
+                                b[i] /= a[i];
+                            }
+                } else {
+                    reduce(beauty.data(), 4, 0, r);
+                    reduce(beauty.data(), 4, 1, g);
+                    reduce(beauty.data(), 4, 2, b);
+                }
+                pr.swap(r);
+                pg.swap(g);
+                pb.swap(b);
+                pa.swap(a);
+            }
+            if (wantMotion) {
+                curLuma.resize(opx);
+                for (size_t i = 0; i < opx; i++) curLuma[i] = 0.2126f * pr[i] + 0.7152f * pg[i] + 0.0722f * pb[i];
+                if (n == 0 || prevLuma.size() != opx) {
+                    mvx.assign(opx, 0.0f);
+                    mvy.assign(opx, 0.0f);
+                } else {
+                    estimateMotion(prevLuma, curLuma, W_, H_, mvx, mvy);
+                }
+                prevLuma = curLuma;
+            }
+            if (s.vectorBlur > 0 && motionSource) {  // flou de mouvement vectoriel : la couleur est moyennee le long du deplacement de chaque pixel
+                if (!wantMotion)
+                    for (const AovSpec& a : aovs)
+                        if (a.kind == AovSpec::Kind::Buffer && a.name == "motion" && a.components.size() >= 2) {
+                            reduce(bufData[a.buffer].data(), 4, (size_t)a.components[0], mvx);
+                            reduce(bufData[a.buffer].data(), 4, (size_t)a.components[1], mvy);
+                        }
+                const int taps = 16;
+                auto smear = [&](std::vector<float>& plane) {
+                    std::vector<float> o(plane.size());
+                    for (int y = 0; y < H_; y++)
+                        for (int x = 0; x < W_; x++) {
+                            const size_t i = (size_t)y * W_ + x;
+                            float sum = 0;
+                            for (int k = 0; k < taps; k++) {
+                                const float t = ((float)k + 0.5f) / (float)taps * (float)s.vectorBlur;
+                                const float fx = std::min((float)(W_ - 1), std::max(0.0f, (float)x + mvx[i] * t)), fy = std::min((float)(H_ - 1), std::max(0.0f, (float)y + mvy[i] * t));
+                                const int x0 = (int)fx, y0 = (int)fy, x1 = std::min(W_ - 1, x0 + 1), y1 = std::min(H_ - 1, y0 + 1);
+                                const float ax = fx - (float)x0, ay = fy - (float)y0;
+                                sum += (plane[(size_t)y0 * W_ + x0] * (1 - ax) + plane[(size_t)y0 * W_ + x1] * ax) * (1 - ay) + (plane[(size_t)y1 * W_ + x0] * (1 - ax) + plane[(size_t)y1 * W_ + x1] * ax) * ay;
+                            }
+                            o[i] = sum / (float)taps;
+                        }
+                    plane.swap(o);
+                };
+                smear(pr);
+                smear(pg);
+                smear(pb);
+                if (s.alpha) smear(pa);
+            }
+            auto add = [&](const std::string& name, std::vector<float>&& px, bool full) {
+                exr::Channel c;
+                c.name = name;
+                c.pixels = std::move(px);
+                c.full = full || fullAll;
+                img.channels.push_back(std::move(c));
+            };
+            add("R", std::move(pr), false);
+            add("G", std::move(pg), false);
+            add("B", std::move(pb), false);
+            if (s.alpha) add("A", std::move(pa), false);
+            for (const AovSpec& a : aovs) {
+                if (a.kind == AovSpec::Kind::Alpha) continue;  // deja ecrit avec la couleur
+                if (a.kind == AovSpec::Kind::MotionEstimate) {
+                    add("motion.X", std::vector<float>(mvx), true);
+                    add("motion.Y", std::vector<float>(mvy), true);
+                    continue;
+                }
+                for (size_t k = 0; k < a.components.size(); k++) {
+                    std::vector<float> plane;
+                    reduce(bufData[a.buffer].data(), 4, (size_t)a.components[k], plane);
+                    if (depthNorm && a.name == "depth")
+                        for (float& v : plane) v = (float)((v - depthNear) / (depthFar - depthNear));
+                    add(a.exrNames[k], std::move(plane), a.name == "depth" || a.name == "id");  // profondeur et identifiants : toujours en 32 bits
+                }
+            }
+            const std::wstring file = wfmt(seqPattern.c_str(), (int)n);
+            if (tiffOut) {  // TIFF flottant : couleur entrelacee (RGB ou RGBA), les passes de sortie n'ont pas de place dans ce format
+                tifffloat::Image ti;
+                ti.width = W_;
+                ti.height = H_;
+                ti.samples = s.alpha ? 4 : 3;
+                ti.premultiplied = s.alpha && s.alphaMode == "premult";
+                ti.pixels.resize(opx * (size_t)ti.samples);
+                for (int c = 0; c < ti.samples; c++)
+                    for (size_t i = 0; i < opx; i++) ti.pixels[i * (size_t)ti.samples + (size_t)c] = img.channels[(size_t)c].pixels[i];
+                img = exr::Image();
+                const std::wstring prevErr2 = drain();
+                if (!prevErr2.empty()) {
+                    e = prevErr2;
+                    res = Result::Failed;
+                    break;
+                }
+                pending = std::async(std::launch::async, [file, image = std::move(ti)]() -> std::wstring {
+                    std::wstring werr;
+                    return tifffloat::write(file, image, werr) ? std::wstring() : (werr.empty() ? file : werr);
+                });
+            } else {
+            const std::wstring prevErr = drain();
+            if (!prevErr.empty()) {
+                e = prevErr;
+                res = Result::Failed;
+                break;
+            }
+            pending = std::async(std::launch::async, [file, comp, image = std::move(img)]() -> std::wstring {
+                std::wstring werr;
+                return exr::write(file, image, comp, werr) ? std::wstring() : (werr.empty() ? file : werr);
+            });
+            }
+            const auto now = clk::now();
+            if (now - tLast > std::chrono::milliseconds(250) || n == N - 1) {
+                tLast = now;
+                const double el = std::chrono::duration<double>(now - t0).count();
+                const double speed = (n + 1) / std::max(el, 1e-6);
+                if (H.progress) H.progress(n + 1, N, speed, (N - n - 1) / speed);
+            }
+        }
+        const std::wstring lastErr = drain();
+        if (res == Result::Ok && !lastErr.empty()) {
+            e = lastErr;
+            res = Result::Failed;
+        }
+        ogl::DeleteFramebuffers(1, &readFbo);
+        loopSec += std::chrono::duration<double>(clk::now() - t0).count();
+        return res;
+    };
+
     // --- Plan : un seul fichier, ou des parties reprenables puis assemblees ----------
     // --- Maitre sans perte en cache, taille cible, formats tires du maitre ---------------------------------------------------------------------
     const bool masterKind = videoMode && (kind == OutKind::Video || kind == OutKind::Gif || kind == OutKind::Webp);
@@ -1491,12 +1775,12 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         std::wstring cmd = L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -stats -y -i \"" + masterPath + L"\"";
         std::wstring text, oe;
         overlayFilter(sd, 0.0, OW, OH, ffmpeg, text, oe);
-        if (kind != OutKind::Video) return cmd + L" -vf \"" + stageB + text + imageFilterTail(sd) + L"\"" + imageEncoderArgs(sd) + L" \"" + out + L"\"";
+        if (kind != OutKind::Video) return cmd + L" -vf \"" + stageB + text + imageFilterTail(sd, ffmpegHasAlphaMode(ffmpeg)) + L"\"" + imageEncoderArgs(sd) + L" \"" + out + L"\"";
         const bool withAudio = hasAudio && pass != 1;
         if (withAudio) cmd += audioArgs;
         cmd += L" -vf \"" + stageB + text + L"scale=in_range=full:out_range=" + cs.range + L":out_color_matrix=" + cs.matrix + L":flags=accurate_rnd+full_chroma_int," +
                interpFilter(sd) + outFormat(sd, enc) + L"\"";
-        if (withAudio) cmd += L" -map 0:v -map 1:a" + audioCodecArgs(s.container) + extraMaps + L" -af \"" + audioFilter + L"\" -shortest";
+        if (withAudio) cmd += L" -map 0:v -map 1:a" + audioCodecArgs(s.container) + extraMaps + L" -af \"" + audioFilter + L"\"" + wfmt(L" -t %g", totalSec);
         else cmd += L" -an";
         cmd += encoderArgs(sd, enc) + outPixFmtArg(sd, enc) + L" " + cs.tags;
         if (pass == 1) return cmd + L" -pass 1 -passlogfile \"" + passLog + L"\" -f null -";
@@ -1600,6 +1884,8 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     bool produced = true;  // faux : la video finale est assemblee par un autre ordinateur de la ferme
     if (partMode) {
         result = encodeRange(H.partFirst, H.partLast, H.partOut, false, 0, err);
+    } else if (nativeFloat) {
+        result = renderExrSequence(err);
     } else if (wantTarget && (s.codec.compare(0, 7, "prores_") == 0 || isDnxhr(s.codec))) {  // ces codecs n'ont pas de debit : le poids est fixe par l'image
         err = TXF("error.targetsize_codec", codecLabel(s.codec));
         result = Result::Failed;
@@ -1724,7 +2010,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             std::wstring cmd = L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -f concat -safe 0 -i \"" + listFile + L"\"";
             if (hasAudio) cmd += audioArgs;
             cmd += L" -map 0:v";
-            if (hasAudio) cmd += L" -map 1:a" + audioCodecArgs(s.container) + extraMaps + L" -af \"" + audioFilter + L"\" -shortest";
+            if (hasAudio) cmd += L" -map 1:a" + audioCodecArgs(s.container) + extraMaps + L" -af \"" + audioFilter + L"\"" + wfmt(L" -t %g", totalSec);
             cmd += L" -c:v copy" + std::wstring(s.codec == "h265" ? L" -tag:v hvc1" : L"") + containerArgs(s.container) + metaArgs +
                    L" \"" + assembleTo + L"\"";
             int rc = runProcess(cmd, [&](const std::wstring& line) { H.log(TX("log.ffmpeg_prefix") + line); });
@@ -1765,6 +2051,12 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     }
     if (result == Result::Ok && videoMode && gpuSamples > 0)
         H.log(L"  " + TXF("log.gpu_passes", gpuSamples, gpuMs[0] / gpuSamples, gpuMs[1] / gpuSamples, gpuMs[2] / gpuSamples));
+    if (result == Result::Ok && sequence && s.container == "dpx" && !H.cancelled()) {  // cadence dans l'en-tete de chaque image (ffmpeg ne l'ecrit pas)
+        long long fixed = 0;
+        for (long long n = 0; n < N; n++)
+            if (dpxWriteFrameRate(wfmt(seqPattern.c_str(), (int)n), s.fps)) fixed++;
+        if (fixed < N) H.log(L"  " + TXF("log.dpx_rate_partial", (long long)fixed, (long long)N));
+    }
     if (result == Result::Ok && videoMode && kind == OutKind::Video && s.embed) {  // source embarquee : le fichier est copie avec la balise shadertomp4
         const std::wstring iniFile = cacheDir(exeDir) + L"/embed.ini", metaFile = cacheDir(exeDir) + L"/embed.ffmetadata";
         platform::makeDir(cacheDir(exeDir));

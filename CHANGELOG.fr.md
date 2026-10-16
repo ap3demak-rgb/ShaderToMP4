@@ -16,6 +16,10 @@ Format : une section par version, la plus récente en premier. La section d'une 
 - Transitions : `source2=` et `iProgress` (0 à 1) avec `transitionduration` et `transitionoffset` ; les sons sont enchaînés en fondu ; 25 shaders dans le nouveau dossier `transitions/`.
 - Shaders d'exemple de clé chroma, de clé de luminance et de clé par différence avec une sortie alpha (`examples/effects/`).
 - Page « Source (mode effet) » de la fenêtre Sortie (Windows) et section de la carte des réglages (Linux et macOS) ; sept nouveaux cas d'autotest ; les paquets et l'installeur contiennent `transitions/` et `examples/effects/`.
+- OpenEXR multicouche écrit par le programme lui-même, sans bibliothèque : couleur HDR en virgule flottante, passes de sortie déclarées dans le shader (`// aov depth=bufferB.r`, `normal`, `id`, `alpha`, `motion`), compression ZIP / ZIPS / aucune, demi-flottant ou flottant 32 bits, en-tête avec le shader, l'auteur, la licence et le mode d'alpha ; lecteur du programme pour l'autotest ; `--exr-info`.
+- Flou de mouvement vectoriel de la sortie EXR (`vectorblur`), le long de la passe de mouvement estimée ou calculée par le shader.
+- Vecteurs de mouvement estimés entre deux images consécutives (correspondance de blocs, présentés comme une estimation) ; bornes de profondeur `depthrange` déclarées dans le fichier ; carte de profondeur 16 bits `--depthmap`.
+- Alpha droit ou prémultiplié (`alphamode`) pour l'EXR, le PNG 16 bits, le TIFF et le DPX ; séquences TIFF flottantes 32 bits (`tifffloat=1`) ; séquences DPX (`container=dpx`, 10 bits, BT.709 et cadence dans l'en-tête) ; page « Compositing (EXR) » de la fenêtre Sortie et section de la carte des réglages ; huit nouveaux cas d'autotest.
 
 ## 2.1.0 — 2026-10-16
 

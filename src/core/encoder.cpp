@@ -239,13 +239,25 @@ std::wstring outPixFmtArg(const Settings& s, const std::string& enc) {
     return enc == "vaapi" ? std::wstring() : L" -pix_fmt " + outPixFmt(s, enc);
 }
 
-std::wstring imageFilterTail(const Settings& s) {
+static std::wstring imageFormatTail(const Settings& s, bool deep);
+
+std::wstring imageFilterTail(const Settings& s, bool alphaModeFilter) {
     const bool deep = s.depth >= 10;
+    // alpha premultiplie : la couleur est multipliee par l'alpha avant l'ecriture (PNG, TIFF, DPX) ; ffmpeg ne permet pas de le declarer dans ces fichiers
+    const std::wstring premul = (s.alpha && s.alphaMode == "premult" && (s.container == "png" || s.container == "tiff" || s.container == "dpx")) ? (alphaModeFilter ? L"format=gbrap16le,premultiply=inplace=1,setparams=alpha_mode=straight," : L"format=gbrap16le,premultiply=inplace=1,") : L"";
+    return premul + imageFormatTail(s, deep);
+}
+
+static std::wstring imageFormatTail(const Settings& s, bool deep) {
     if (s.container == "gif")  // palette optimisee calculee sur toute la sequence, tramage Bayer
         return L"format=rgb24,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle";
     if (s.container == "webp") return s.alpha ? L"format=yuva420p" : L"format=yuv420p";
     if (s.container == "png") return s.alpha ? (deep ? L"format=rgba64be" : L"format=rgba") : (deep ? L"format=rgb48be" : L"format=rgb24");
     if (s.container == "tiff") return s.alpha ? (deep ? L"format=rgba64le" : L"format=rgba") : (deep ? L"format=rgb48le" : L"format=rgb24");
+    if (s.container == "dpx") {  // 10 bits par composante avec depth=10 ; l'espace de couleur (BT.709) est ecrit dans l'en-tete
+        const std::wstring tags = L"setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709,";
+        return tags + (s.alpha ? (deep ? L"format=rgba64le" : L"format=rgba") : (deep ? L"format=gbrp10le" : L"format=rgb24"));
+    }
     return s.alpha ? L"format=gbrapf32le" : L"format=gbrpf32le";  // exr
 }
 
@@ -255,5 +267,6 @@ std::wstring imageEncoderArgs(const Settings& s) {
         return wfmt(L" -c:v libwebp_anim -lossless 0 -q:v %d -compression_level 4 -loop 0", std::min(100, std::max(1, 100 - s.crf * 2)));
     if (s.container == "png") return L" -c:v png -start_number 0";
     if (s.container == "tiff") return L" -c:v tiff -compression_algo deflate -start_number 0";
+    if (s.container == "dpx") return L" -c:v dpx -start_number 0";
     return L" -c:v exr -compression zip16 -format half -start_number 0";
 }

@@ -20,6 +20,7 @@ public:
     // ajoute la duree (ms) a passMs ; a remettre a zero par l'appelant
     bool timePasses = false;
     double passMs[5] = {0, 0, 0, 0, 0};
+    bool bufferUsed(int i) const { return i >= 0 && i < 4 && used_[i]; }  // le tampon A a D existe-t-il ?
     bool any() const { return used_[0] || used_[1] || used_[2] || used_[3] || cubeUsed_; }
     // Declarations GLSL des parametres (uniforms personnalises) ajoutees a chaque programme compile par build().
     void setPreamble(const std::string& preamble) { preamble_ = preamble; }

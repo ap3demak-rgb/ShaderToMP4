@@ -4,6 +4,7 @@
 #include "cli.h"
 #include "app_info.h"
 #include "encoder.h"
+#include "exrtools.h"
 #include "endaction.h"
 #include "ffmpeg_download.h"
 #include "formats.h"
@@ -59,7 +60,7 @@ std::string num(double v) {
 
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
-    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_verify", "cli.render.opt_beats", "cli.render.opt_farm", "cli.render.opt_source", "cli.render.opt_reproduce", "cli.render.opt_exporthtml", "cli.render.opt_cachepurge", "cli.render.opt_check", "cli.render.opt_compare", "cli.render.opt_golden", "cli.render.opt_dryrun", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
+    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_verify", "cli.render.opt_beats", "cli.render.opt_farm", "cli.render.opt_source", "cli.render.opt_exr", "cli.render.opt_reproduce", "cli.render.opt_exporthtml", "cli.render.opt_cachepurge", "cli.render.opt_check", "cli.render.opt_compare", "cli.render.opt_golden", "cli.render.opt_dryrun", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
                           "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
@@ -81,6 +82,7 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
     double tolerance = -1;       // --tolerance=N : ecart maximal admis (0 a 255), -1 = valeur par defaut de chaque mode
     int goldenMode = 0;          // --golden=record (1) | verify (2) : images de reference
     bool farmStatusMode = false; // --farm-status dossier : etat d'une ferme de rendu
+    bool exrInfoMode = false, depthMapMode = false, depthInvert = false;  // --exr-info, --depthmap[ --depthinvert] : fichiers OpenEXR
     bool beatsMode = false;      // --beats[=list|clear] son : tempo, temps forts et sections d'un fichier son
     std::string beatsOpt;
     bool verifyMode = false;     // --verify video : relit la video et la compare a son rapport
@@ -134,6 +136,12 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
             beatsMode = true;
             beatsOpt = lower(val);
             if (!beatsOpt.empty() && beatsOpt != "list" && beatsOpt != "clear") return fail(TXF("cli.unknown_option", W(arg).c_str()));
+        } else if (key == "exr-info") {
+            exrInfoMode = true;
+        } else if (key == "depthmap") {
+            depthMapMode = true;
+        } else if (key == "depthinvert") {
+            depthInvert = true;
         } else if (key == "verify") {
             verifyMode = true;
         } else if (key == "reproduce") {
@@ -266,6 +274,49 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
             for (const std::wstring& l : lines) out(U8(l) + "\n", false);
         }
         return missing ? kExitRenderFailed : kExitOk;
+    }
+    if (exrInfoMode || depthMapMode) {  // fichiers OpenEXR (ou dossier de fichiers) : ni GPU ni ffmpeg
+        if (files.empty()) return fail(TX("cli.no_files"));
+        std::vector<std::wstring> list;
+        for (const auto& f : files) {
+            if (platform::dirExists(f)) {
+                std::vector<platform::DirEntry> ents;
+                platform::listDir(f, ents);
+                std::sort(ents.begin(), ents.end(), [](const platform::DirEntry& x, const platform::DirEntry& y) { return x.name < y.name; });
+                for (const auto& en : ents)
+                    if (!en.isDir && en.name.size() > 4 && lower(U8(en.name.substr(en.name.size() - 4))) == ".exr") list.push_back(f + L"/" + en.name);
+            } else if (fileExists(f)) {
+                list.push_back(f);
+            } else {
+                return fail(TXF("cli.file_missing", f.c_str()));
+            }
+        }
+        if (list.empty()) return fail(TXF("cli.file_missing", files[0].c_str()));
+        double nearZ = 0, farZ = 0;
+        if (depthMapMode && !base.depthRange.empty() && (sscanf(base.depthRange.c_str(), "%lf:%lf", &nearZ, &farZ) != 2 || !(farZ > nearZ))) return fail(TXF("error.depthrange_invalid", W(base.depthRange).c_str()));
+        int failures = 0;
+        for (const auto& f : list) {
+            out(U8(f) + "\n", false);
+            std::wstring e;
+            if (exrInfoMode) {
+                std::vector<std::wstring> lines;
+                if (!exrSummary(f, lines, e)) {
+                    out(U8(TXF("log.error", e.c_str())) + "\n", true);
+                    failures++;
+                    continue;
+                }
+                for (const std::wstring& l : lines) out(U8(L"  " + l) + "\n", false);
+            } else {
+                const std::wstring png = f.substr(0, f.size() - 4) + L"_depth16.png";
+                if (!exrDepthMap(f, png, nearZ, farZ, depthInvert, e)) {
+                    out(U8(TXF("log.error", e.c_str())) + "\n", true);
+                    failures++;
+                } else {
+                    out(U8(L"  " + TXF("log.depthmap_written", png.c_str())) + "\n", false);
+                }
+            }
+        }
+        return failures ? kExitRenderFailed : kExitOk;
     }
     if (files.empty() && watchDir.empty()) return fail(TX("cli.no_files"));
     for (const auto& f : files)

@@ -8,6 +8,10 @@
 #include "montage.h"
 #include "parts.h"
 #include "source.h"
+#include "dpx.h"
+#include "exr.h"
+#include "exrtools.h"
+#include "tifffloat.h"
 #include "rhythm.h"
 #include "params.h"
 #include "expr.h"
@@ -2991,6 +2995,416 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                 }
             }
             check("selftest.fmt_source_key", problem);
+        }
+    }
+    // Sorties multicouches (phase 24) : OpenEXR ecrit par le programme, passes de sortie, alpha droit / premultiplie, TIFF flottant, DPX, carte de profondeur
+    {
+        const std::wstring sep(1, platform::pathSeparator());
+        auto put = [&](const std::wstring& name, const std::string& body) {
+            const std::wstring path = outDir + sep + name;
+            if (FILE* f = platform::openFile(path, "wb")) {
+                fwrite(body.data(), 1, body.size(), f);
+                fclose(f);
+            }
+            return path;
+        };
+        auto check = [&](const char* key, const std::wstring& problem) {
+            total++;
+            report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX(key) + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+            if (!problem.empty()) fails++;
+        };
+        auto bad = [&](const std::string& what) { return TXF("selftest.fmt_bad", W(what).c_str()); };
+        auto gen = [&](const std::wstring& args) { return runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y " + args, nullptr) == 0; };
+        auto render24 = [&](const std::wstring& shader, const Settings& st, std::wstring& e) {
+            Hooks H;
+            H.log = [](const std::wstring&) {};
+            return convertFile(shader, exeDir, st, H, e) == Result::Ok;
+        };
+        auto frameFile = [&](const std::wstring& shader, const Settings& st, int n) {
+            const std::wstring first = outputFile(shader, st, false);
+            return wfmt(sequencePattern(first).c_str(), n);
+        };
+        auto closeTo = [](double a, double b, double tol) { return std::fabs(a - b) <= tol; };
+        auto setup = [&](const wchar_t* name) {
+            Settings st = base("h264", "exr", 8);
+            st.width = 32;
+            st.height = 24;
+            st.fps = 4;
+            st.duration = 1;
+            st.name = name;
+            return st;
+        };
+
+        // codec : demi-flottant (les 65536 valeurs, arrondis) et compression zlib (aller-retour, gain sur des donnees repetitives)
+        {
+            std::wstring problem;
+            for (uint32_t h = 0; h < 65536 && problem.empty(); h++) {
+                if (((h >> 10) & 31) == 31 && (h & 0x3ff)) continue;  // NaN : la charge utile n'est pas conservee
+                if (exr::floatToHalf(exr::halfToFloat((uint16_t)h)) != h) problem = bad("half round trip " + std::to_string(h));
+            }
+            if (problem.empty() && (exr::floatToHalf(1.0f) != 0x3c00 || exr::floatToHalf(65519.0f) != 0x7bff || exr::floatToHalf(65520.0f) != 0x7c00 || exr::floatToHalf(1.0f + 1.0f / 2048.0f) != 0x3c00 ||
+                                    exr::floatToHalf(1.0f + 3.0f / 2048.0f) != 0x3c02 || exr::floatToHalf(-0.0f) != 0x8000))
+                problem = bad("half rounding");
+            if (problem.empty()) {
+                std::string raw, mixed;
+                for (int i = 0; i < 70000; i++) raw += (char)((i / 37) & 255);   // repetitif
+                uint32_t seed = 12345;
+                for (int i = 0; i < 70000; i++) {
+                    seed = seed * 1664525u + 1013904223u;
+                    mixed += (char)(seed >> 24);                                 // sans structure
+                }
+                std::string back;
+                const std::string z1 = exr::zlibCompress(raw), z2 = exr::zlibCompress(mixed);
+                if (!exr::zlibDecompress(z1, raw.size(), back) || back != raw) problem = bad("zlib round trip (repetitive)");
+                else if (!exr::zlibDecompress(z2, mixed.size(), back) || back != mixed) problem = bad("zlib round trip (random)");
+                else if (z1.size() * 5 > raw.size()) problem = bad("zlib does not compress repetitive data (" + std::to_string(z1.size()) + ")");
+                else {  // un flux zlib d'une autre origine (blocs a codes dynamiques) est relu : produit par ffmpeg (PNG, IDAT)
+                    const std::wstring png = outDir + sep + L"p24_dyn.png", rawf = outDir + sep + L"p24_dyn.raw";
+                    if (gen(L"-f lavfi -i testsrc2=s=64x48:d=0.04:r=25 -frames:v 1 -update 1 \"" + png + L"\"")) {
+                        std::string pb;
+                        readFile(png, pb);
+                        std::string idat;  // concatenation des blocs IDAT
+                        for (size_t q = 8; q + 12 <= pb.size();) {
+                            const uint32_t len = ((uint8_t)pb[q] << 24) | ((uint8_t)pb[q + 1] << 16) | ((uint8_t)pb[q + 2] << 8) | (uint8_t)pb[q + 3];
+                            if (pb.compare(q + 4, 4, "IDAT") == 0) idat.append(pb, q + 8, len);
+                            q += 12 + len;
+                        }
+                        std::string inflated;
+                        // 64 x 48, RGB 8 bits : 48 lignes de 1 + 64 * 3 octets
+                        if (idat.empty() || !exr::zlibDecompress(idat, 48 * (1 + 64 * 3), inflated)) problem = bad("zlib stream written by ffmpeg");
+                    }
+                    platform::removeFile(png);
+                    platform::removeFile(rawf);
+                }
+            }
+            check("selftest.fmt_exr_codec", problem);
+        }
+
+        // couches : couleur HDR, profondeur, normale, alpha ; trois compressions et deux precisions relues par le programme, couche principale relue par ffmpeg
+        std::wstring layersShader, layersName;
+        {
+            std::wstring problem;
+            layersShader = put(L"p24.glsl", "// aov depth=bufferB.r\n// aov normal=bufferB.gba\n// aov alpha\nvoid mainImage(out vec4 o, in vec2 p){ vec2 uv = p / iResolution.xy; o = vec4(uv.x * 2.0, uv.y, 1.5, 1.0); }\n");
+            put(L"p24.bufferB.glsl", "void mainImage(out vec4 o, in vec2 p){ vec2 uv = p / iResolution.xy; o = vec4(uv.x * 10.0 + float(iFrame), 0.25, 0.5, uv.y); }\n");
+            struct Variant {
+                const wchar_t* name;
+                const char* comp;
+                const char* prec;
+            };
+            const Variant variants[] = {{L"p24_none", "none", "half"}, {L"p24_zips", "zips", "half"}, {L"p24_zip", "zip", "half"}, {L"p24_zipf", "zip", "float"}};
+            uint64_t sizeNone = 0, sizeZip = 0;
+            exr::Image ref;
+            for (const Variant& v : variants) {
+                if (!problem.empty()) break;
+                Settings st = setup(v.name);
+                st.exrCompression = v.comp;
+                st.exrPrecision = v.prec;
+                std::wstring e;
+                if (!render24(layersShader, st, e)) {
+                    problem = e.empty() ? TX("selftest.render_failed") : e;
+                    break;
+                }
+                const bool full = std::string(v.prec) == "float";
+                const double tolC = full ? 1e-5 : 2.5e-3;  // demi-flottant : 11 bits de mantisse, valeurs jusqu'a 2
+                for (int n : {0, 3}) {
+                    exr::Image img;
+                    const std::wstring file = frameFile(layersShader, st, n);
+                    if (!exr::read(file, img, e)) {
+                        problem = e;
+                        break;
+                    }
+                    if (img.width != 32 || img.height != 24) {
+                        problem = bad("size " + std::to_string(img.width) + "x" + std::to_string(img.height));
+                        break;
+                    }
+                    const char* names[] = {"R", "G", "B", "A", "depth.Z", "normal.X", "normal.Y", "normal.Z"};
+                    for (const char* nm : names)
+                        if (!img.find(nm)) problem = bad(std::string("missing channel ") + nm);
+                    if (!problem.empty()) break;
+                    for (int y = 0; y < 24 && problem.empty(); y++)
+                        for (int x = 0; x < 32; x++) {
+                            const size_t i = (size_t)y * 32 + x;
+                            const double ux = (x + 0.5) / 32.0, uy = (24 - 1 - y + 0.5) / 24.0;  // la ligne 0 du fichier est le haut de l'image
+                            if (!closeTo(img.find("R")->pixels[i], ux * 2.0, tolC) || !closeTo(img.find("G")->pixels[i], uy, tolC) || !closeTo(img.find("B")->pixels[i], 1.5, tolC) ||
+                                !closeTo(img.find("A")->pixels[i], 1.0, 1e-6) || !closeTo(img.find("depth.Z")->pixels[i], ux * 10.0 + n, 1e-4) ||
+                                !closeTo(img.find("normal.X")->pixels[i], 0.25, tolC) || !closeTo(img.find("normal.Y")->pixels[i], 0.5, tolC) || !closeTo(img.find("normal.Z")->pixels[i], uy, tolC)) {
+                                problem = bad(std::string(v.comp) + "/" + v.prec + " frame " + std::to_string(n) + " pixel " + std::to_string(x) + "," + std::to_string(y));
+                                break;
+                            }
+                        }
+                    if (problem.empty() && n == 3 && std::string(v.comp) == "zips") ref = img;
+                    if (problem.empty() && n == 3 && std::string(v.comp) == "zip" && std::string(v.prec) == "half") {  // zip et zips relus identiques
+                        const exr::Image& a = ref;
+                        for (size_t k = 0; k < a.channels.size() && problem.empty(); k++)
+                            if (a.channels[k].pixels != img.channels[k].pixels) problem = bad("zip and zips differ on " + a.channels[k].name);
+                    }
+                    if (!problem.empty()) break;
+                    uint64_t sz = 0;
+                    platform::fileSize(file, sz);
+                    if (n == 0 && std::string(v.comp) == "none") sizeNone = sz;
+                    if (n == 0 && std::string(v.comp) == "zip" && std::string(v.prec) == "half") sizeZip = sz;
+                    if (n == 0 && std::string(v.prec) == "half" && img.find("depth.Z")) {  // la profondeur reste en 32 bits meme en demi-flottant
+                        if (!img.find("depth.Z")->full || img.find("R")->full) problem = bad("channel precisions");
+                    }
+                }
+            }
+            if (problem.empty() && !(sizeZip > 0 && sizeNone > 0 && sizeZip < sizeNone)) problem = bad("zip is not smaller than none (" + std::to_string(sizeZip) + " / " + std::to_string(sizeNone) + ")");
+            if (problem.empty()) {  // la couche principale est relue par ffmpeg : planes G, B, R, A en flottant 32 bits
+                Settings st = setup(L"p24_zip");
+                st.exrCompression = "zip";
+                const std::wstring file = frameFile(layersShader, st, 1), raw = outDir + sep + L"p24_ff.raw";
+                platform::removeFile(raw);
+                gen(L"-i \"" + file + L"\" -frames:v 1 -f rawvideo -pix_fmt gbrapf32le \"" + raw + L"\"");
+                std::string px;
+                readFile(raw, px);
+                platform::removeFile(raw);
+                const size_t plane = 32 * 24 * 4;
+                if (px.size() != plane * 4) problem = bad("ffmpeg re-read size " + std::to_string(px.size()));
+                else {
+                    float r, b;
+                    memcpy(&r, px.data() + 2 * plane + ((size_t)12 * 32 + 16) * 4, 4);
+                    memcpy(&b, px.data() + 1 * plane + ((size_t)12 * 32 + 16) * 4, 4);
+                    float g;
+                    memcpy(&g, px.data() + 0 * plane + ((size_t)12 * 32 + 16) * 4, 4);
+                    // ffmpeg borne les valeurs a 1 a la lecture d'un EXR : on compare la couleur dans [0, 1] et la valeur bornee
+                    if (!closeTo(g, (24 - 1 - 12 + 0.5) / 24.0, 3e-3) || !closeTo(r, std::min(1.0, 2.0 * 16.5 / 32.0), 3e-3) || !closeTo(b, 1.0, 3e-3)) problem = bad("ffmpeg re-read values " + std::to_string(r) + " " + std::to_string(g) + " " + std::to_string(b));
+                }
+            }
+            check("selftest.fmt_exr_layers", problem);
+        }
+
+        // carte de profondeur 16 bits : bornes donnees ou lues dans le fichier
+        {
+            std::wstring problem;
+            Settings st = setup(L"p24_zip");
+            const std::wstring file = frameFile(layersShader, st, 2), png = outDir + sep + L"p24_depth.png", raw = outDir + sep + L"p24_depth.raw";
+            std::wstring e;
+            if (exrDepthMap(file, png, 0, 0, false, e)) problem = bad("a depth map without bounds must be refused");
+            else if (!exrDepthMap(file, png, 0.0, 20.0, false, e)) problem = e;
+            else {
+                gen(L"-i \"" + png + L"\" -f rawvideo -pix_fmt gray16le \"" + raw + L"\"");
+                std::string px;
+                readFile(raw, px);
+                if (px.size() != 32 * 24 * 2) problem = bad("depth map size " + std::to_string(px.size()));
+                else {
+                    uint16_t v;
+                    memcpy(&v, px.data() + ((size_t)5 * 32 + 16) * 2, 2);
+                    const double want = (10.0 * 16.5 / 32.0 + 2.0) / 20.0 * 65535.0;
+                    if (!closeTo(v, want, 3.0)) problem = bad("depth value " + std::to_string(v) + " != " + std::to_string(want));
+                }
+            }
+            if (problem.empty()) {  // profondeur normalisee a l'ecriture (depthrange) : les bornes sont dans le fichier, la conversion n'en demande pas d'autres
+                Settings sn = setup(L"p24_norm");
+                sn.depthRange = "0:20";
+                if (!render24(layersShader, sn, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    exr::Image img;
+                    const std::wstring nf = frameFile(layersShader, sn, 2);
+                    bool declared = false;
+                    if (exr::read(nf, img, e))
+                        for (const auto& n : img.numbers)
+                            if (n.first == "depthFar" && closeTo(n.second, 20.0, 1e-6)) declared = true;
+                    if (!declared) problem = bad("depthNear / depthFar not declared");
+                    else if (!closeTo(img.find("depth.Z")->pixels[5 * 32 + 16], (10.0 * 16.5 / 32.0 + 2.0) / 20.0, 1e-4)) problem = bad("normalised depth value");
+                    else if (!exrDepthMap(nf, png, 0, 0, true, e)) problem = e;
+                    else {
+                        gen(L"-i \"" + png + L"\" -f rawvideo -pix_fmt gray16le \"" + raw + L"\"");
+                        std::string px;
+                        readFile(raw, px);
+                        uint16_t v = 0;
+                        if (px.size() >= ((size_t)5 * 32 + 16) * 2 + 2) memcpy(&v, px.data() + ((size_t)5 * 32 + 16) * 2, 2);
+                        const double want = (1.0 - (10.0 * 16.5 / 32.0 + 2.0) / 20.0) * 65535.0;  // le plus proche en blanc
+                        if (!closeTo(v, want, 3.0)) problem = bad("inverted depth value " + std::to_string(v));
+                    }
+                }
+            }
+            platform::removeFile(png);
+            platform::removeFile(raw);
+            check("selftest.fmt_depthmap", problem);
+        }
+
+        // alpha droit et premultiplie : EXR, TIFF flottant et PNG 16 bits
+        {
+            std::wstring problem, e;
+            const std::wstring shader = put(L"p24_alpha.glsl", "// alpha=1\nvoid mainImage(out vec4 o, in vec2 p){ vec2 uv = p / iResolution.xy; o = vec4(1.0, 0.5, 0.25, uv.x); }\n");
+            for (int mode = 0; mode < 2 && problem.empty(); mode++) {
+                Settings st = setup(mode == 0 ? L"p24_straight" : L"p24_premult");
+                st.alphaMode = mode == 0 ? "straight" : "premult";
+                st.exrPrecision = "float";
+                if (!render24(shader, st, e)) {
+                    problem = e.empty() ? TX("selftest.render_failed") : e;
+                    break;
+                }
+                exr::Image img;
+                if (!exr::read(frameFile(shader, st, 0), img, e)) {
+                    problem = e;
+                    break;
+                }
+                std::string declared;
+                for (const auto& t : img.text)
+                    if (t.first == "alphaMode") declared = t.second;
+                for (int x = 0; x < 32 && problem.empty(); x += 7) {
+                    const double a = (x + 0.5) / 32.0, r = img.find("R")->pixels[(size_t)10 * 32 + x], g = img.find("G")->pixels[(size_t)10 * 32 + x];
+                    if (!closeTo(img.find("A")->pixels[(size_t)10 * 32 + x], a, 1e-5) || !closeTo(r, mode == 0 ? 1.0 : a, 1e-4) || !closeTo(g, mode == 0 ? 0.5 : 0.5 * a, 1e-4))
+                        problem = bad(std::string(mode == 0 ? "straight" : "premult") + " exr pixel " + std::to_string(x));
+                }
+                if (problem.empty() && declared != (mode == 0 ? "straight" : "premultiplied")) problem = bad("alphaMode attribute '" + declared + "'");
+                if (!problem.empty()) break;
+                Settings sp = base("h264", "png", 10);  // PNG 16 bits : la couleur est multipliee par l'alpha
+                sp.width = 32;
+                sp.height = 24;
+                sp.fps = 2;
+                sp.duration = 0.5;
+                sp.name = mode == 0 ? L"p24_pstraight" : L"p24_ppremult";
+                sp.alphaMode = st.alphaMode;
+                if (!render24(shader, sp, e)) {
+                    problem = e.empty() ? TX("selftest.render_failed") : e;
+                    break;
+                }
+                const std::wstring raw = outDir + sep + L"p24_png.raw";
+                platform::removeFile(raw);
+                gen(L"-i \"" + frameFile(shader, sp, 0) + L"\" -f rawvideo -pix_fmt rgba64le \"" + raw + L"\"");
+                std::string px;
+                readFile(raw, px);
+                platform::removeFile(raw);
+                if (px.size() != (size_t)32 * 24 * 8) problem = bad("png re-read size");
+                else {
+                    uint16_t c[4];
+                    memcpy(c, px.data() + ((size_t)10 * 32 + 24) * 8, 8);
+                    const double a = c[3] / 65535.0;
+                    if (!closeTo(c[0] / 65535.0, mode == 0 ? 1.0 : a, 0.004) || !closeTo(a, 24.5 / 32.0, 0.004)) problem = bad(std::string(mode == 0 ? "straight" : "premult") + " png pixel " + std::to_string(c[0]) + "," + std::to_string(c[3]));
+                }
+            }
+            check("selftest.fmt_exr_alpha", problem);
+        }
+
+        // vecteurs de mouvement estimes : une texture qui avance de 4 pixels par image
+        {
+            std::wstring problem, e;
+            const std::wstring shader = put(L"p24_motion.glsl", "// aov motion\nvoid mainImage(out vec4 o, in vec2 p){ vec2 c = floor((p - vec2(4.0 * float(iFrame), 0.0)) / 2.0); float v = fract(sin(dot(c, vec2(12.9898, 78.233))) * 43758.5453); o = vec4(vec3(v), 1.0); }\n");
+            Settings st = setup(L"p24_motion");
+            st.width = 96;
+            st.height = 32;
+            if (!render24(shader, st, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                exr::Image f0, f2;
+                if (!exr::read(frameFile(shader, st, 0), f0, e) || !exr::read(frameFile(shader, st, 2), f2, e)) problem = e;
+                else {
+                    bool zero0 = true;
+                    for (float v : f0.find("motion.X")->pixels) if (v != 0.0f) zero0 = false;
+                    const double mx = f2.find("motion.X")->pixels[(size_t)16 * 96 + 28], my = f2.find("motion.Y")->pixels[(size_t)16 * 96 + 28];  // un point au milieu de l'image 2
+                    if (!zero0) problem = bad("the first frame must have no motion");
+                    else if (!closeTo(mx, 4.0, 1.0) || !closeTo(my, 0.0, 1.0)) problem = bad("estimated motion " + std::to_string(mx) + "," + std::to_string(my) + " instead of 4,0");
+                }
+            }
+            check("selftest.fmt_exr_motion", problem);
+        }
+
+        // flou de mouvement vectoriel : un trait qui avance de 8 pixels par image, flou le long de son deplacement, lumiere conservee
+        {
+            std::wstring problem, e;
+            const std::wstring shader = put(L"p24_vb.glsl", "// aov motion=bufferB.rg\nvoid mainImage(out vec4 o, in vec2 p){ float cx = 20.0 + 8.0 * float(iFrame); float v = abs(p.x - cx) < 2.0 ? 1.0 : 0.0; o = vec4(vec3(v), 1.0); }\n");
+            put(L"p24_vb.bufferB.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(8.0, 0.0, 0.0, 1.0); }\n");
+            double sums[2] = {0, 0}, behind[2] = {0, 0};
+            for (int blurred = 0; blurred < 2 && problem.empty(); blurred++) {
+                Settings st = setup(blurred ? L"p24_vb1" : L"p24_vb0");
+                st.width = 64;
+                st.height = 8;
+                st.exrPrecision = "float";
+                st.vectorBlur = blurred ? 1.0 : 0.0;
+                exr::Image img;
+                if (!render24(shader, st, e) || !exr::read(frameFile(shader, st, 1), img, e)) {
+                    problem = e.empty() ? TX("selftest.render_failed") : e;
+                    break;
+                }
+                for (int x = 0; x < 64; x++) sums[blurred] += img.find("R")->pixels[(size_t)3 * 64 + x];
+                behind[blurred] = img.find("R")->pixels[(size_t)3 * 64 + 22];  // derriere le trait (qui est en 26..30 a l'image 1)
+            }
+            if (problem.empty() && !(behind[0] < 1e-6 && behind[1] > 0.1)) problem = bad("no trail behind the stripe (" + std::to_string(behind[0]) + " / " + std::to_string(behind[1]) + ")");
+            else if (problem.empty() && !closeTo(sums[1], sums[0], sums[0] * 0.1)) problem = bad("the blur does not keep the light (" + std::to_string(sums[0]) + " -> " + std::to_string(sums[1]) + ")");
+            check("selftest.fmt_exr_vectorblur", problem);
+        }
+
+        // sur-echantillonnage : moyenne exacte de 2 x 2 pixels
+        {
+            std::wstring problem, e;
+            const std::wstring shader = put(L"p24_ss.glsl", "void mainImage(out vec4 o, in vec2 p){ float c = mod(floor(p.x) + floor(p.y), 2.0); o = vec4(c, c, c, 1.0); }\n");
+            Settings st = setup(L"p24_ss");
+            st.ss = 2;
+            if (!render24(shader, st, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                exr::Image img;
+                if (!exr::read(frameFile(shader, st, 0), img, e)) problem = e;
+                else if (img.width != 32 || img.height != 24) problem = bad("size " + std::to_string(img.width) + "x" + std::to_string(img.height));
+                else if (!closeTo(img.find("R")->pixels[7 * 32 + 9], 0.5, 1e-3)) problem = bad("supersampled value");
+            }
+            check("selftest.fmt_exr_ss", problem);
+        }
+
+        // TIFF en virgule flottante 32 bits : valeurs au-dela de 1, alpha declare
+        {
+            std::wstring problem, e;
+            const std::wstring shader = put(L"p24_tiff.glsl", "void mainImage(out vec4 o, in vec2 p){ vec2 uv = p / iResolution.xy; o = vec4(uv.x * 3.0, 0.5, 2.0, uv.y); }\n");
+            for (int mode = 0; mode < 2 && problem.empty(); mode++) {
+                Settings st = setup(mode == 0 ? L"p24_tf3" : L"p24_tf4");
+                st.container = "tiff";
+                st.tiffFloat = true;
+                st.alpha = mode == 1;
+                st.alphaMode = "premult";
+                if (!render24(shader, st, e)) {
+                    problem = e.empty() ? TX("selftest.render_failed") : e;
+                    break;
+                }
+                tifffloat::Image ti;
+                const std::wstring tf = wfmt(sequencePattern(outputFile(shader, st, false)).c_str(), 0);
+                if (!tifffloat::read(tf, ti, e)) problem = e;
+                else if (ti.width != 32 || ti.height != 24 || ti.samples != (mode == 0 ? 3 : 4)) problem = bad("tiff layout");
+                else {
+                    const size_t i = ((size_t)6 * 32 + 20) * (size_t)ti.samples;
+                    const double ux = 20.5 / 32.0, uy = (24 - 1 - 6 + 0.5) / 24.0;
+                    const double a = mode == 1 ? uy : 1.0;  // alpha = uv.y ; premultiplie : la couleur est multipliee
+                    const double kk = mode == 1 ? a : 1.0;
+                    if (!closeTo(ti.pixels[i], ux * 3.0 * kk, 1e-4) || !closeTo(ti.pixels[i + 1], 0.5 * kk, 1e-4) || !closeTo(ti.pixels[i + 2], 2.0 * kk, 1e-4) || (mode == 1 && (!closeTo(ti.pixels[i + 3], uy, 1e-4) || !ti.premultiplied)))
+                        problem = bad("tiff float values (mode " + std::to_string(mode) + ")");
+                    else if (mode == 0 && ti.pixels[i] <= 1.0f && ux * 3.0 > 1.0) problem = bad("tiff values were clamped");
+                }
+            }
+            check("selftest.fmt_tiff_float", problem);
+        }
+
+        // DPX 10 bits : valeurs, espace de couleur et cadence dans l'en-tete
+        {
+            std::wstring problem, e;
+            const std::wstring shader = put(L"p24_dpx.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(0.8, 0.4, 0.2, 1.0); }\n");
+            Settings st = base("h264", "dpx", 10);
+            st.width = 32;
+            st.height = 24;
+            st.fps = 24;
+            st.duration = 0.25;
+            st.name = L"p24_dpx";
+            if (!render24(shader, st, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                const std::wstring file = frameFile(shader, st, 3), raw = outDir + sep + L"p24_dpx.raw";
+                platform::removeFile(raw);
+                gen(L"-i \"" + file + L"\" -frames:v 1 -f rawvideo -pix_fmt gbrp10le \"" + raw + L"\"");
+                std::string px, hdr;
+                readFile(raw, px);
+                readFile(file, hdr);
+                platform::removeFile(raw);
+                const size_t plane = 32 * 24 * 2;
+                if (px.size() != plane * 3 || hdr.size() < 2048) problem = bad("dpx re-read size " + std::to_string(px.size()));
+                else {
+                    uint16_t g, b, r;
+                    memcpy(&g, px.data() + 10 * 2, 2);
+                    memcpy(&b, px.data() + plane + 10 * 2, 2);
+                    memcpy(&r, px.data() + 2 * plane + 10 * 2, 2);
+                    if (!closeTo(r, 0.8 * 1023, 2.0) || !closeTo(g, 0.4 * 1023, 2.0) || !closeTo(b, 0.2 * 1023, 2.0)) problem = bad("dpx values " + std::to_string(r) + "," + std::to_string(g) + "," + std::to_string(b));
+                    else if ((uint8_t)hdr[803] != 10) problem = bad("dpx bit depth " + std::to_string((int)(uint8_t)hdr[803]));
+                    else if ((uint8_t)hdr[801] != 6 || (uint8_t)hdr[802] != 6) problem = bad("dpx colour space " + std::to_string((int)(uint8_t)hdr[801]));
+                    else if (!closeTo(dpxFrameRate(file), 24.0, 1e-6)) problem = bad("dpx frame rate " + std::to_string(dpxFrameRate(file)));
+                }
+            }
+            check("selftest.fmt_dpx", problem);
         }
     }
     // Canaux dynamiques et cubemap par fichiers : audio (spectre), video (images au bon temps), six faces de couleurs distinctes

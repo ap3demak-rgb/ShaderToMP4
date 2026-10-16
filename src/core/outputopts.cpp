@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "outputopts.h"
+#include "aov.h"
 #include "formats.h"
 #include "i18n.h"
 #include "publish.h"
@@ -98,6 +99,14 @@ void outputFieldsFrom(const Settings& s, OutputFields& f) {
     f.sourceFps = s.sourceFps > 0 ? i18n::num(s.sourceFps) : L"";
     f.transDur = i18n::num(s.transitionDur);
     f.transOffset = s.transitionOffset != 0 ? i18n::num(s.transitionOffset) : L"";
+    f.aov.clear();
+    for (const std::string& a : s.aovSpecs) f.aov += (f.aov.empty() ? L"" : L";") + W(a);
+    f.exrComp = s.exrCompression == "none" ? 2 : s.exrCompression == "zips" ? 1 : 0;
+    f.exrFloat = s.exrPrecision == "float";
+    f.premult = s.alphaMode == "premult";
+    f.depthRange = W(s.depthRange);
+    f.tiffFloat = s.tiffFloat;
+    f.vectorBlur = s.vectorBlur > 0 ? i18n::num(s.vectorBlur) : L"";
     f.variants.clear();
     for (const std::string& v : s.variants) f.variants += (f.variants.empty() ? L"" : L" ; ") + W(v);
 }
@@ -238,6 +247,39 @@ bool outputFieldsApply(const OutputFields& f, Settings& s, std::wstring& err) {
         t.sourceFps = sfps;
         t.transitionDur = tdur;
         t.transitionOffset = toff;
+    }
+    {  // sorties multicouches
+        Settings probe;
+        const std::string all = U8(f.aov);
+        size_t q = 0;
+        while (q < all.size()) {
+            size_t e2 = all.find(';', q);
+            if (e2 == std::string::npos) e2 = all.size();
+            const std::string one = trim(all.substr(q, e2 - q));
+            if (!one.empty()) probe.aovSpecs.push_back(one);
+            q = e2 + 1;
+        }
+        std::vector<AovSpec> parsed;
+        if (!parseAovs(probe, parsed, err)) return false;
+        std::string range = trim(U8(f.depthRange));
+        double nz = 0, fz = 0;
+        if (lower(range) == "off") range.clear();
+        if (!range.empty() && (sscanf(range.c_str(), "%lf:%lf", &nz, &fz) != 2 || !(fz > nz))) {
+            err = TXF("error.depthrange_invalid", W(range).c_str());
+            return false;
+        }
+        t.aovSpecs = probe.aovSpecs;
+        t.exrCompression = f.exrComp == 2 ? "none" : f.exrComp == 1 ? "zips" : "zip";
+        t.exrPrecision = f.exrFloat ? "float" : "half";
+        t.alphaMode = f.premult ? "premult" : "straight";
+        t.depthRange = range;
+        t.tiffFloat = f.tiffFloat;
+        double vb = 0;
+        if (!number(f.vectorBlur, vb, 0) || vb < 0 || vb > 1) {
+            err = TX("error.vectorblur_invalid");
+            return false;
+        }
+        t.vectorBlur = vb;
     }
     double par = 1;
     if (!number(f.parallel, par, 1) || par < 1 || par > 16 || par != std::floor(par)) {

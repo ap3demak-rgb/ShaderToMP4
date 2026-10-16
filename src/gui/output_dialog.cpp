@@ -28,7 +28,8 @@ enum {
     ID_OD_TITLE, ID_OD_CREDIT, ID_OD_TITLEDUR, ID_OD_NEXT, ID_OD_NAME, ID_OD_EXISTS, ID_OD_META, ID_OD_ENDACT, ID_OD_CHUNK, ID_OD_PBO, ID_OD_SHUTTER, ID_OD_VARIANTS,
     ID_OD_LOOPMODE, ID_OD_LOOPFADE, ID_OD_TIMEMAP, ID_OD_SPEED, ID_OD_SAMPLES, ID_OD_TILE, ID_OD_DPI, ID_OD_FINDLOOP, ID_OD_TIME, ID_OD_CURVE, ID_OD_AUDIOF, ID_OD_STILLF, ID_OD_PRECHECK, ID_OD_PUBLISH, ID_OD_TARGET, ID_OD_TSIZE, ID_OD_CROP, ID_OD_MASTER, ID_OD_CACHEMAX, ID_OD_EMBED, ID_OD_ACREDIT, ID_OD_ANIMP, ID_OD_PURGE,
     ID_OD_RHYTHM, ID_OD_BPM, ID_OD_BARS, ID_OD_MARKERS, ID_OD_BSYNC, ID_OD_WAVE, ID_OD_ZOOM, ID_OD_POS, ID_OD_ANALYSE, ID_OD_INFO, ID_OD_PARALLEL, ID_OD_FARM,
-    ID_OD_SOURCEBTN, ID_OD_SOURCE, ID_OD_SOURCE2, ID_OD_SMATCH, ID_OD_SAUDIO, ID_OD_REVERSE, ID_OD_SFPS, ID_OD_TDUR, ID_OD_TOFF
+    ID_OD_SOURCEBTN, ID_OD_SOURCE, ID_OD_SOURCE2, ID_OD_SMATCH, ID_OD_SAUDIO, ID_OD_REVERSE, ID_OD_SFPS, ID_OD_TDUR, ID_OD_TOFF,
+    ID_OD_COMPOBTN, ID_OD_AOV, ID_OD_EXRCOMP, ID_OD_EXRPREC, ID_OD_ALPHAMODE, ID_OD_DEPTHRANGE, ID_OD_TIFFF, ID_OD_VBLUR
 };
 
 struct Dlg {
@@ -39,11 +40,12 @@ struct Dlg {
     HWND loopMode = nullptr, loopFade = nullptr, timemap = nullptr, speed = nullptr, samples = nullptr, tile = nullptr, dpiEdit = nullptr, audioF = nullptr, curve = nullptr, stillF = nullptr, precheck = nullptr;
     HWND target = nullptr, tsize = nullptr, crop = nullptr, master = nullptr, cacheMax = nullptr, embed = nullptr, aCredit = nullptr, animP = nullptr;
     HWND parallel = nullptr, farm = nullptr;
+    HWND aov = nullptr, exrComp = nullptr, exrPrec = nullptr, alphaMode = nullptr, depthRange = nullptr, tiffF = nullptr, vblur = nullptr;
     HWND source = nullptr, source2 = nullptr, smatch = nullptr, saudio = nullptr, reverse = nullptr, sfps = nullptr, tdur = nullptr, toff = nullptr;
     HWND bpm = nullptr, bars = nullptr, markers = nullptr, bsync = nullptr, wave = nullptr, zoom = nullptr, pos = nullptr, info = nullptr;
     std::vector<HWND> headers;  // titres de section (en couleur d'accentuation)
     UINT dpi = 96;
-    int page = 0;   // 0 sortie, 1 avance, 2 temps et boucle, 3 publication, 4 rythme, 5 source (mode effet)
+    int page = 0;   // 0 sortie, 1 avance, 2 temps et boucle, 3 publication, 4 rythme, 5 source (mode effet), 6 compositing (EXR multicouche)
     int next = -1;  // page a ouvrir apres la fermeture (-1 = aucune)
     bool done = false;
 } D;
@@ -140,6 +142,14 @@ OutputFields readFields() {
         f.embed = SendMessageW(D.embed, CB_GETCURSEL, 0, 0) == 1;
         f.autoCredit = SendMessageW(D.aCredit, CB_GETCURSEL, 0, 0) == 1;
         f.animPreview = std::max(0, (int)SendMessageW(D.animP, CB_GETCURSEL, 0, 0));
+    } else if (D.page == 6) {
+        f.aov = txt(D.aov);
+        f.exrComp = std::max(0, (int)SendMessageW(D.exrComp, CB_GETCURSEL, 0, 0));
+        f.exrFloat = SendMessageW(D.exrPrec, CB_GETCURSEL, 0, 0) == 1;
+        f.premult = SendMessageW(D.alphaMode, CB_GETCURSEL, 0, 0) == 1;
+        f.depthRange = txt(D.depthRange);
+        f.tiffFloat = SendMessageW(D.tiffF, CB_GETCURSEL, 0, 0) == 1;
+        f.vectorBlur = txt(D.vblur);
     } else if (D.page == 5) {
         f.source = txt(D.source);
         f.source2 = txt(D.source2);
@@ -483,7 +493,8 @@ LRESULT CALLBACK dlgProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_COMMAND:
             if (LOWORD(wp) == ID_OD_CLOSE || LOWORD(wp) == IDCANCEL) applyAndClose(-1);
-            else if (LOWORD(wp) == ID_OD_NEXT) applyAndClose(D.page == 1 ? 0 : D.page == 4 || D.page == 5 ? 3 : D.page == 3 ? 0 : 1);
+            else if (LOWORD(wp) == ID_OD_NEXT) applyAndClose(D.page == 1 ? 0 : D.page == 6 ? 5 : D.page == 4 || D.page == 5 ? 3 : D.page == 3 ? 0 : 1);
+            else if (LOWORD(wp) == ID_OD_COMPOBTN) applyAndClose(6);
             else if (LOWORD(wp) == ID_OD_SOURCEBTN) applyAndClose(5);
             else if (LOWORD(wp) == ID_OD_PUBLISH) applyAndClose(3);
             else if (LOWORD(wp) == ID_OD_RHYTHM) applyAndClose(4);
@@ -570,14 +581,14 @@ int runPage(HWND parent, int page) {
     const DWORD style = WS_CAPTION | WS_SYSMENU;
     RECT work{};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
-    const int clientH = page == 0 ? 620 : page == 1 ? 630 : page == 3 ? 520 : page == 4 ? 580 : page == 5 ? 410 : 450;
+    const int clientH = page == 0 ? 620 : page == 1 ? 630 : page == 3 ? 520 : page == 4 ? 580 : page == 5 ? 410 : page == 6 ? 390 : 450;
     RECT want{0, 0, S(600), S(clientH)};
     AdjustWindowRectExForDpi(&want, style, FALSE, WS_EX_DLGMODALFRAME, D.dpi);
     RECT pr;
     GetWindowRect(parent, &pr);
     const int ww = want.right - want.left, wh = want.bottom - want.top;
     const int x = pr.left + ((pr.right - pr.left) - ww) / 2, y = std::max((int)work.top, (int)(pr.top + ((pr.bottom - pr.top) - wh) / 2));
-    D.wnd = CreateWindowExW(WS_EX_DLGMODALFRAME, kDlgClass, TX(page == 0 ? "ui.output.title" : page == 1 ? "ui.output.adv_title" : page == 3 ? "ui.output.publish_title" : page == 4 ? "ui.output.rhythm_title" : page == 5 ? "ui.output.source_title" : "ui.output.time_title").c_str(), style | WS_VISIBLE | WS_CLIPCHILDREN, x, y,
+    D.wnd = CreateWindowExW(WS_EX_DLGMODALFRAME, kDlgClass, TX(page == 0 ? "ui.output.title" : page == 1 ? "ui.output.adv_title" : page == 3 ? "ui.output.publish_title" : page == 4 ? "ui.output.rhythm_title" : page == 5 ? "ui.output.source_title" : page == 6 ? "ui.output.compo_title" : "ui.output.time_title").c_str(), style | WS_VISIBLE | WS_CLIPCHILDREN, x, y,
                             ww, wh, parent, nullptr, hi, nullptr);
     if (!D.wnd) return -1;
     ui::darkTitleBar(D.wnd);
@@ -671,6 +682,24 @@ int runPage(HWND parent, int page) {
         label(TX("ui.output.cachemax"), lx, 280, 130);
         D.cacheMax = edit(ID_OD_CACHEMAX, f.cacheMax, fx, 280, 150);
         hint(TX("ui.output.hint_trace"), 316, 66);
+    } else if (page == 6) {
+        const std::vector<std::wstring> offOn = {TX("ui.output.off"), TX("ui.output.on")};
+        header(TX("ui.output.sec_compo"), 12);
+        label(TX("ui.output.aov"), lx, 40, 130);
+        D.aov = edit(ID_OD_AOV, f.aov, fx, 40, 428);
+        label(TX("ui.output.exrcomp"), lx, 72, 130);
+        D.exrComp = combo(ID_OD_EXRCOMP, {TX("ui.output.comp_zip"), TX("ui.output.comp_zips"), TX("ui.output.comp_none")}, f.exrComp, fx, 72, 150);
+        label(TX("ui.output.exrprec"), rx, 72, 130);
+        D.exrPrec = combo(ID_OD_EXRPREC, {TX("ui.output.prec_half"), TX("ui.output.prec_float")}, f.exrFloat ? 1 : 0, rf, 72, 118);
+        label(TX("ui.output.alphamode"), lx, 104, 130);
+        D.alphaMode = combo(ID_OD_ALPHAMODE, {TX("ui.output.alpha_straight"), TX("ui.output.alpha_premult")}, f.premult ? 1 : 0, fx, 104, 150);
+        label(TX("ui.output.tifffloat"), rx, 104, 130);
+        D.tiffF = combo(ID_OD_TIFFF, offOn, f.tiffFloat ? 1 : 0, rf, 104, 118);
+        label(TX("ui.output.depthrange"), lx, 136, 130);
+        D.depthRange = edit(ID_OD_DEPTHRANGE, f.depthRange, fx, 136, 150);
+        label(TX("ui.output.vectorblur"), rx, 136, 130);
+        D.vblur = edit(ID_OD_VBLUR, f.vectorBlur, rf, 136, 118);
+        hint(TX("ui.output.hint_compo"), 176, 170);
     } else if (page == 5) {
         const std::vector<std::wstring> offOn = {TX("ui.output.off"), TX("ui.output.on")};
         header(TX("ui.output.sec_source"), 12);
@@ -786,6 +815,11 @@ int runPage(HWND parent, int page) {
             {D.bpm, "ui.output.bpm"}, {D.bars, "ui.output.beatsperbar"}, {D.markers, "ui.output.markers"}, {D.bsync, "ui.output.beatsync"},
             {D.wave, "ui.output.wave_name"}, {D.zoom, "ui.output.zoom"}, {D.pos, "ui.output.position"}};
         for (const auto& n : names) setAccessibleName(n.c, n.key);
+    } else if (page == 6) {
+        const struct { HWND c; const char* key; } names[] = {
+            {D.aov, "ui.output.aov"}, {D.exrComp, "ui.output.exrcomp"}, {D.exrPrec, "ui.output.exrprec"}, {D.alphaMode, "ui.output.alphamode"},
+            {D.tiffF, "ui.output.tifffloat"}, {D.depthRange, "ui.output.depthrange"}, {D.vblur, "ui.output.vectorblur"}};
+        for (const auto& n : names) setAccessibleName(n.c, n.key);
     } else if (page == 5) {
         const struct { HWND c; const char* key; } names[] = {
             {D.source, "ui.output.source"}, {D.source2, "ui.output.source2"}, {D.smatch, "ui.output.sourcematch"}, {D.saudio, "ui.output.sourceaudio"},
@@ -803,11 +837,12 @@ int runPage(HWND parent, int page) {
             {D.dpiEdit, "ui.output.dpi"}, {D.stillF, "ui.output.stillformat"}};
         for (const auto& n : names) setAccessibleName(n.c, n.key);
     }
-    D.bNext = button(page == 1 || page == 3 || page == 4 || page == 5 ? "ui.output.back_btn" : "ui.output.adv_btn", ID_OD_NEXT, IC_SLIDERS, ui::BtnStyle::Secondary, 20, clientH - 50, 150, hi);
+    D.bNext = button(page == 1 || page == 3 || page == 4 || page == 5 || page == 6 ? "ui.output.back_btn" : "ui.output.adv_btn", ID_OD_NEXT, IC_SLIDERS, ui::BtnStyle::Secondary, 20, clientH - 50, 150, hi);
     D.bClose = button("ui.params.close", ID_OD_CLOSE, IC_CHECK, ui::BtnStyle::Primary, 600 - 20 - 130, clientH - 50, 130, hi);
     if (page == 0) button("ui.output.publish_btn", ID_OD_PUBLISH, IC_GLOBE, ui::BtnStyle::Secondary, 190, clientH - 50, 240, hi);
     if (page == 3) button("ui.output.purge_btn", ID_OD_PURGE, IC_TRASH, ui::BtnStyle::Secondary, 190, clientH - 50, 240, hi);
     if (page == 3) button("ui.output.rhythm_btn", ID_OD_RHYTHM, IC_AUDIO, ui::BtnStyle::Secondary, 20, clientH - 96, 250, hi);
+    if (page == 5) button("ui.output.compo_btn", ID_OD_COMPOBTN, IC_FILM, ui::BtnStyle::Secondary, 190, clientH - 50, 240, hi);
     if (page == 3) button("ui.output.source_btn", ID_OD_SOURCEBTN, IC_FILM, ui::BtnStyle::Secondary, 290, clientH - 96, 290, hi);
     if (page == 4) button("ui.output.analyse_btn", ID_OD_ANALYSE, IC_EYE, ui::BtnStyle::Secondary, 190, clientH - 50, 240, hi);
     if (page == 1) button("ui.output.time_btn", ID_OD_TIME, IC_FILM, ui::BtnStyle::Secondary, 190, clientH - 50, 240, hi);
@@ -816,7 +851,7 @@ int runPage(HWND parent, int page) {
 
     // Boîte modale : la fenêtre principale est désactivée pendant l'affichage
     EnableWindow(parent, FALSE);
-    SetFocus(page == 0 ? D.alpha : page == 1 ? D.name : page == 3 ? D.target : page == 4 ? D.bpm : page == 5 ? D.source : D.loopMode);
+    SetFocus(page == 0 ? D.alpha : page == 1 ? D.name : page == 3 ? D.target : page == 4 ? D.bpm : page == 5 ? D.source : page == 6 ? D.aov : D.loopMode);
     MSG m;
     while (!D.done && GetMessageW(&m, nullptr, 0, 0) > 0) {
         if (!IsDialogMessageW(D.wnd, &m)) {

@@ -20,7 +20,8 @@ static const FormatInfo kCodecs[] = {
     {"dnxhr_444", L"DNxHR 444"}};
 static const FormatInfo kContainers[] = {{"mp4", L"MP4"},   {"mov", L"MOV"},   {"mkv", L"MKV"},
                                          {"webm", L"WebM"}, {"gif", L"GIF"},   {"webp", L"WebP"},
-                                         {"png", L"PNG"},   {"tiff", L"TIFF"}, {"exr", L"EXR"}};
+                                         {"png", L"PNG"},   {"tiff", L"TIFF"}, {"exr", L"EXR"},
+                                         {"dpx", L"DPX"}};
 
 int codecCount() { return (int)(sizeof(kCodecs) / sizeof(kCodecs[0])); }
 const FormatInfo& codecAt(int i) { return kCodecs[std::min(codecCount() - 1, std::max(0, i))]; }
@@ -57,7 +58,7 @@ std::string normalizeContainer(const std::string& v) {
 OutKind outKind(const std::string& container) {
     if (container == "gif") return OutKind::Gif;
     if (container == "webp") return OutKind::Webp;
-    if (container == "png" || container == "tiff" || container == "exr") return OutKind::Sequence;
+    if (container == "png" || container == "tiff" || container == "exr" || container == "dpx") return OutKind::Sequence;
     return OutKind::Video;
 }
 
@@ -156,9 +157,26 @@ static std::set<std::string> listEncoders(const std::wstring& ffmpeg) {
     return names;
 }
 
+static std::map<std::wstring, bool> g_alphaMode;
 void forgetFfmpegCapabilities() {
     std::lock_guard<std::mutex> lock(g_capMutex);
     g_caps.clear();
+    g_alphaMode.clear();
+}
+
+bool ffmpegHasAlphaMode(const std::wstring& ffmpeg) {
+    {
+        std::lock_guard<std::mutex> lock(g_capMutex);
+        auto it = g_alphaMode.find(ffmpeg);
+        if (it != g_alphaMode.end()) return it->second;
+    }
+    bool found = false;
+    runProcess(L"\"" + ffmpeg + L"\" -hide_banner -h filter=setparams", [&](const std::wstring& line) {
+        if (line.find(L"alpha_mode") != std::wstring::npos) found = true;
+    });
+    std::lock_guard<std::mutex> lock(g_capMutex);
+    g_alphaMode[ffmpeg] = found;
+    return found;
 }
 
 static bool anyEncoder(const std::wstring& ffmpeg, const std::vector<std::string>& wanted) {
@@ -203,7 +221,7 @@ double estimateSizeBytes(const Settings& s, double seconds, bool audio) {
         case OutKind::Gif: return px * frames * 0.25;
         case OutKind::Webp: return px * frames * 0.08 * alphaK;
         case OutKind::Sequence:
-            return px * frames * (s.container == "png" ? 1.4 : s.container == "tiff" ? 3.0 : 4.0) * (deep && s.container != "exr" ? 2.0 : 1.0) * alphaK;
+            return px * frames * (s.container == "png" ? 1.4 : s.container == "tiff" ? 3.0 : 4.0) * (deep && s.container != "exr" && s.container != "dpx" ? 2.0 : 1.0) * alphaK;
         default: break;
     }
     double bytes;
