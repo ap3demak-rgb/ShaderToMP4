@@ -66,6 +66,10 @@ struct Fields {
     // Calcul reparti : contextes de rendu en parallele, dossier partage de la ferme
     char parallel[8] = "1", farm[512] = "";
     int markers = 0, beatSync = 0;
+    // Mode effet : sources, ce que la source impose (0 taille+cadence+duree, 1 taille+cadence, 2 taille, 3 rien), son de la source, envers, cadence de sequence, transition
+    char source[512] = "", source2[512] = "", sourceFps[16] = "", transDur[16] = "1", transOffset[16] = "";
+    int sourceMatch = 0;
+    bool sourceAudio = true, reverse = false;
 };
 
 struct LogLine {

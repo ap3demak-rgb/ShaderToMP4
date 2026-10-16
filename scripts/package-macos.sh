@@ -56,5 +56,8 @@ PLIST
 codesign --force --deep --sign - "${app}"
 cp COPYING LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_NOTICES.fr.md README.md README.fr.md "${root}/"
 cp lang/*.json "${root}/lang/"
+mkdir -p "${root}/transitions" "${root}/examples/effects"
+cp transitions/*.glsl "${root}/transitions/"
+cp examples/effects/*.glsl "${root}/examples/effects/"
 (cd dist && ditto -c -k --keepParent "${name}" "${name}.zip")
 echo "dist/${name}.zip"

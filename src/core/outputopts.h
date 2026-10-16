@@ -38,6 +38,11 @@ struct OutputFields {
     bool precheck = false;       // controle qualite avant le rendu
     int stillFormat = 0;         // 0 PNG, 1 TIFF
     bool audioFollow = false;    // le son suit la vitesse constante
+    // Mode effet : source(s), ce que la source impose (0 taille+cadence+duree, 1 taille+cadence, 2 taille, 3 rien), son de la source, lecture a l'envers,
+    // cadence d'une sequence, duree et decalage de la transition
+    std::wstring source, source2, sourceFps, transDur, transOffset;
+    int sourceMatch = 0;
+    bool sourceAudio = true, reverse = false;
     std::wstring tile, dpi;      // image fixe : cote des tuiles (vide = automatique), resolution ecrite dans le PNG en ppp (vide = aucune)
 };
 

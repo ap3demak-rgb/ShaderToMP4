@@ -25,7 +25,7 @@ bool reservedName(const std::string& n) {
         "iChannel3", "iChannelTime", "iChannelResolution", "main", "mainImage", "mainVR", "mainSound", "mainCubemap", "texture", "uniform",
         "float", "int", "bool", "void", "vec2", "vec3", "vec4", "ivec2", "ivec3", "ivec4", "mat2", "mat3", "mat4", "sampler2D", "sampler3D",
         "samplerCube", "in", "out", "inout", "const", "if", "else", "for", "while", "do", "return", "break", "continue", "discard", "true",
-        "false", "struct", "layout", "precision", "highp", "mediump", "lowp", "iBeat", "iBeatCount", "iBPM", "iBass", "iMid", "iTreble", "iEnergy", "iOnset"};
+        "false", "struct", "layout", "precision", "highp", "mediump", "lowp", "iBeat", "iBeatCount", "iBPM", "iBass", "iMid", "iTreble", "iEnergy", "iOnset", "iProgress"};
     for (const char* w : kWords)
         if (n == w) return true;
     return n.compare(0, 3, "st_") == 0 || n.compare(0, 3, "gl_") == 0;
@@ -481,6 +481,16 @@ bool ParamSet::load(const std::string& code, const Settings& s, const std::wstri
         rhythmUsed_[i] = usesWord(stripped, kExprVarNames[i]) && !declaredGlobally(stripped, kExprVarNames[i]);
         if (rhythmUsed_[i]) decls_ += std::string("uniform ") + (i == EV_BEATCOUNT ? "int " : "float ") + kExprVarNames[i] + ";\n";
     }
+    // iProgress (transitions et fondus ecrits en GLSL) : declare ici quand le code le lit
+    progressUsed_ = usesWord(stripped, "iProgress") && !declaredGlobally(stripped, "iProgress");
+    if (progressUsed_) decls_ += "uniform float iProgress;\n";
+    if (s.rt.transition) {
+        progStart_ = s.rt.progStart;
+        progLen_ = s.rt.progLen;
+    } else {
+        progStart_ = s.start;
+        progLen_ = s.duration;
+    }
     return true;
 }
 
@@ -594,6 +604,10 @@ void ParamSet::evaluate(const Param& p, double t, double out[4]) const {
 }
 
 void ParamSet::apply(GLuint prog, double t) const {
+    if (progressUsed_) {
+        const GLint loc = ogl::GetUniformLocation(prog, "iProgress");
+        if (loc >= 0) ogl::Uniform1f(loc, (float)(progLen_ > 1e-9 ? std::min(1.0, std::max(0.0, (t - progStart_) / progLen_)) : (t >= progStart_ ? 1.0 : 0.0)));
+    }
     if (rhythm_.loaded() || needsRhythm()) {  // variables du rythme, lues au temps exact de l'image
         const RhythmValues r = rhythm_.loaded() ? rhythm_.at(t) : RhythmValues();
         for (int i = 0; i < EV_TIME; i++) {

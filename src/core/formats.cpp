@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "formats.h"
+#include "source.h"
 #include "i18n.h"
 #include "process.h"
 #include "util.h"
@@ -241,10 +242,11 @@ std::wstring estimateText(const Settings& s, const std::wstring& dir) {
 //  Nom du fichier de sortie
 // ---------------------------------------------------------------------------
 static std::wstring expandName(const std::wstring& stem, const Settings& s) {
-    std::wstring tpl = s.name.empty() ? L"{shader}" : s.name;
+    std::wstring tpl = s.name.empty() ? (s.source.empty() ? std::wstring(L"{shader}") : std::wstring(L"{shader}_{source}")) : s.name;
     const platform::DateTime t = platform::localTime();
     const std::pair<std::wstring, std::wstring> tokens[] = {
         {L"{shader}", stem},
+        {L"{source}", sourceStem(s.source)},
         {L"{w}", std::to_wstring(s.width)},
         {L"{h}", std::to_wstring(s.height)},
         {L"{fps}", wfmt(L"%g", s.fps)},

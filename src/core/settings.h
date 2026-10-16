@@ -7,6 +7,27 @@
 #include "keyboard.h"
 #include "mouse.h"
 
+// Mode effet : ce que la source (video, image, sequence) apporte au rendu ; renseigne par applySource (source.h), jamais ecrit dans config.ini
+struct SourceRuntime {
+    bool active = false;             // une source est en place
+    int width = 0, height = 0;       // taille de l'image de la source (apres rotation)
+    double fps = 0, duration = 0;    // cadence et duree de la source (secondes)
+    bool still = false;              // image fixe (une seule image, tenue pendant tout le rendu)
+    bool hasAudio = false;           // la source a une piste son
+    int chapters = 0;                // nombre de chapitres
+    std::vector<std::string> subCodecs;  // codecs des pistes de sous-titres
+    bool two = false;                // deuxieme source (transition)
+    int width2 = 0, height2 = 0;
+    double fps2 = 0, duration2 = 0;
+    std::string matrix, matrix2;     // matrice de couleur a imposer a la lecture d'une source sans etiquette (HD : bt709), "" = celle du fichier
+    bool still2 = false, hasAudio2 = false;
+    std::wstring path, path2;        // chemins resolus des deux sources
+    bool audioFromSource = false;    // le son de la sortie vient du fichier de la source
+    double timeOffset2 = 0;          // temps de la deuxieme source = temps du shader + timeOffset2
+    bool transition = false;
+    double progStart = 0, progLen = 0;  // iProgress : instant du shader ou la transition commence, sa duree
+};
+
 struct Settings {
     int width = 1920, height = 1080;
     double fps = 60.0, duration = 90.0, start = 0.0;
@@ -87,6 +108,16 @@ struct Settings {
     int parallel = 1;              // parties rendues en meme temps par autant de contextes OpenGL (1 = en serie) ; demande le rendu par parties (chunk)
     std::wstring farm;             // dossier partage de la ferme : plusieurs ordinateurs rendent les parties d'une meme video ; "" = aucune
     double farmTimeout = 120;      // secondes sans signe de vie apres lesquelles le verrou d'une partie est repris (machine eteinte)
+    // Mode effet : le shader s'applique a une video, une image, une sequence ou un dossier de fichiers (iChannel0), et a une deuxieme source pour une transition (iChannel1)
+    std::wstring source, source2;   // fichier, motif de sequence (img_%04d.png) ou dossier ; "" = aucune
+    std::string sourceMatch = "size,fps,duration";  // ce que la source impose : size, fps, duration (liste) ou none
+    bool sourceAudio = true;        // reprendre le son de la source quand `audio` est vide
+    bool reverse = false;           // jouer la plage a l'envers (image et son)
+    double sourceFps = 0;           // cadence d'une sequence d'images (0 = 25)
+    double transitionDur = 1.0;     // duree de la transition entre les deux sources (secondes)
+    double transitionOffset = 0.0;  // decalage du debut de la transition (secondes, positif = plus tard)
+    SourceRuntime rt;               // calcule, pas un reglage
+    std::set<std::string> pinned;   // cles donnees explicitement sur la ligne de commande (width, height, fps, duration, audio) : la source ne les remplace pas ; jamais ecrit dans config.ini
     int samples = 1;               // image fixe (PNG) : moyenne de N echantillons independants du meme instant (iFrame different), 1..100000
 };
 

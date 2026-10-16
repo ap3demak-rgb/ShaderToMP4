@@ -11,6 +11,7 @@
 #include "i18n.h"
 #include "locate.h"
 #include "params.h"
+#include "source.h"
 #include "postfx.h"
 #include "previewconv.h"
 #include "vr.h"
@@ -93,6 +94,12 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
     }
     Settings s = base;
     parseLines(s, code, true);
+    if (!s.source.empty()) {  // mode effet : la source impose ses valeurs et ses canaux, comme pour le rendu
+        std::set<std::string> pinned;
+        for (const Override& o : shaderOverrides(shaderPath)) pinned.insert(o.key);
+        const size_t cut0 = shaderPath.find_last_of(L"\\/");
+        if (!applySource(s, cut0 == std::wstring::npos ? L"" : shaderPath.substr(0, cut0 + 1), findFfmpeg(exeDir), pinned, [](const std::wstring&) {}, err)) return false;
+    }
     s.width = std::max(16, s.width & ~1);
     s.height = std::max(16, s.height & ~1);
     if (s.fps <= 0) s.fps = 60;
@@ -180,7 +187,7 @@ void setUniforms(const Rig& r, GLuint p, long long n, double t) {
     ogl::Uniform1f(ogl::GetUniformLocation(p, "st_ipd"), (float)r.s.vrIpd);
     ogl::Uniform1f(ogl::GetUniformLocation(p, "iTime"), (float)t);
     ogl::Uniform1f(ogl::GetUniformLocation(p, "iTimeDelta"), (float)(1.0 / r.s.fps));
-    ogl::Uniform1i(ogl::GetUniformLocation(p, "iFrame"), (GLint)(n + r.s.warmup));
+    ogl::Uniform1i(ogl::GetUniformLocation(p, "iFrame"), (GLint)frameNumber(r.s, n, t));
     ogl::Uniform1f(ogl::GetUniformLocation(p, "iFrameRate"), (float)r.s.fps);
     float m[4];
     mouseAt(r.s.mouseKeys, t, 1.0 / r.s.fps, r.w, r.h, m);

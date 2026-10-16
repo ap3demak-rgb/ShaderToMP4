@@ -265,6 +265,9 @@ Section "Uninstall"
   ${EndIf}
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR\lang"
+  RMDir "$INSTDIR\transitions"
+  RMDir "$INSTDIR\examples\effects"
+  RMDir "$INSTDIR\examples"
   ; reglages et fichiers du programme : gardes, sauf demande explicite ; les shaders et les videos ne sont jamais touches
   ${If} $Purge = 1
     Delete "$INSTDIR\config.ini"

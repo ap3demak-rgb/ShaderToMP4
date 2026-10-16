@@ -13,6 +13,7 @@
 #include "gl.h"
 #include "montage.h"
 #include "parts.h"
+#include "source.h"
 #include "overlay.h"
 #include "params.h"
 #include "postfx.h"
@@ -215,10 +216,23 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     parseLines(s, code, true);
     if (forced)
         for (const auto& kv : *forced) applySetting(s, kv.first, kv.second);
+    const bool shaderOverrode = !forced && !sameSettings(s, base);  // avant que la source ne change quoi que ce soit
+    if (!s.source.empty()) {  // mode effet : taille, cadence, duree, son et canaux viennent de la source (sauf ce que le shader ecrit lui-meme)
+        std::set<std::string> pinned;
+        for (const Override& o : shaderOverrides(shaderPath)) pinned.insert(o.key);
+        if (forced)
+            for (const auto& kv : *forced) pinned.insert(kv.first);
+        const size_t cut = shaderPath.find_last_of(L"\\/");
+        std::wstring srcErr;
+        if (!applySource(s, cut == std::wstring::npos ? L"" : shaderPath.substr(0, cut + 1), findFfmpeg(exeDir), pinned, [&](const std::wstring& l) { H.log(l); }, srcErr)) {
+            err = srcErr;
+            return Result::Failed;
+        }
+    }
     for (int i = 0; i < 4; i++)  // canal lu par le shader mais sans texture : il lit du noir
         if (s.channel[i].empty() && code.find("iChannel" + std::to_string(i)) != std::string::npos)
             H.log(L"  " + TXF("log.warn_ichannel", i, i));
-    if (!forced && !sameSettings(s, base)) H.log(L"  " + TX("log.shader_overrides"));
+    if (shaderOverrode) H.log(L"  " + TX("log.shader_overrides"));
     Target activeTarget;  // cible de publication : ses valeurs s'appliquent, sauf celles que le shader impose
     bool haveTarget = false;
     if (!s.target.empty() && !H.previewFrame && !H.snapshot) {
@@ -313,7 +327,16 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     TimeMap tm;
     const bool crossfade = videoMode && s.loopMode == "crossfade";
     if (videoMode) {
-        if (!TimeMap::parse(s.timemap, tm, err)) return Result::Failed;
+        std::string tmSpec = s.timemap;
+        if (s.reverse && N > 1 && !(s.rt.active && s.rt.still)) {  // a l'envers : du dernier instant de la plage au premier
+            char rb[96];
+            const double lastU = (double)(N - 1) / s.fps;
+            snprintf(rb, sizeof(rb), "0:%.9g;%.9g:0", lastU, lastU);
+            if (!tmSpec.empty()) H.log(L"  " + TX("log.reverse_timemap"));
+            tmSpec = rb;
+            H.log(L"  " + TX("log.reverse_on"));
+        }
+        if (!TimeMap::parse(tmSpec, tm, err)) return Result::Failed;
         if (s.loopMode == "pingpong") {
             if (tm.hasCurve()) {
                 err = TX("error.loop_timemap");
@@ -691,7 +714,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         ogl::Uniform3f(ogl::GetUniformLocation(p, "iResolution"), (float)PW, (float)PH, 1.0f);
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iTime"), (float)t);
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iTimeDelta"), (float)(inSim ? 1.0 / s.fps : deltaAt(n)));
-        ogl::Uniform1i(ogl::GetUniformLocation(p, "iFrame"), (GLint)(n + s.warmup));
+        ogl::Uniform1i(ogl::GetUniformLocation(p, "iFrame"), (GLint)(inSim ? n + s.warmup : frameNumber(s, n, t)));
         ogl::Uniform1f(ogl::GetUniformLocation(p, "iFrameRate"), (float)s.fps);
         setMouse(ogl::GetUniformLocation(p, "iMouse"), t);
         setDate(ogl::GetUniformLocation(p, "iDate"), t);
@@ -755,7 +778,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         ogl::Uniform1f(uTime, (float)t);
         if (!tm.identity()) ogl::Uniform1f(uDelta, (float)deltaAt(n));
         setMouse(uMouse, t);
-        ogl::Uniform1i(uFrame, (GLint)(n + s.warmup + extraFrame));
+        ogl::Uniform1i(uFrame, (GLint)(frameNumber(s, n, t) + extraFrame));
         setDate(uDate, t);
         params.apply(prog, t);
         if (vrMode == 4) {  // anaglyphe : l'oeil gauche ne dessine que le rouge (et l'alpha), le droit le vert et le bleu
@@ -1111,7 +1134,26 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             hasAudio = true;
         }
     }
+    struct TransGuard {
+        std::wstring path;
+        ~TransGuard() {
+            if (!path.empty()) platform::removeFile(path);
+        }
+    } transGuard;
+    if (videoMode && kind == OutKind::Video && s.rt.transition && s.rt.audioFromSource && s.audio.empty()) {  // fondu enchaine du son des deux sources
+        transGuard.path = out + L".transition.wav";
+        if (buildTransitionAudio(ffmpeg, s, totalSec, transGuard.path)) {
+            audioFile = transGuard.path;
+            audioSeek = false;
+            hasAudio = true;
+        } else {
+            transGuard.path.clear();
+            H.log(L"  " + TX("log.source_transition_audio_failed"));
+        }
+    }
+    const bool reverseAudio = s.reverse && s.rt.active && s.rt.audioFromSource && s.audio == s.rt.path;
     std::wstring audioFilter;
+    if (reverseAudio) audioFilter += L"areverse,";
     if (followSpeed != 1.0) {  // atempo accepte 0.5 a 2 : on enchaine
         double f = followSpeed;
         while (f > 2.0) {
@@ -1127,8 +1169,12 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     audioFilter += loudnormFilter(s);  // normalisation du son (LUFS), puis fondus
     if (fi > 0) audioFilter += wfmt(L"afade=t=in:st=0:d=%g,", fi);
     if (fo > 0) audioFilter += wfmt(L"afade=t=out:st=%g:d=%g,", totalSec - fo, fo);
-    audioFilter += L"apad";  // son plus court que la video : complete par du silence
-    const std::wstring audioArgs = (audioSeek ? wfmt(L" -ss %g", s.start) : std::wstring()) + L" -i \"" + audioFile + L"\"";
+    // son plus court que la video : complete par du silence, puis borne a la duree exacte de la video (un apad infini avec -shortest laissait parfois depasser le son)
+    audioFilter += wfmt(L"apad=whole_dur=%g,atrim=end=%g", totalSec, totalSec);
+    const std::wstring audioArgs = (audioSeek ? wfmt(L" -ss %g", s.start) : std::wstring()) + (reverseAudio ? wfmt(L" -t %g", totalSec) : std::wstring()) + L" -i \"" + audioFile + L"\"";
+    bool subsDropped = false;
+    const std::wstring extraMaps = hasAudio ? sourceExtraMaps(s, subsDropped) : std::wstring();  // sous-titres et chapitres de la source
+    if (subsDropped) H.log(L"  " + TXF("log.source_subs_dropped", W(s.container).c_str()));
 
     // Metadonnees du conteneur : titre = nom du shader, commentaire = taille, cadence et version
     std::wstring metaArgs;
@@ -1180,7 +1226,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             if (muxAudio) cmd += audioArgs;
             cmd += L" -vf \"vflip," + ssFilter + text + L"scale=in_range=full:out_range=" + cs.range +
                    L":out_color_matrix=" + cs.matrix + L":flags=accurate_rnd+full_chroma_int," + interpFilter(s) + outFormat(s, enc) + L"\"";
-            if (muxAudio) cmd += L" -map 0:v -map 1:a" + audioCodecArgs(s.container) + L" -af \"" + audioFilter + L"\" -shortest";
+            if (muxAudio) cmd += L" -map 0:v -map 1:a" + audioCodecArgs(s.container) + extraMaps + L" -af \"" + audioFilter + L"\" -shortest";
             cmd += encoderArgs(s, enc) + outPixFmtArg(s, enc) + L" " + cs.tags + containerArgs(s.container) + metaArgs + L" \"" + dest + L"\"";
         }
 
@@ -1450,7 +1496,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         if (withAudio) cmd += audioArgs;
         cmd += L" -vf \"" + stageB + text + L"scale=in_range=full:out_range=" + cs.range + L":out_color_matrix=" + cs.matrix + L":flags=accurate_rnd+full_chroma_int," +
                interpFilter(sd) + outFormat(sd, enc) + L"\"";
-        if (withAudio) cmd += L" -map 0:v -map 1:a" + audioCodecArgs(s.container) + L" -af \"" + audioFilter + L"\" -shortest";
+        if (withAudio) cmd += L" -map 0:v -map 1:a" + audioCodecArgs(s.container) + extraMaps + L" -af \"" + audioFilter + L"\" -shortest";
         else cmd += L" -an";
         cmd += encoderArgs(sd, enc) + outPixFmtArg(sd, enc) + L" " + cs.tags;
         if (pass == 1) return cmd + L" -pass 1 -passlogfile \"" + passLog + L"\" -f null -";
@@ -1678,7 +1724,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             std::wstring cmd = L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -f concat -safe 0 -i \"" + listFile + L"\"";
             if (hasAudio) cmd += audioArgs;
             cmd += L" -map 0:v";
-            if (hasAudio) cmd += L" -map 1:a" + audioCodecArgs(s.container) + L" -af \"" + audioFilter + L"\" -shortest";
+            if (hasAudio) cmd += L" -map 1:a" + audioCodecArgs(s.container) + extraMaps + L" -af \"" + audioFilter + L"\" -shortest";
             cmd += L" -c:v copy" + std::wstring(s.codec == "h265" ? L" -tag:v hvc1" : L"") + containerArgs(s.container) + metaArgs +
                    L" \"" + assembleTo + L"\"";
             int rc = runProcess(cmd, [&](const std::wstring& line) { H.log(TX("log.ffmpeg_prefix") + line); });
@@ -1815,6 +1861,141 @@ static bool parseVariant(const std::string& spec, std::string& name, Forced& out
     return true;
 }
 
+// Mode effet sur un dossier : chaque video ou image du dossier est passee dans le meme shader avec les memes reglages ; un fichier deja fait (meme shader, memes
+// reglages, meme fichier source) est saute a la reprise ; un compte rendu <shader>_batch.json resume le lot
+static std::string batchSettingsSignature(const Settings& st, const std::wstring& exeDir) {
+    const std::wstring tmp = exeDir + L"batch_sig.tmp";
+    writeIni(tmp, st);
+    std::string ini, sig;
+    readFile(tmp, ini);
+    platform::removeFile(tmp);
+    size_t pos = 0;
+    while (pos < ini.size()) {
+        size_t e = ini.find('\n', pos);
+        if (e == std::string::npos) e = ini.size();
+        std::string line = ini.substr(pos, e - pos);
+        pos = e + 1;
+        if (line.empty() || line[0] == ';') continue;
+        const size_t sc = line.find("      ;");
+        if (sc != std::string::npos) line.resize(sc);
+        if (line.compare(0, 7, "source=") == 0 || line.compare(0, 5, "farm=") == 0) continue;  // propres a chaque fichier
+        sig += line;
+    }
+    return sig;
+}
+
+static std::string jsonQuote(const std::string& v) {
+    std::string o = "\"";
+    for (char c : v) {
+        if (c == '\\' || c == '"') o += '\\';
+        o += c;
+    }
+    return o + "\"";
+}
+
+static Result convertFolder(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& probe, const std::wstring& dir, const Hooks& H, std::wstring& err) {
+    const std::vector<std::wstring> files = listSourceFiles(dir);
+    if (files.empty()) {
+        err = TXF("error.source_empty", dir.c_str());
+        return Result::Failed;
+    }
+    const size_t cut = shaderPath.find_last_of(L"\\/");
+    std::wstring stem = shaderPath.substr(cut == std::wstring::npos ? 0 : cut + 1);
+    if (const size_t dot = stem.find_last_of(L'.'); dot != std::wstring::npos) stem.erase(dot);
+    std::wstring outDir = probe.outdir.empty() ? (cut == std::wstring::npos ? L"" : shaderPath.substr(0, cut + 1)) : probe.outdir;
+    if (!outDir.empty() && outDir.back() != L'\\' && outDir.back() != L'/') outDir += platform::pathSeparator();
+    if (!outDir.empty()) platform::makeDir(outDir);
+    const std::wstring batchFile = outDir + stem + L"_batch.txt", reportFile = outDir + stem + L"_batch.json";
+    const std::string sig = fnvHex(collectShaderCode(shaderPath) + batchSettingsSignature(probe, exeDir) + APP_VER_STR);
+    std::map<std::string, std::string> done;  // fichier|taille|date -> signature
+    {
+        std::string text;
+        readFile(batchFile, text);
+        size_t pos = 0;
+        while (pos < text.size()) {
+            size_t e = text.find('\n', pos);
+            if (e == std::string::npos) e = text.size();
+            const std::string line = trim(text.substr(pos, e - pos));
+            pos = e + 1;
+            const size_t bar = line.rfind('#');
+            if (bar != std::string::npos) done[line.substr(0, bar)] = line.substr(bar + 1);
+        }
+    }
+    H.log(TXF("log.batch_start", (int)files.size(), dir.c_str()));
+    int okCount = 0, skipped = 0, failed = 0;
+    std::wstring lastErr;
+    std::string items;
+    for (size_t i = 0; i < files.size(); i++) {
+        if (H.cancelled()) return Result::Cancelled;
+        const std::wstring& f = files[i];
+        uint64_t size = 0;
+        long long mtime = 0;
+        platform::fileSize(f, size);
+        platform::fileModTime(f, mtime);
+        const std::string key = U8(f) + "|" + std::to_string(size) + "|" + std::to_string(mtime);
+        const std::string itemSig = fnvHex(sig + key);
+        Forced forced = {{"source", U8(f)}};
+        Settings si = probe;
+        si.source = f;
+        if (!probe.farm.empty()) {
+            forced.push_back({"farm", U8(probe.farm + L"/" + sourceStem(f))});
+            si.farm = probe.farm + L"/" + sourceStem(f);
+        }
+        const std::wstring expected = outputFile(shaderPath, si, false);
+        std::string status;
+        std::wstring produced;
+        double seconds = 0;
+        if (done.count(key) && done[key] == itemSig && fileExists(expected)) {
+            skipped++;
+            status = "skipped";
+            produced = expected;
+            H.log(L"  " + TXF("log.batch_skip", (int)i + 1, (int)files.size(), f.c_str()));
+        } else {
+            H.log(TXF("log.batch_item", (int)i + 1, (int)files.size(), f.c_str()));
+            Hooks h2 = H;
+            h2.progress = [&](long long n, long long total, double speed, double remaining) {
+                if (!H.progress || total <= 0) return;
+                H.progress((long long)i * 1000 + 1000 * n / total, (long long)files.size() * 1000, speed, remaining);
+            };
+            h2.output = [&](const std::wstring& o) {
+                produced = o;
+                if (H.output) H.output(o);
+            };
+            std::wstring e;
+            const auto t0 = std::chrono::steady_clock::now();
+            const Result r = convertFileForced(shaderPath, exeDir, probe, h2, e, forced);
+            seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            if (r == Result::Cancelled) return r;
+            if (r == Result::Ok) {
+                okCount++;
+                status = "ok";
+                done[key] = itemSig;
+                std::string text;
+                for (const auto& kv : done) text += kv.first + "#" + kv.second + "\n";  // ecrit apres chaque fichier : une coupure reprend ici
+                writeFileAtomic(batchFile, text);
+            } else {
+                failed++;
+                status = "failed";
+                lastErr = e;
+                H.log(L"  " + TXF("log.batch_failed", f.c_str(), e.c_str()));
+            }
+        }
+        char b[64];
+        snprintf(b, sizeof(b), "%.2f", seconds);
+        items += std::string(items.empty() ? "" : ",") + "\n    {\"source\": " + jsonQuote(U8(f)) + ", \"status\": \"" + status + "\", \"seconds\": " + b + ", \"output\": " + jsonQuote(U8(produced)) + "}";
+    }
+    char head[160];
+    snprintf(head, sizeof(head), "{\n  \"files\": %d,\n  \"ok\": %d,\n  \"skipped\": %d,\n  \"failed\": %d,\n  \"items\": [", (int)files.size(), okCount, skipped, failed);
+    writeFileAtomic(reportFile, std::string(head) + items + "\n  ]\n}\n");
+    H.log(TXF("log.batch_done", okCount, skipped, failed));
+    H.log(L"  " + TXF("log.batch_report", reportFile.c_str()));
+    if (failed) {
+        err = TXF("error.batch_failed", failed, lastErr.c_str());
+        return Result::Failed;
+    }
+    return Result::Ok;
+}
+
 Result convertFileForced(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H, std::wstring& err,
                          const std::vector<std::pair<std::string, std::string>>& forced) {
     return convertOne(shaderPath, exeDir, base, H, err, &forced);
@@ -1831,6 +2012,11 @@ Result convertFile(const std::wstring& shaderPath, const std::wstring& exeDir, c
         quiet.log = [](const std::wstring&) {};
         normalizeShaderText(code, quiet);
         parseLines(probe, code, true);
+    }
+    if (!probe.source.empty()) {  // dossier de sources : un rendu par fichier
+        const size_t cutS = shaderPath.find_last_of(L"\\/");
+        const std::wstring srcPath = resolveSource(cutS == std::wstring::npos ? L"" : shaderPath.substr(0, cutS + 1), probe.source);
+        if (platform::dirExists(srcPath)) return convertFolder(shaderPath, exeDir, probe, srcPath, H, err);
     }
     if (probe.variants.empty()) return convertOne(shaderPath, exeDir, base, H, err, nullptr);
 

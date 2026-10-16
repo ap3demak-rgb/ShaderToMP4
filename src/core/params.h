@@ -83,6 +83,8 @@ private:
     int beatsPerBar_ = 4;
     bool rhythmUsed_[EV_TIME] = {false, false, false, false, false, false, false, false};  // variables lues par le code du shader (declarees en uniform)
     bool hasExpr_ = false;
+    bool progressUsed_ = false;       // le code lit iProgress (declare ici) : 0 a 1 pendant la transition, ou pendant tout le rendu sans transition
+    double progStart_ = 0, progLen_ = 1;
     bool hasSpectrum_ = false;
 };
 
