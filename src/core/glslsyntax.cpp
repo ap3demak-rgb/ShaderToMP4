@@ -41,7 +41,7 @@ const std::set<std::wstring>& functions() {
 const std::set<std::wstring>& shadertoyUniforms() {
     static const std::set<std::wstring> s = {L"iResolution", L"iTime", L"iTimeDelta", L"iFrame", L"iMouse", L"iDate", L"iSampleRate", L"iChannel0",
                                              L"iChannel1", L"iChannel2", L"iChannel3", L"iChannelTime", L"iChannelResolution", L"fragCoord",
-                                             L"fragColor", L"iFrameRate", L"iBeat", L"iBeatCount", L"iBPM", L"iBass", L"iMid", L"iTreble", L"iEnergy", L"iOnset"};
+                                             L"fragColor", L"iFrameRate", L"iBeat", L"iBeatCount", L"iBPM", L"iBass", L"iMid", L"iTreble", L"iEnergy", L"iOnset", L"iProgress"};
     return s;
 }
 

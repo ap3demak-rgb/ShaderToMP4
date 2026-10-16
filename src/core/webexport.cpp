@@ -270,6 +270,10 @@ bool exportHtml(const std::wstring& shaderPath, const std::wstring& exeDir, cons
         err = TXF("error.html_unsupported", L"// uniform");
         return false;
     }
+    if (!st.source.empty() || code.find("iProgress") != std::string::npos) {  // mode effet : la page ne lit pas de video ni de transition
+        err = TXF("error.html_unsupported", L"source / iProgress");
+        return false;
+    }
     if (mentionsRhythmVar(stripCodeComments(code))) {  // iBeat, iBass... : le rythme vient d'une analyse du son que la page ne fait pas
         err = TXF("error.html_unsupported", L"iBeat / iBass / iOnset");
         return false;

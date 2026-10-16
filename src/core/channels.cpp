@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "channels.h"
+#include "source.h"
 #include "audio.h"
 #include "i18n.h"
 #include "process.h"
@@ -442,6 +443,129 @@ private:
     long long cur_ = -1, next_ = 0;
 };
 
+// --- Source du mode effet : video, sequence ou image fixe lue a pleine taille, l'image exacte de l'instant demande (cadence de sortie, sans interpolation),
+// image tenue apres la fin, lecture en arriere par blocs, decalage de temps pour la deuxieme source d'une transition -------------------------------------
+class SourceChannel : public DynamicChannel {
+public:
+    SourceChannel(GLuint tex, std::wstring ffmpeg, std::wstring path, int w, int h, double fps, bool vflip, bool still, double offset, double seqFps, std::string matrix)
+        : tex_(tex), ffmpeg_(std::move(ffmpeg)), path_(std::move(path)), w_(w), h_(h), fps_(fps), vflip_(vflip), still_(still), offset_(offset), seqFps_(seqFps), matrix_(std::move(matrix)),
+          frame_((size_t)w * h * 4) {
+        const size_t per = (size_t)w * h * 4;
+        blockFrames_ = (int)std::max<size_t>(4, std::min<size_t>(48, (256u << 20) / std::max<size_t>(1, per)));
+    }
+    ~SourceChannel() override { proc_.reset(); }
+
+    bool timed() const override { return true; }
+    void update(double t, long long) override {
+        if (still_) {
+            if (cur_ >= 0) return;
+            if (!startStill()) return;
+            cur_ = 0;
+            upload();
+            return;
+        }
+        const double ts = std::max(0.0, t + offset_);
+        const long long k = std::llround(ts * fps_);
+        if (k == cur_) return;
+        if (!fetch(k)) return;  // image precedente gardee (fin de la source)
+        cur_ = k;
+        upload();
+    }
+
+private:
+    std::wstring inputArgs() const {
+        return (isSourcePattern(path_) && seqFps_ > 0 ? wfmt(L" -framerate %g", seqFps_) : std::wstring());
+    }
+    std::wstring scaleArgs() const { return wfmt(L"scale=%d:%d:flags=bilinear", w_, h_) + (matrix_.empty() ? std::wstring() : L":in_color_matrix=" + W(matrix_)); }
+    std::wstring filter() const { return std::wstring(vflip_ ? L"vflip," : L"") + wfmt(L"fps=%.9g,", fps_) + scaleArgs(); }
+    bool startStill() {
+        proc_.reset();
+        const std::wstring cmd = L"\"" + ffmpeg_ + L"\" -hide_banner -loglevel quiet -nostdin -i \"" + path_ + L"\" -an -frames:v 1 -vf \"" + (vflip_ ? L"vflip," : L"") +
+                                 scaleArgs() + L"\" -f rawvideo -pix_fmt rgba -";
+        proc_ = platform::Process::start(platform::splitCommand(cmd), false, true);
+        return proc_ && readFrame(frame_);
+    }
+    bool start(long long k) {
+        proc_.reset();
+        const std::wstring cmd = L"\"" + ffmpeg_ + L"\" -hide_banner -loglevel quiet -nostdin" + inputArgs() + (k > 0 ? wfmt(L" -ss %.6f", (double)k / fps_) : std::wstring()) + L" -i \"" +
+                                 path_ + L"\" -an -vf \"" + filter() + L"\" -f rawvideo -pix_fmt rgba -";
+        proc_ = platform::Process::start(platform::splitCommand(cmd), false, true);
+        return (bool)proc_;
+    }
+    bool readFrame(std::vector<uint8_t>& dst) {
+        size_t have = 0;
+        if (dst.size() != frame_.size()) dst.resize(frame_.size());
+        while (have < dst.size()) {
+            const size_t got = proc_->readOutput((char*)dst.data() + have, dst.size() - have);
+            if (got == 0) return false;
+            have += got;
+        }
+        return true;
+    }
+    // Lecture en arriere : un bloc d'images se terminant a k est decode d'un coup, puis servi image par image
+    bool loadBlock(long long k) {
+        const long long k0 = std::max(0LL, k - blockFrames_ + 1);
+        const long long count = k - k0 + 1;
+        proc_.reset();
+        const std::wstring cmd = L"\"" + ffmpeg_ + L"\" -hide_banner -loglevel quiet -nostdin" + inputArgs() + (k0 > 0 ? wfmt(L" -ss %.6f", (double)k0 / fps_) : std::wstring()) +
+                                 L" -i \"" + path_ + L"\" -an -vf \"" + filter() + wfmt(L"\" -frames:v %lld", count) + L" -f rawvideo -pix_fmt rgba -";
+        auto p = platform::Process::start(platform::splitCommand(cmd), false, true);
+        if (!p) return false;
+        std::swap(p, proc_);
+        block_.clear();
+        for (long long i = 0; i < count; i++) {
+            std::vector<uint8_t> f(frame_.size());
+            if (!readFrame(f)) break;
+            block_.push_back(std::move(f));
+        }
+        proc_.reset();
+        blockK0_ = k0;
+        nextK_ = -1;
+        if (k - k0 >= (long long)block_.size()) return false;
+        frame_ = block_[(size_t)(k - k0)];
+        return true;
+    }
+    bool fetch(long long k) {
+        if (!block_.empty() && k >= blockK0_ && k < blockK0_ + (long long)block_.size()) {
+            frame_ = block_[(size_t)(k - blockK0_)];
+            return true;
+        }
+        if (proc_ && nextK_ >= 0 && k >= nextK_ && k - nextK_ <= 8) {  // quelques images en avant : lues et jetees
+            while (nextK_ < k) {
+                if (!readFrame(frame_)) return false;
+                nextK_++;
+            }
+            if (!readFrame(frame_)) return false;
+            nextK_ = k + 1;
+            return true;
+        }
+        if (cur_ >= 0 && k < cur_) return loadBlock(k);
+        block_.clear();
+        if (!start(k)) return false;
+        nextK_ = k;
+        if (!readFrame(frame_)) return false;
+        nextK_ = k + 1;
+        return true;
+    }
+    void upload() {
+        glBindTexture(GL_TEXTURE_2D, tex_);
+        glPixelStorei(0x0CF5, 1);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w_, h_, GL_RGBA, GL_UNSIGNED_BYTE, frame_.data());
+    }
+    GLuint tex_;
+    std::wstring ffmpeg_, path_;
+    int w_, h_;
+    double fps_;
+    bool vflip_, still_;
+    double offset_, seqFps_;
+    std::string matrix_;
+    std::vector<uint8_t> frame_;
+    std::vector<std::vector<uint8_t>> block_;
+    long long blockK0_ = 0, cur_ = -1, nextK_ = -1;
+    int blockFrames_ = 8;
+    std::unique_ptr<platform::Process> proc_;
+};
+
 // --- Clavier simule : texture 256x3 de Shadertoy (etat, appui sur cette image, bascule), touches donnees par `// key=` ----------
 class KeyboardChannel : public DynamicChannel {
 public:
@@ -558,6 +682,33 @@ bool loadChannels(const Settings& s, const std::wstring& shaderDir, const std::w
             out.w[i] = kKeyboardW;
             out.h[i] = kKeyboardH;
             H.log(L"  " + TXF("log.channel_loaded", i, spec.c_str(), kKeyboardW, kKeyboardH));
+            continue;
+        }
+        if (startsWith(spec, L"source:") || startsWith(spec, L"source2:")) {  // mode effet : la source (iChannel0) ou la deuxieme source d'une transition (iChannel1)
+            const bool second = startsWith(spec, L"source2:");
+            const std::wstring path = spec.substr(second ? 8 : 7);
+            const int sw = second ? s.rt.width2 : s.rt.width, sh = second ? s.rt.height2 : s.rt.height;
+            const double sfps = second ? s.rt.fps2 : s.rt.fps;
+            const bool still = second ? s.rt.still2 : s.rt.still;
+            int vw = std::max(2, std::min(7680, sw) & ~1), vh = std::max(2, std::min(4320, sh) & ~1);
+            if (sw <= 0 || sh <= 0) {
+                err = TXF("error.channel_read", path.c_str());
+                return false;
+            }
+            glGenTextures(1, &out.tex[i]);
+            glBindTexture(GL_TEXTURE_2D, out.tex[i]);
+            glPixelStorei(0x0CF5, 1);
+            glTexImage2D(GL_TEXTURE_2D, 0, (GLint)ogl::K_RGBA8, vw, vh, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, s.chFilter[i] == "nearest" ? GL_NEAREST : GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, s.chFilter[i] == "nearest" ? GL_NEAREST : GL_LINEAR);
+            const GLint mode = s.chWrap[i] == "repeat" ? K_REPEAT : K_CLAMP_TO_EDGE;
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, mode);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, mode);
+            out.dyn[i] = std::make_shared<SourceChannel>(out.tex[i], ffmpeg, path, vw, vh, fps, s.chVflip[i], still, second ? s.rt.timeOffset2 : 0.0, s.sourceFps > 0 ? s.sourceFps : 25.0, second ? s.rt.matrix2 : s.rt.matrix);
+            (void)sfps;
+            out.w[i] = vw;
+            out.h[i] = vh;
+            H.log(L"  " + TXF("log.channel_loaded", i, path.c_str(), vw, vh));
             continue;
         }
         if (startsWith(spec, L"video:")) {

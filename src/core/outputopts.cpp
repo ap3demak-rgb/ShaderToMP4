@@ -90,6 +90,14 @@ void outputFieldsFrom(const Settings& s, OutputFields& f) {
     f.beatsPerBar = std::to_wstring(s.beatsPerBar);
     f.markers = s.markers == "chapters" ? 1 : s.markers == "file" ? 2 : s.markers == "all" ? 3 : 0;
     f.beatSync = s.beatSync == "beat" ? 1 : s.beatSync == "bar" ? 2 : s.beatSync == "section" ? 3 : 0;
+    f.source = s.source;
+    f.source2 = s.source2;
+    f.sourceMatch = s.sourceMatch == "none" ? 3 : s.sourceMatch == "size" ? 2 : s.sourceMatch == "size,fps" ? 1 : 0;
+    f.sourceAudio = s.sourceAudio;
+    f.reverse = s.reverse;
+    f.sourceFps = s.sourceFps > 0 ? i18n::num(s.sourceFps) : L"";
+    f.transDur = i18n::num(s.transitionDur);
+    f.transOffset = s.transitionOffset != 0 ? i18n::num(s.transitionOffset) : L"";
     f.variants.clear();
     for (const std::string& v : s.variants) f.variants += (f.variants.empty() ? L"" : L" ; ") + W(v);
 }
@@ -212,6 +220,25 @@ bool outputFieldsApply(const OutputFields& f, Settings& s, std::wstring& err) {
     t.beatsPerBar = (int)bars;
     t.markers = f.markers == 1 ? "chapters" : f.markers == 2 ? "file" : f.markers == 3 ? "all" : "off";
     t.beatSync = f.beatSync == 1 ? "beat" : f.beatSync == 2 ? "bar" : f.beatSync == 3 ? "section" : "off";
+    {
+        double sfps = 0, tdur = 1, toff = 0;
+        if (!number(f.sourceFps, sfps, 0) || sfps < 0 || sfps > 1000 || !number(f.transDur, tdur, 1) || tdur < 0 || tdur > 600 || !number(f.transOffset, toff, 0) ||
+            toff < -600 || toff > 600) {
+            err = TX("error.source_invalid");
+            return false;
+        }
+        std::wstring a = trim(f.source), b = trim(f.source2);
+        if (lower(U8(a)) == "off") a.clear();
+        if (lower(U8(b)) == "off") b.clear();
+        t.source = a;
+        t.source2 = b;
+        t.sourceMatch = f.sourceMatch == 3 ? "none" : f.sourceMatch == 2 ? "size" : f.sourceMatch == 1 ? "size,fps" : "size,fps,duration";
+        t.sourceAudio = f.sourceAudio;
+        t.reverse = f.reverse;
+        t.sourceFps = sfps;
+        t.transitionDur = tdur;
+        t.transitionOffset = toff;
+    }
     double par = 1;
     if (!number(f.parallel, par, 1) || par < 1 || par > 16 || par != std::floor(par)) {
         err = TX("error.parallel_invalid");

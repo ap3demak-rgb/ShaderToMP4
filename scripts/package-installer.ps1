@@ -66,6 +66,9 @@ Copy-Item COPYING, LICENSE, THIRD_PARTY_NOTICES.md, THIRD_PARTY_NOTICES.fr.md, R
 Copy-Item "$ffDir\LICENSE" "$stage\FFMPEG-LICENSE.txt"
 Copy-Item "$ffDir\README.txt" "$stage\FFMPEG-README.txt"
 Copy-Item lang\*.json "$stage\lang"
+New-Item -ItemType Directory -Force "$stage\transitions", "$stage\examples\effects" | Out-Null
+Copy-Item transitions\*.glsl "$stage\transitions"
+Copy-Item examples\effects\*.glsl "$stage\examples\effects"
 
 # --- Fichiers generes ---
 $utf8bom = New-Object System.Text.UTF8Encoding($true)

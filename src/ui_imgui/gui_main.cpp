@@ -792,6 +792,32 @@ void drawOutput(App& a) {
     note("ui.output.hint_trace");
     if (button("ui.output.purge_btn", "trash", 0, !a.model.running(), 0, "ui.output.hint_trace")) a.model.purgeCache();
 
+    section("ui.output.sec_source");
+    row("ui.output.source");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##source", f.source, sizeof(f.source));
+    row("ui.output.source2");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##source2", f.source2, sizeof(f.source2));
+    row("ui.output.sourcematch");
+    comboList("##sourcematch", &f.sourceMatch, {T("ui.output.match_all"), T("ui.output.match_sizefps"), T("ui.output.match_size"), T("ui.output.match_none")}, width);
+    row("ui.output.sourceaudio");
+    int sa = f.sourceAudio ? 1 : 0;
+    if (comboList("##sourceaudio", &sa, offOn, width)) f.sourceAudio = sa == 1;
+    row("ui.output.reverse");
+    int rv = f.reverse ? 1 : 0;
+    if (comboList("##reverse", &rv, offOn, width)) f.reverse = rv == 1;
+    row("ui.output.sourcefps");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##sourcefps", f.sourceFps, sizeof(f.sourceFps));
+    row("ui.output.transdur");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##transdur", f.transDur, sizeof(f.transDur));
+    row("ui.output.transoffset");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##transoffset", f.transOffset, sizeof(f.transOffset));
+    note("ui.output.hint_source");
+
     section("ui.output.sec_rhythm");
     row("ui.output.bpm");
     ImGui::SetNextItemWidth(width);

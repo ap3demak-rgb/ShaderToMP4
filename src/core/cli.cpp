@@ -59,7 +59,7 @@ std::string num(double v) {
 
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
-    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_verify", "cli.render.opt_beats", "cli.render.opt_farm", "cli.render.opt_reproduce", "cli.render.opt_exporthtml", "cli.render.opt_cachepurge", "cli.render.opt_check", "cli.render.opt_compare", "cli.render.opt_golden", "cli.render.opt_dryrun", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
+    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_verify", "cli.render.opt_beats", "cli.render.opt_farm", "cli.render.opt_source", "cli.render.opt_reproduce", "cli.render.opt_exporthtml", "cli.render.opt_cachepurge", "cli.render.opt_check", "cli.render.opt_compare", "cli.render.opt_golden", "cli.render.opt_dryrun", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
                           "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
@@ -106,7 +106,13 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         write(U8(TXF("log.error", msg.c_str())) + "\n", true);
         return kExitUsage;
     };
+    std::string pendingKey;  // « --source dossier » : la valeur est l'argument suivant
     for (const auto& a : args) {
+        if (!pendingKey.empty()) {
+            overrides.push_back({pendingKey, U8(a)});
+            pendingKey.clear();
+            continue;
+        }
         if (a.compare(0, 2, L"--") != 0) {
             files.push_back(a);
             continue;
@@ -119,6 +125,8 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         if (key == "png") {
             snapshot = true;
             bestThumb = lower(val) == "best";
+        } else if ((key == "source" || key == "source2") && eq == std::string::npos) {
+            pendingKey = key;
         } else if (key == "farm-status") {
             farmStatusMode = true;
             if (!val.empty()) files.push_back(W(val));
@@ -208,7 +216,10 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
             return fail(TXF("cli.unknown_option", W(arg).c_str()));
         }
     }
-    for (const auto& kv : overrides) applySetting(base, kv.first, kv.second);
+    for (const auto& kv : overrides) {
+        applySetting(base, kv.first, kv.second);
+        if (kv.first == "width" || kv.first == "height" || kv.first == "fps" || kv.first == "duration" || kv.first == "audio") base.pinned.insert(kv.first);  // la source ne remplace pas ce qui est demande ici
+    }
     FILE* logFile = nullptr;
     if (!logPath.empty()) {
         logFile = platform::openFile(logPath, "ab");

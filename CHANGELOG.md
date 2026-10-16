@@ -6,6 +6,17 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
+## Unreleased
+
+### Added
+
+- Effect mode: `source=` (video, image, image sequence or folder) becomes `iChannel0`; the picture size, rate and duration follow it (`sourcematch`), `iTime` / `iFrame` are those of the source, its sound is kept (`sourceaudio`), its subtitles and chapters are copied (MP4, MOV, MKV). Values written in the shader or on the command line win.
+- Effect mode: range of the source (`start`, `duration`), frame skipping or repeating without interpolation (`fps`), `reverse=1` (picture and sound), still images held for the whole render, image sequences (`sourcefps`).
+- Folder of sources: one render per file, finished files skipped when repeated, a failure does not stop the others, `_batch.json` report, `{source}` token for the file name.
+- Transitions: `source2=` and `iProgress` (0 to 1) with `transitionduration` and `transitionoffset`; the sounds are cross-faded; 25 shaders in the new `transitions/` folder.
+- Chroma key, luma key and difference key example shaders with an alpha output (`examples/effects/`).
+- “Source (effect mode)” page of the Output window (Windows) and section of the settings card (Linux and macOS); seven new self-test cases; the packages and the installer carry `transitions/` and `examples/effects/`.
+
 ## 2.1.0 — 2026-10-16
 
 ### Added

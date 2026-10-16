@@ -7,6 +7,7 @@
 #include "locate.h"
 #include "montage.h"
 #include "parts.h"
+#include "source.h"
 #include "rhythm.h"
 #include "params.h"
 #include "expr.h"
@@ -2664,6 +2665,332 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             else if (!fileExists(farm + L"/assembled.txt")) problem = bad("no assembled.txt");
             check("selftest.fmt_farm", problem);
             report += L"        " + TXF("selftest.fmt_farm_machines", machines) + L"\r\n";
+        }
+    }
+    // Mode effet (phase 23) : un shader applique a des videos, images, sequences et dossiers ; transitions ; incrustation par cle
+    {
+        const std::wstring sep(1, platform::pathSeparator());
+        auto put = [&](const std::wstring& name, const std::string& body) {
+            const std::wstring path = outDir + sep + name;
+            if (FILE* f = platform::openFile(path, "wb")) {
+                fwrite(body.data(), 1, body.size(), f);
+                fclose(f);
+            }
+            return path;
+        };
+        auto check = [&](const char* key, const std::wstring& problem) {
+            total++;
+            report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX(key) + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+            if (!problem.empty()) fails++;
+        };
+        auto bad = [&](const std::string& what) { return TXF("selftest.fmt_bad", W(what).c_str()); };
+        auto gen = [&](const std::wstring& args) { return runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y " + args, nullptr) == 0; };
+        auto frames = [&](const std::wstring& video, int w, int h) {  // toutes les images en RGB 8 bits
+            const std::wstring raw = outDir + sep + L"p23.raw";
+            platform::removeFile(raw);
+            gen(L"-i \"" + video + L"\" -vf scale=" + std::to_wstring(w) + L":" + std::to_wstring(h) + L" -f rawvideo -pix_fmt rgb24 \"" + raw + L"\"");
+            std::string bytes;
+            readFile(raw, bytes);
+            platform::removeFile(raw);
+            return bytes;
+        };
+        auto meanDiff = [](const std::string& a, size_t offA, const std::string& b, size_t offB, size_t n) {
+            if (offA + n > a.size() || offB + n > b.size() || n == 0) return 255.0;
+            double sum = 0;
+            for (size_t i = 0; i < n; i++) sum += std::abs((int)(uint8_t)a[offA + i] - (int)(uint8_t)b[offB + i]);
+            return sum / (double)n;
+        };
+        auto highVolume = [&](const std::wstring& video, const wchar_t* from, const wchar_t* dur) {  // niveau moyen (dB) au-dessus de 600 Hz dans un passage
+            std::string o;
+            runProcess(L"\"" + ffmpeg + L"\" -hide_banner -nostdin -ss " + from + L" -t " + dur + L" -i \"" + video + L"\" -vn -af highpass=f=600,highpass=f=600,volumedetect -f null -",
+                       [&](const std::wstring& l) { o += U8(l) + "\n"; });
+            const size_t m = o.find("mean_volume: ");
+            return m == std::string::npos ? -200.0 : atof(o.c_str() + m + 13);
+        };
+        const bool h264 = formatAvailable(ffmpeg, "h264", "mp4");
+        const std::wstring neutral = put(L"p23_neutral.glsl", "void mainImage(out vec4 o, in vec2 p){ o = texture(iChannel0, p / iResolution.xy); }\n");
+        const std::wstring tags = L" -colorspace bt709 -color_primaries bt709 -color_trc bt709";
+        const std::wstring srcVideo = outDir + sep + L"p23_src.mp4";
+        // source : barres animees 192x108 a 30 images / s, 2 s, avec un son de 300 Hz puis de 900 Hz
+        const bool haveSrc = h264 && gen(L"-f lavfi -i testsrc2=s=192x108:r=30:d=2 -f lavfi -i \"aevalsrc='if(lt(t,1),0.5*sin(2*PI*300*t),0.5*sin(2*PI*900*t))':s=44100:d=2\" -c:v libx264 -pix_fmt yuv420p -crf 8 -preset ultrafast" + tags + L" -c:a aac -shortest \"" + srcVideo + L"\"");
+        auto base23 = [&](const wchar_t* name) {
+            Settings st = base("h264", "mp4", 8);
+            st.duration = 0;
+            st.crf = 10;
+            st.name = name;
+            st.source = srcVideo;
+            return st;
+        };
+        auto render23 = [&](const std::wstring& shader, const Settings& st, std::wstring& e, std::string& logText) {
+            Hooks H;
+            H.log = [&](const std::wstring& l) { logText += U8(l) + "\n"; };
+            return convertFile(shader, exeDir, st, H, e) == Result::Ok;
+        };
+        std::string srcRaw;
+        if (haveSrc) srcRaw = frames(srcVideo, 192, 108);
+        const size_t px = 192 * 108 * 3;
+        if (haveSrc) {  // identite : taille, cadence, duree et son viennent de la source, l'image est la meme a l'arrondi pres
+            std::wstring problem, e;
+            std::string logText;
+            Settings st = base23(L"p23_id");
+            SourceInfo info;
+            if (srcRaw.size() != px * 60) problem = bad("source frames " + std::to_string(srcRaw.size() / px));
+            else if (!render23(neutral, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                const std::wstring out = outputFile(neutral, st, false);
+                const std::string got = frames(out, 192, 108);
+                if (!probeSource(ffmpeg, out, 0, info) || info.width != 192 || info.height != 108 || std::fabs(info.fps - 30.0) > 0.01 || std::fabs(info.duration - 2.0) > 0.12) problem = bad("size / rate / duration of the output");
+                else if (!info.hasAudio) problem = bad("the sound of the source is missing");
+                else if (got.size() != srcRaw.size()) problem = bad("frames " + std::to_string(got.size() / px));
+                else if (meanDiff(got, 0, srcRaw, 0, got.size()) > 3.0) problem = bad("mean difference " + std::to_string(meanDiff(got, 0, srcRaw, 0, got.size())));
+                else if (highVolume(out, L"1.2", L"0.7") < highVolume(out, L"0.1", L"0.7") + 15) problem = bad("the sound is not the one of the source");
+            }
+            check("selftest.fmt_source", problem);
+        }
+        if (haveSrc) {  // a l'envers : images et son
+            std::wstring problem, e;
+            std::string logText;
+            Settings st = base23(L"p23_rev");
+            st.reverse = true;
+            if (!render23(neutral, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                const std::wstring out = outputFile(neutral, st, false);
+                const std::string got = frames(out, 192, 108);
+                if (got.size() != srcRaw.size()) problem = bad("frames " + std::to_string(got.size() / px));
+                else {
+                    double worst = 0;
+                    for (size_t i = 0; i < 60; i++) worst = std::max(worst, meanDiff(got, i * px, srcRaw, (59 - i) * px, px));
+                    if (worst > 4.0) problem = bad("a frame differs from the reversed source by " + std::to_string(worst));
+                    else if (highVolume(out, L"0.1", L"0.7") < highVolume(out, L"1.2", L"0.7") + 15) problem = bad("the sound is not reversed");
+                }
+            }
+            check("selftest.fmt_source_reverse", problem);
+        }
+        if (haveSrc) {  // cadence changee sans interpolation (une image sur deux), plage de la source, iFrame = image de la source
+            std::wstring problem, e;
+            std::string logText;
+            Settings st = base23(L"p23_fps");
+            st.fps = 15;
+            st.pinned.insert("fps");
+            Settings rg = base23(L"p23_range");
+            rg.start = 0.5;
+            rg.duration = 0.5;
+            rg.pinned.insert("duration");
+            if (!render23(neutral, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                const std::string got = frames(outputFile(neutral, st, false), 192, 108);
+                if (got.size() != px * 30) problem = bad("fps frames " + std::to_string(got.size() / px));
+                else
+                    for (size_t i = 0; i < 30 && problem.empty(); i++)
+                        if (meanDiff(got, i * px, srcRaw, 2 * i * px, px) > 4.0) problem = bad("frame " + std::to_string(i) + " is not the source frame " + std::to_string(2 * i));
+            }
+            if (problem.empty()) {
+                if (!render23(neutral, rg, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    const std::string got = frames(outputFile(neutral, rg, false), 192, 108);
+                    if (got.size() != px * 15) problem = bad("range frames " + std::to_string(got.size() / px));
+                    else
+                        for (size_t i = 0; i < 15 && problem.empty(); i++)
+                            if (meanDiff(got, i * px, srcRaw, (15 + i) * px, px) > 4.0) problem = bad("range frame " + std::to_string(i));
+                }
+            }
+            if (problem.empty()) {  // iFrame : le numero de l'image de la source (30 a l'instant 1 s, quelle que soit la cadence de sortie)
+                const std::wstring fr = put(L"p23_frame.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(float(iFrame) / 255.0, 0.0, 0.0, 1.0); }\n");
+                Settings ps = base23(L"p23_iframe");
+                ps.width = 16;
+                ps.height = 16;
+                ps.fps = 15;
+                ps.pinned = {"width", "height", "fps"};
+                Hooks H;
+                H.log = [](const std::wstring&) {};
+                H.previewTime = 1.0;
+                std::vector<uint8_t> got;
+                H.previewFrame = [&](int, int, std::vector<uint8_t>&& px2) { got = std::move(px2); };
+                if (convertFile(fr, exeDir, ps, H, e) != Result::Ok || got.size() != 16 * 16 * 4) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else if (std::abs((int)got[2] - 30) > 1) problem = bad("iFrame " + std::to_string(got[2]) + " instead of 30");
+            }
+            check("selftest.fmt_source_time", problem);
+        }
+        if (h264) {  // sous-titres et chapitres de la source gardes selon le conteneur ; sequence d'images et image fixe
+            std::wstring problem, e;
+            std::string logText;
+            const std::wstring subs = outDir + sep + L"p23_subs.srt", chap = outDir + sep + L"p23_chap.txt", rich = outDir + sep + L"p23_rich.mp4";
+            put(L"p23_subs.srt", "1\n00:00:00,200 --> 00:00:01,000\nBonjour\n");
+            put(L"p23_chap.txt", ";FFMETADATA1\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=1000\ntitle=Un\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=1000\nEND=2000\ntitle=Deux\n");
+            if (!haveSrc || !gen(L"-i \"" + srcVideo + L"\" -i \"" + subs + L"\" -i \"" + chap + L"\" -map 0 -map 1 -map_chapters 2 -c copy -c:s mov_text \"" + rich + L"\"")) problem = bad("source with subtitles");
+            else
+                for (const char* cont : {"mp4", "mkv"}) {
+                    Settings st = base23(cont[1] == 'p' ? L"p23_rich_mp4" : L"p23_rich_mkv");
+                    st.source = rich;
+                    st.container = cont;
+                    if (!render23(neutral, st, e, logText)) {
+                        problem = e.empty() ? TX("selftest.render_failed") : e;
+                        break;
+                    }
+                    SourceInfo info;
+                    if (!probeSource(ffmpeg, outputFile(neutral, st, false), 0, info) || info.chapters != 2 || info.subCodecs.empty() || !info.hasAudio) {
+                        problem = bad(std::string(cont) + ": chapters " + std::to_string(info.chapters) + ", subtitle streams " + std::to_string(info.subCodecs.size()));
+                        break;
+                    }
+                }
+            if (problem.empty()) {  // sequence de dix images a 10 par seconde, et image fixe tenue
+                const std::wstring seqDir = outDir + sep + L"p23_seq";
+                removeTree(seqDir);
+                platform::makeDir(seqDir);
+                const std::wstring still = outDir + sep + L"p23_still.png";
+                if (!gen(L"-f lavfi -i testsrc2=s=96x54:r=10:d=1 \"" + seqDir + sep + L"f_%03d.png\"") || !gen(L"-f lavfi -i color=c=0x3080c0:s=64x36 -frames:v 1 \"" + still + L"\"")) problem = bad("generation");
+                else {
+                    Settings st = base23(L"p23_seqout");
+                    st.source = seqDir + sep + L"f_%03d.png";
+                    st.sourceFps = 10;
+                    if (!render23(neutral, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else {
+                        SourceInfo info;
+                        if (!probeSource(ffmpeg, outputFile(neutral, st, false), 0, info) || info.width != 96 || info.height != 54 || std::fabs(info.fps - 10.0) > 0.01 || std::fabs(info.duration - 1.0) > 0.1) problem = bad("sequence output");
+                    }
+                    Settings fixed = base23(L"p23_stillout");
+                    fixed.source = still;
+                    fixed.duration = 0.5;
+                    fixed.fps = 10;
+                    fixed.pinned.insert("fps");
+                    if (problem.empty()) {
+                        if (!render23(neutral, fixed, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                        else {
+                            const std::string got = frames(outputFile(neutral, fixed, false), 64, 36);
+                            if (got.size() != 64 * 36 * 3 * 5 || std::abs((int)(uint8_t)got[0] - 0x30) > 6 || std::abs((int)(uint8_t)got[1] - 0x80) > 6 || std::abs((int)(uint8_t)got[2] - 0xc0) > 6) problem = bad("still image output");
+                        }
+                    }
+                }
+            }
+            check("selftest.fmt_source_files", problem);
+        }
+        if (haveSrc) {  // dossier : un rendu par fichier, compte rendu, reprise (les fichiers faits sont sautes)
+            std::wstring problem, e;
+            std::string logText;
+            const std::wstring dir = outDir + sep + L"p23_batch_in", out = outDir + sep + L"p23_batch_out";
+            removeTree(dir);
+            removeTree(out);
+            platform::makeDir(dir);
+            platform::makeDir(out);
+            {
+                std::string bytes;
+                readFile(srcVideo, bytes);
+                writeFileAtomic(dir + sep + L"un.mp4", bytes);
+            }
+            gen(L"-f lavfi -i color=c=red:s=64x64:r=10:d=1 -c:v libx264 -pix_fmt yuv420p \"" + dir + sep + L"deux.mp4\"");
+            gen(L"-f lavfi -i color=c=green:s=48x48 -frames:v 1 \"" + dir + sep + L"trois.png\"");
+            Settings st = base23(L"p23_batch");
+            st.source = dir;
+            st.outdir = out;
+            st.duration = 0;
+            st.name = L"";
+            if (!render23(neutral, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                int outputs = 0;
+                for (const wchar_t* n : {L"p23_neutral_un.mp4", L"p23_neutral_deux.mp4", L"p23_neutral_trois.mp4"})
+                    if (fileExists(out + sep + n)) outputs++;
+                std::string json;
+                readFile(out + sep + L"p23_neutral_batch.json", json);
+                if (outputs != 3) problem = bad("outputs " + std::to_string(outputs));
+                else if (json.find("\"ok\": 3") == std::string::npos) problem = bad("batch report");
+                else {
+                    std::string again;
+                    std::wstring e2;
+                    if (!render23(neutral, st, e2, again)) problem = e2.empty() ? TX("selftest.render_failed") : e2;
+                    else {
+                        readFile(out + sep + L"p23_neutral_batch.json", json);
+                        if (json.find("\"skipped\": 3") == std::string::npos) problem = bad("the second run did not skip the finished files");
+                    }
+                }
+            }
+            check("selftest.fmt_source_batch", problem);
+        }
+        if (haveSrc) {  // transitions : au debut on voit A, a la fin B, pour chacune des transitions livrees ; duree et son d'une transition
+            std::wstring problem, e;
+            std::string logText;
+            std::wstring tdir = exeDir + L"transitions";
+            if (!platform::dirExists(tdir)) tdir = exeDir + L"../transitions";
+            const std::wstring red = outDir + sep + L"p23_red.mp4", blue = outDir + sep + L"p23_blue.mp4";
+            const bool made = gen(L"-f lavfi -i color=c=0xc02020:s=64x64:r=30:d=2 -f lavfi -i \"sine=frequency=300:duration=2\" -c:v libx264 -pix_fmt yuv420p" + tags + L" -c:a aac -shortest \"" + red + L"\"") &&
+                              gen(L"-f lavfi -i color=c=0x2020c0:s=64x64:r=30:d=2 -f lavfi -i \"sine=frequency=900:duration=2\" -c:v libx264 -pix_fmt yuv420p" + tags + L" -c:a aac -shortest \"" + blue + L"\"");
+            std::vector<platform::DirEntry> list;
+            std::vector<std::wstring> names;
+            if (platform::listDir(tdir, list))
+                for (const auto& en : list)
+                    if (!en.isDir && en.name.size() > 5 && en.name.compare(en.name.size() - 5, 5, L".glsl") == 0) names.push_back(en.name);
+            std::sort(names.begin(), names.end());
+            if (!made) problem = bad("clips");
+            else if (names.size() < 20) problem = bad("transitions found: " + std::to_string(names.size()));
+            else {
+                for (const std::wstring& n : names) {
+                    Settings st = base23(L"p23_trans");
+                    st.source = red;
+                    st.source2 = blue;
+                    st.width = st.height = 16;
+                    st.pinned = {"width", "height"};
+                    for (double when : {0.4, 2.8}) {  // la transition commence a 1 s et dure 1 s : 0,4 s = A seul, 2,8 s = B seul
+                        Hooks H;
+                        H.log = [](const std::wstring&) {};
+                        H.previewTime = when;
+                        std::vector<uint8_t> got;
+                        H.previewFrame = [&](int, int, std::vector<uint8_t>&& px2) { got = std::move(px2); };
+                        if (convertFile(tdir + sep + n, exeDir, st, H, e) != Result::Ok || got.size() != 16 * 16 * 4) {
+                            problem = bad(U8(n) + ": " + (e.empty() ? std::string("no image") : U8(e).substr(0, 120)));
+                            break;
+                        }
+                        const size_t c = (8 * 16 + 8) * 4;  // pixel du centre (BGRA)
+                        const bool wantRed = when < 1.0;
+                        const int r = got[c + 2], b = got[c];
+                        if (wantRed ? !(r > 150 && b < 90) : !(b > 150 && r < 90)) {
+                            problem = bad(U8(n) + " at " + std::to_string(when) + " s: r=" + std::to_string(r) + " b=" + std::to_string(b));
+                            break;
+                        }
+                    }
+                    if (!problem.empty()) break;
+                }
+                if (problem.empty()) {  // duree et son : A (300 Hz) puis B (900 Hz), 2 + 2 - 1 = 3 s
+                    Settings st = base23(L"p23_fadeout");
+                    st.source = red;
+                    st.source2 = blue;
+                    if (!render23(tdir + sep + L"fade.glsl", st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                    else {
+                        const std::wstring out = outputFile(tdir + sep + L"fade.glsl", st, false);
+                        SourceInfo info;
+                        if (!probeSource(ffmpeg, out, 0, info) || std::fabs(info.duration - 3.0) > 0.12 || !info.hasAudio) problem = bad("transition output duration " + std::to_string(info.duration));
+                        else if (highVolume(out, L"2.3", L"0.6") < highVolume(out, L"0.1", L"0.6") + 15) problem = bad("the sound does not go from A to B");
+                    }
+                }
+            }
+            check("selftest.fmt_source_transition", problem);
+        }
+        if (h264) {  // incrustation par cle : fond vert transparent, sujet rouge opaque
+            std::wstring problem, e;
+            std::string logText;
+            std::wstring edir = exeDir + L"examples/effects";
+            if (!platform::dirExists(edir)) edir = exeDir + L"../examples/effects";
+            const std::wstring key = outDir + sep + L"p23_key.png";
+            if (!gen(L"-f lavfi -i \"color=c=0x00ff00:s=64x64,drawbox=x=16:y=16:w=32:h=32:color=red:t=fill\" -frames:v 1 \"" + key + L"\"")) problem = bad("generation");
+            else {
+                Settings st = base23(L"p23_keyout");
+                st.source = key;
+                st.alpha = true;
+                st.pinned.insert("alpha");
+                Hooks H;
+                H.snapshot = true;
+                H.log = [](const std::wstring&) {};
+                const std::wstring shader = edir + sep + L"chromakey.glsl";
+                if (convertFile(shader, exeDir, st, H, e) != Result::Ok) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    const std::wstring png = outputPath(shader, st.outdir, L".png"), raw = outDir + sep + L"p23_key.raw";
+                    gen(L"-i \"" + png + L"\" -f rawvideo -pix_fmt rgba \"" + raw + L"\"");
+                    std::string px2;
+                    readFile(raw, px2);
+                    auto at = [&](int x, int y, int c) { return px2.size() >= (size_t)64 * 64 * 4 ? (int)(uint8_t)px2[((size_t)y * 64 + x) * 4 + c] : -1; };
+                    if (at(4, 4, 3) > 25) problem = bad("the green background is not transparent (alpha " + std::to_string(at(4, 4, 3)) + ")");
+                    else if (at(32, 32, 3) < 230 || at(32, 32, 0) < 150) problem = bad("the subject is not opaque and red (alpha " + std::to_string(at(32, 32, 3)) + ")");
+                }
+            }
+            check("selftest.fmt_source_key", problem);
         }
     }
     // Canaux dynamiques et cubemap par fichiers : audio (spectre), video (images au bon temps), six faces de couleurs distinctes

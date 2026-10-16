@@ -6,6 +6,17 @@
 
 Format : une section par version, la plus récente en premier. La section d'une version étiquetée est reprise dans les notes de version.
 
+## Non publié
+
+### Ajouté
+
+- Mode effet : `source=` (vidéo, image, séquence d'images ou dossier) devient `iChannel0` ; la taille, la cadence et la durée de l'image la suivent (`sourcematch`), `iTime` / `iFrame` sont ceux de la source, son son est gardé (`sourceaudio`), ses sous-titres et chapitres sont recopiés (MP4, MOV, MKV). Les valeurs écrites dans le shader ou en ligne de commande l'emportent.
+- Mode effet : plage de la source (`start`, `duration`), saut ou répétition d'images sans interpolation (`fps`), `reverse=1` (image et son), images fixes tenues pendant tout le rendu, séquences d'images (`sourcefps`).
+- Dossier de sources : un rendu par fichier, fichiers terminés sautés quand on recommence, un échec n'arrête pas les autres, compte rendu `_batch.json`, jeton `{source}` pour le nom de fichier.
+- Transitions : `source2=` et `iProgress` (0 à 1) avec `transitionduration` et `transitionoffset` ; les sons sont enchaînés en fondu ; 25 shaders dans le nouveau dossier `transitions/`.
+- Shaders d'exemple de clé chroma, de clé de luminance et de clé par différence avec une sortie alpha (`examples/effects/`).
+- Page « Source (mode effet) » de la fenêtre Sortie (Windows) et section de la carte des réglages (Linux et macOS) ; sept nouveaux cas d'autotest ; les paquets et l'installeur contiennent `transitions/` et `examples/effects/`.
+
 ## 2.1.0 — 2026-10-16
 
 ### Ajouté

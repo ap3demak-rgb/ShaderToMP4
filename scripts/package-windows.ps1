@@ -12,6 +12,9 @@ New-Item -ItemType Directory -Path "$root\lang" -Force | Out-Null
 Copy-Item bin\ShaderToMP4.exe $root
 Copy-Item COPYING, LICENSE, THIRD_PARTY_NOTICES.md, THIRD_PARTY_NOTICES.fr.md, README.md, README.fr.md $root
 Copy-Item lang\*.json "$root\lang"
+New-Item -ItemType Directory -Path "$root\transitions", "$root\examples\effects" -Force | Out-Null
+Copy-Item transitions\*.glsl "$root\transitions"
+Copy-Item examples\effects\*.glsl "$root\examples\effects"
 $zip = "dist\$name.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path $root -DestinationPath $zip
