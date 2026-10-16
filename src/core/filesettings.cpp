@@ -31,7 +31,9 @@ std::vector<Override> mainSettingValues(const Settings& s) {
             {"scale", s.scale},                   {"scalefilter", s.scaleFilter},       {"loudnorm", num(s.loudnorm)},
             {"title", U8(s.title)},               {"credit", U8(s.credit)},             {"titledur", num(s.titleDur)},
             {"name", U8(s.name)},                 {"exists", s.exists},                 {"chunk", num(s.chunk)},
-            {"pbo", std::to_string(s.pbo)},       {"samples", std::to_string(s.samples)}, {"stillformat", s.stillFormat}, {"precheck", s.precheck ? "1" : "0"}, {"tile", std::to_string(s.tile)}, {"printdpi", std::to_string(s.dpi)}, {"shutter", num(s.shutter)},          {"metadata", s.metadata ? "1" : "0"}};
+            {"pbo", std::to_string(s.pbo)},       {"samples", std::to_string(s.samples)}, {"stillformat", s.stillFormat}, {"precheck", s.precheck ? "1" : "0"},
+            {"target", s.target}, {"targetsize", s.targetSizeMB > 0 ? num(s.targetSizeMB) + "MB" : std::string("off")}, {"crop", s.crop}, {"mastercache", s.masterCache ? "1" : "0"},
+            {"cachemax", num(s.cacheMaxGB)}, {"embed", s.embed ? "1" : "0"}, {"animpreview", s.animPreview}, {"autocredit", s.autoCredit ? "1" : "0"}, {"tile", std::to_string(s.tile)}, {"printdpi", std::to_string(s.dpi)}, {"shutter", num(s.shutter)},          {"metadata", s.metadata ? "1" : "0"}};
 }
 
 std::vector<Override> diffMainSettings(const Settings& base, const Settings& edited) {

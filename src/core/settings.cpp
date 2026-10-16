@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "settings.h"
+#include "publish.h"
 #include "i18n.h"
 #include "util.h"
 #include "formats.h"
@@ -24,7 +25,7 @@ bool sameSettings(const Settings& a, const Settings& b) {
            sameChannels(a, b) && formatMouseKeys(a.mouseKeys) == formatMouseKeys(b.mouseKeys) && formatKeyPresses(a.keys) == formatKeyPresses(b.keys) && a.date == b.date && a.variants == b.variants && a.gpu == b.gpu && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
            a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.paramSpecs == b.paramSpecs && a.post == b.post && a.lut == b.lut && a.alpha == b.alpha && a.hdr == b.hdr && a.hdrPeak == b.hdrPeak &&
            a.hdrFall == b.hdrFall && a.hdrWhite == b.hdrWhite && a.interp == b.interp && a.scale == b.scale && a.scaleFilter == b.scaleFilter &&
-           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report && a.samples == b.samples && a.precheck == b.precheck && a.stillFormat == b.stillFormat && a.tile == b.tile && a.dpi == b.dpi;
+           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report && a.samples == b.samples && a.precheck == b.precheck && a.target == b.target && a.targetSizeMB == b.targetSizeMB && a.crop == b.crop && a.masterCache == b.masterCache && a.cacheMaxGB == b.cacheMaxGB && a.embed == b.embed && a.animPreview == b.animPreview && a.autoCredit == b.autoCredit && a.stillFormat == b.stillFormat && a.tile == b.tile && a.dpi == b.dpi;
 }
 
 // Valeur complete d'une cle qui garde ses espaces (chemin, modele de nom) : le commentaire `      ; texte` que writeIni peut
@@ -158,6 +159,17 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "date") s.date = lower(v) == "off" ? "" : v;
         else if (k == "chunk") s.chunk = std::stod(v);
         else if (k == "samples") s.samples = std::max(1, std::min(100000, std::stoi(v)));
+        else if (k == "target") s.target = lower(v) == "off" ? "" : lower(v);
+        else if (k == "targetsize") {
+            double mb = 0;
+            s.targetSizeMB = lower(v) == "off" ? 0.0 : (parseSizeMB(v, mb) ? mb : s.targetSizeMB);
+        }
+        else if (k == "crop") s.crop = lower(v) == "off" ? "" : v;
+        else if (k == "mastercache") s.masterCache = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
+        else if (k == "cachemax") s.cacheMaxGB = std::max(0.1, std::min(10000.0, std::stod(v)));
+        else if (k == "embed") s.embed = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
+        else if (k == "animpreview") s.animPreview = (lower(v) == "gif" || lower(v) == "webp") ? lower(v) : "off";
+        else if (k == "autocredit") s.autoCredit = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
         else if (k == "precheck") s.precheck = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
         else if (k == "stillformat") s.stillFormat = (lower(v) == "tiff" || lower(v) == "tif") ? "tiff" : "png";
         else if (k == "tile") s.tile = std::stoi(v) <= 0 ? 0 : std::max(64, std::min(16384, std::stoi(v)));
@@ -183,7 +195,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
 
 bool isSettingKey(const std::string& key) {
     static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
-                                        "blur", "shutter", "loop", "loopmode", "loopfade", "timemap", "speed", "audiofollow", "samples", "precheck", "stillformat", "tile", "printdpi", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
+                                        "blur", "shutter", "loop", "loopmode", "loopfade", "timemap", "speed", "audiofollow", "samples", "precheck", "target", "targetsize", "crop", "mastercache", "cachemax", "embed", "animpreview", "autocredit", "stillformat", "tile", "printdpi", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
                                         "report", "scale", "scalefilter", "loudnorm", "title", "credit", "titledur", "chunk", "encoder", "color", "container",
                                         "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "key", "date", "endaction", "variant", "gpu"};
     for (const char* k : kKeys)
@@ -328,6 +340,16 @@ void writeIni(const std::wstring& path, const Settings& s) {
     if (s.report != "off") put("report", s.report, "ini.report");
     if (s.samples > 1) put("samples", std::to_string(s.samples), "ini.samples");
     if (s.precheck) put("precheck", "1", "ini.precheck");
+    if (!s.target.empty()) put("target", s.target, "ini.target");
+    if (s.targetSizeMB > 0) put("targetsize", num(s.targetSizeMB) + "MB", "ini.targetsize");
+    if (!s.crop.empty()) put("crop", s.crop, "ini.crop");
+    if (s.masterCache) {
+        put("mastercache", "1", "ini.mastercache");
+        put("cachemax", num(s.cacheMaxGB), "ini.cachemax");
+    }
+    if (s.embed) put("embed", "1", "ini.embed");
+    if (s.animPreview != "off") put("animpreview", s.animPreview, "ini.animpreview");
+    if (s.autoCredit) put("autocredit", "1", "ini.autocredit");
     if (s.stillFormat != "png") put("stillformat", s.stillFormat, "ini.stillformat");
     if (s.tile > 0) put("tile", std::to_string(s.tile), "ini.tile");
     if (s.dpi > 0) put("printdpi", std::to_string(s.dpi), "ini.dpi");

@@ -55,6 +55,10 @@ struct Fields {
     bool audioFollow = false;
     int stillFormat = 0;  // 0 PNG, 1 TIFF
     bool precheck = false;  // controle qualite avant chaque rendu video
+    // Publication : cible, poids cible, recadrage, maitre en cache, source embarquee, apercu anime (0 aucun, 1 GIF, 2 WebP), credit du shader
+    char target[32] = "", targetSize[16] = "", crop[32] = "", cacheMax[16] = "10";
+    bool masterCache = false, embed = false, autoCredit = false;
+    int animPreview = 0;
     char loopFade[16] = "1", timemap[256] = "", speed[16] = "", samples[16] = "", tile[16] = "", dpi[16] = "";
 };
 
@@ -121,6 +125,7 @@ public:
     void seekPlay();  // le curseur d'apercu a bouge : saute a ce temps
     void cancelRun();
     void openOutputFolder();
+    void purgeCache();  // vide le cache des maitres (cache/ a cote du programme)
     void startFfmpegDownload();
     bool ffmpegMissing() const;
 

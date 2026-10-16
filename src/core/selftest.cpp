@@ -18,6 +18,8 @@
 #include "filesettings.h"
 #include "outputopts.h"
 #include "report.h"
+#include "publish.h"
+#include "webexport.h"
 #include "overlay.h"
 #include "params.h"
 #include "passes.h"
@@ -1907,6 +1909,245 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                     check("selftest.fmt_estimate", problem);
                 }
             }
+        }
+    }
+    // Publication (phase 19) : calculs purs, poids cible, maitre en cache, source embarquee et verification, recadrage, export HTML
+    {
+        const std::wstring sep(1, platform::pathSeparator());
+        auto put = [&](const std::wstring& name, const std::string& body) {
+            const std::wstring path = outDir + sep + name;
+            if (FILE* f = platform::openFile(path, "wb")) {
+                fwrite(body.data(), 1, body.size(), f);
+                fclose(f);
+            }
+            return path;
+        };
+        auto check = [&](const char* key, const std::wstring& problem) {
+            total++;
+            report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX(key) + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+            if (!problem.empty()) fails++;
+        };
+        auto bad = [&](const std::string& what) { return TXF("selftest.fmt_bad", W(what).c_str()); };
+        auto renderOne = [&](const std::wstring& shaderPath, const Settings& st, std::wstring& e, std::string& logText) {
+            Hooks H;
+            H.log = [&](const std::wstring& l) { logText += U8(l) + "\n"; };
+            return convertFile(shaderPath, exeDir, st, H, e) == Result::Ok;
+        };
+        {  // calculs : tailles, debit, correction, recadrage, cibles, licence, paquet de source
+            std::wstring problem;
+            double mb = 0;
+            BitratePlan plan;
+            int cw = 0, ch = 0;
+            std::vector<Target> targets;
+            LicenseInfo lic = detectLicense("// Title: Plasma - by Someone\n// License: CC BY-NC-SA 3.0\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(1.0); }\n");
+            LicenseInfo none = detectLicense("void mainImage(out vec4 o, in vec2 p){ o = vec4(1.0); }\n");
+            SourceBundle b, b2;
+            b.appVersion = "1.10.0";
+            b.shaderName = "x.glsl";
+            b.files = {{"x.glsl", std::string("void mainImage(out vec4 o, in vec2 p){ o = vec4(0.1, 0.2, 0.3, 1.0); }\n\0binaire", 70)}, {"x.bufferA.glsl", "// a\n"}};
+            b.settingsIni = "fps=30\nduration=2\n";
+            if (!parseSizeMB("8MB", mb) || std::fabs(mb - 8) > 1e-9 || !parseSizeMB("800KB", mb) || std::fabs(mb - 0.8) > 1e-9 || !parseSizeMB("1.5GB", mb) || std::fabs(mb - 1500) > 1e-6 ||
+                parseSizeMB("beaucoup", mb))
+                problem = bad("parseSizeMB");
+            else if (!planBitrate(8, 10, 128, plan) || plan.videoKbps < 5000 || plan.videoKbps > 6500 || planBitrate(0.01, 600, 128, plan))
+                problem = bad("planBitrate " + std::to_string(plan.videoKbps));
+            else if (correctedBitrate(1000, 1200000, 1000000) >= 1000 || correctedBitrate(1000, 800000, 1000000) <= 1000)
+                problem = bad("correctedBitrate");
+            else if (!cropSize("9:16", 1920, 1080, cw, ch) || cw != 606 || ch != 1080 || cropSize("banane", 1920, 1080, cw, ch))
+                problem = bad("cropSize " + std::to_string(cw) + "x" + std::to_string(ch));
+            else if (!parseTargets("[mine]\nlabel=Ma cible\nwidth=720\nheight=1280\nmaxduration=30\nmaxsize=8\ncodec=h264\ncontainer=mp4\n", targets) || targets.size() != 1 ||
+                     targets[0].maxMB != 8 || targets[0].height != 1280)
+                problem = bad("parseTargets");
+            else if (!findTarget(publishTargets(exeDir), "tiktok") && !findTarget(publishTargets(exeDir), "youtube-shorts"))
+                problem = bad("built-in targets");
+            else if (!lic.found || !lic.nonCommercial || lic.assumed || none.found == lic.found)
+                problem = bad("detectLicense " + lic.id);
+            else if (!bundleFromJson(bundleToJson(b), b2) || b2.files != b.files || b2.settingsIni != b.settingsIni || b2.appVersion != b.appVersion)
+                problem = bad("bundle round trip");
+            else {
+                Settings s;
+                applyTarget(s, targets[0], {"fps"});
+                if (s.height != 1280 || s.targetSizeMB != 8 || checkTarget(targets[0], s, 45, 720, 1280).size() != 1) problem = bad("applyTarget / checkTarget");
+            }
+            check("selftest.fmt_publish_units", problem);
+        }
+        if (formatAvailable(ffmpeg, "h264", "mp4")) {
+            // un bruit change a chaque image : le poids ne peut pas etre atteint par hasard
+            const std::wstring noisy = put(L"p19_noise.glsl",
+                                           "float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }\n"
+                                           "void mainImage(out vec4 o, in vec2 p){ o = vec4(vec3(h(p + floor(iTime * 10.0))), 1.0); }\n");
+            {  // poids cible : le fichier tient dans le poids demande, sans etre vide
+                std::wstring problem, e;
+                std::string logText;
+                Settings st = base("h264", "mp4", 8);
+                st.width = 320;
+                st.height = 180;
+                st.duration = 2;
+                st.fps = 20;
+                st.targetSizeMB = 0.25;
+                st.name = L"p19_target";
+                if (!renderOne(noisy, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    uint64_t sz = 0;
+                    platform::fileSize(outputFile(noisy, st, false), sz);
+                    if (sz == 0 || sz > 250000 || sz < 40000) problem = bad("size " + std::to_string(sz));
+                }
+                check("selftest.fmt_targetsize", problem);
+            }
+            {  // cible de publication : la taille, le codec et le poids de la plate-forme sont respectes par le rendu
+                std::wstring problem, e;
+                std::string logText;
+                Settings st = base("h265", "mkv", 8);
+                st.target = "discord-8mb";
+                st.duration = 1;
+                st.fps = 10;
+                st.name = L"p19_discord";
+                if (!renderOne(noisy, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    Settings applied = st;  // le moteur applique la cible : le nom du fichier suit son conteneur
+                    const std::vector<Target> all = publishTargets(exeDir);
+                    if (const Target* tg = findTarget(all, st.target)) applyTarget(applied, *tg, {});
+                    const std::wstring video = outputFile(noisy, applied, false);
+                    uint64_t sz = 0;
+                    platform::fileSize(video, sz);
+                    const std::string info = probeInfo(ffmpeg, video);
+                    if (info.find("1280x720") == std::string::npos || info.find("h264") == std::string::npos) problem = bad("format " + info.substr(0, 160));
+                    else if (sz == 0 || sz > 8000000) problem = bad("size " + std::to_string(sz));
+                    else if (video.size() < 4 || video.substr(video.size() - 4) != L".mp4") problem = bad("container");
+                }
+                check("selftest.fmt_target", problem);
+            }
+            {  // licence, credit et apercu anime : l'en-tete du shader est lu, la licence NC est signalee, le credit est incruste, le GIF est tire de la video
+                std::wstring problem, e;
+                std::string logText;
+                const std::wstring lic = put(L"p19_license.glsl", "// Shadertoy: Plasma - Someone - https://www.shadertoy.com/view/abcdef\n// License: CC BY-NC-SA 3.0\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(p / iResolution.xy, 0.5, 1.0); }\n");
+                Settings st = base("h264", "mp4", 8);
+                st.autoCredit = true;
+                st.animPreview = "gif";
+                st.duration = 1;
+                st.name = L"p19_license_out";
+                if (!renderOne(lic, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    const std::wstring video = outputFile(lic, st, false);
+                    const std::wstring gif = video.substr(0, video.rfind(L'.')) + L"_preview.gif";
+                    uint64_t gifSize = 0;
+                    platform::fileSize(gif, gifSize);
+                    if (logText.find(U8(TXF("log.credit_auto", L"")).substr(0, 8)) == std::string::npos || logText.find("Someone") == std::string::npos) problem = bad("credit not written");
+                    else if (logText.find(U8(TX("log.license_nc")).substr(0, 12)) == std::string::npos) problem = bad("non-commercial warning");
+                    else if (gifSize < 100 || probeInfo(ffmpeg, gif).find("gif") == std::string::npos) problem = bad("animated preview");
+                }
+                check("selftest.fmt_license", problem);
+            }
+            {  // maitre en cache : le deuxieme format ne relance pas le rendu GPU, le contenu concorde
+                std::wstring problem, e;
+                std::string logText1, logText2;
+                const std::wstring grad = put(L"p19_master.glsl", "void mainImage(out vec4 o, in vec2 p){ vec2 u = p / iResolution.xy; o = vec4(u, 0.5 + 0.5 * sin(iTime * 3.0), 1.0); }\n");
+                Settings a = base("h264", "mp4", 8);
+                a.masterCache = true;
+                a.name = L"p19_m1";
+                Settings c = base("h264", "mkv", 8);
+                c.masterCache = true;
+                c.name = L"p19_m2";
+                if (!renderOne(grad, a, e, logText1) || !renderOne(grad, c, e, logText2)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else if (logText2.find(U8(TXF("log.master_reuse", L"")).substr(0, 12)) == std::string::npos) problem = bad("master not reused");
+                else {
+                    const std::string px1 = [&] {
+                        const std::wstring raw = outDir + sep + L"m1.raw";
+                        runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -i \"" + outputFile(grad, a, false) + L"\" -frames:v 1 -f rawvideo -pix_fmt rgb24 \"" + raw + L"\"", nullptr);
+                        std::string s;
+                        readFile(raw, s);
+                        return s;
+                    }();
+                    const std::string px2 = [&] {
+                        const std::wstring raw = outDir + sep + L"m2.raw";
+                        runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -i \"" + outputFile(grad, c, false) + L"\" -frames:v 1 -f rawvideo -pix_fmt rgb24 \"" + raw + L"\"", nullptr);
+                        std::string s;
+                        readFile(raw, s);
+                        return s;
+                    }();
+                    long long sum = 0;
+                    for (size_t i = 0; i < px1.size() && i < px2.size(); i++) sum += std::abs((int)(uint8_t)px1[i] - (int)(uint8_t)px2[i]);
+                    if (px1.size() < 64 * 64 * 3 || px1.size() != px2.size() || sum / (double)px1.size() > 3) problem = bad("content differs");
+                }
+                check("selftest.fmt_master", problem);
+            }
+            {  // source embarquee : relue dans la video, identique ; la verification passe puis voit un fichier abime
+                std::wstring problem, e;
+                std::string logText;
+                const std::string src = "void mainImage(out vec4 o, in vec2 p){ o = vec4(0.9, 0.3, 0.1, 1.0); }\n";
+                const std::wstring shaderPath = put(L"p19_embed.glsl", src);
+                Settings st = base("h264", "mp4", 8);
+                st.embed = true;
+                st.report = "json";
+                st.name = L"p19_embed_out";
+                if (!renderOne(shaderPath, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    const std::wstring video = outputFile(shaderPath, st, false);
+                    SourceBundle got;
+                    VerifyResult vr;
+                    std::wstring ve;
+                    if (!readBundleFromVideo(ffmpeg, video, got, ve) || got.files.empty() || got.files[0].second != src) problem = bad("embedded source " + U8(ve));
+                    else if (!verifyVideo(ffmpeg, video, vr, ve) || !vr.problems.empty() || vr.sha256.size() != 64 || vr.frames < 4) problem = bad("verify " + U8(ve) + " " + std::to_string(vr.problems.size()));
+                    else {
+                        std::string bytes;
+                        readFile(video, bytes);
+                        if (bytes.size() > 200) {
+                            bytes[bytes.size() / 2] ^= 0x55;
+                            bytes.push_back('x');
+                        }
+                        const std::wstring broken = outDir + sep + L"p19_embed_broken.mp4";
+                        writeFileAtomic(broken, bytes);
+                        std::string rtext;
+                        const std::wstring stem = video.substr(0, video.rfind(L'.'));
+                        if (readFile(stem + L".report.json", rtext)) writeFileAtomic(outDir + sep + L"p19_embed_broken.report.json", rtext);
+                        VerifyResult vb;
+                        verifyVideo(ffmpeg, broken, vb, ve);
+                        if (vb.problems.empty()) problem = bad("damaged file accepted");
+                    }
+                }
+                check("selftest.fmt_embed", problem);
+            }
+            {  // recadrage 9:16 d'un rendu 320x180 : image de 100x180 (largeur paire), contenu pris au centre
+                std::wstring problem, e;
+                std::string logText;
+                const std::wstring ramp = put(L"p19_crop.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(p.x / iResolution.x, 0.0, 0.0, 1.0); }\n");
+                Settings st = base("h264", "mp4", 8);
+                st.width = 320;
+                st.height = 180;
+                st.crop = "9:16";
+                st.name = L"p19_crop_out";
+                if (!renderOne(ramp, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    const std::wstring video = outputFile(ramp, st, false);
+                    const std::string info = probeInfo(ffmpeg, video);
+                    const std::string px = [&] {
+                        const std::wstring raw = outDir + sep + L"crop.raw";
+                        runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -i \"" + video + L"\" -frames:v 1 -f rawvideo -pix_fmt rgb24 \"" + raw + L"\"", nullptr);
+                        std::string s;
+                        readFile(raw, s);
+                        return s;
+                    }();
+                    if (info.find("100x180") == std::string::npos) problem = bad("size " + info.substr(0, 200));
+                    else if (px.size() < 3 * 90 * 90) problem = bad("no frame");
+                    else {
+                        const int left = (uint8_t)px[0], right = (uint8_t)px[99 * 3];  // rampe rendue sur 320 pixels : colonnes 110 et 209 du centre
+                        if (std::abs(left - 88) > 12 || std::abs(right - 167) > 12) problem = bad("red " + std::to_string(left) + " / " + std::to_string(right));
+                    }
+                }
+                check("selftest.fmt_crop", problem);
+            }
+        }
+        {  // export HTML : une page autonome qui contient le shader, et un refus clair pour ce que la page ne sait pas faire
+            std::wstring problem, e;
+            const std::wstring okShader = put(L"p19_web.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(p / iResolution.xy, 0.5 + 0.5 * sin(iTime), 1.0); }\n");
+            const std::wstring vrShader = put(L"p19_web_vr.glsl", "void mainVR(out vec4 o, in vec2 p, in vec3 ro, in vec3 rd){ o = vec4(rd, 1.0); }\n");
+            const std::wstring page = outDir + sep + L"p19_web.html";
+            Settings st = base("h264", "mp4", 8);
+            std::string html;
+            if (!exportHtml(okShader, exeDir, st, page, e)) problem = bad("export " + U8(e));
+            else if (!readFile(page, html) || html.find("mainImage") == std::string::npos || html.find("webgl2") == std::string::npos) problem = bad("page content");
+            else if (exportHtml(vrShader, exeDir, st, outDir + sep + L"p19_web_vr.html", e) || e.empty()) problem = bad("mainVR accepted");
+            check("selftest.fmt_html", problem);
         }
     }
     // Canaux dynamiques et cubemap par fichiers : audio (spectre), video (images au bon temps), six faces de couleurs distinctes

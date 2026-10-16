@@ -4,6 +4,7 @@
 #include "outputopts.h"
 #include "formats.h"
 #include "i18n.h"
+#include "publish.h"
 #include "timemap.h"
 #include "util.h"
 
@@ -73,6 +74,14 @@ void outputFieldsFrom(const Settings& s, OutputFields& f) {
     f.tile = s.tile > 0 ? std::to_wstring(s.tile) : L"";
     f.audioFollow = s.audioFollow;
     f.precheck = s.precheck;
+    f.target = W(s.target);
+    f.targetSize = s.targetSizeMB > 0 ? i18n::num(s.targetSizeMB) : L"";
+    f.crop = W(s.crop);
+    f.cacheMax = i18n::num(s.cacheMaxGB);
+    f.masterCache = s.masterCache;
+    f.embed = s.embed;
+    f.autoCredit = s.autoCredit;
+    f.animPreview = s.animPreview == "gif" ? 1 : s.animPreview == "webp" ? 2 : 0;
     f.stillFormat = s.stillFormat == "tiff" ? 1 : 0;
     f.dpi = s.dpi > 0 ? std::to_wstring(s.dpi) : L"";
     f.variants.clear();
@@ -165,6 +174,21 @@ bool outputFieldsApply(const OutputFields& f, Settings& s, std::wstring& err) {
         }
         t.audioFollow = f.audioFollow;
         t.precheck = f.precheck;
+        double sizeMB = 0, cacheGB = 10, cw = 0, ch = 0;
+        const std::string sizeText = U8(trim(f.targetSize)), cropText = U8(trim(f.crop));
+        if ((!sizeText.empty() && !parseSizeMB(sizeText, sizeMB)) || !number(f.cacheMax, cacheGB, 10) || cacheGB < 0.1 || cacheGB > 10000 ||
+            (!cropText.empty() && lower(cropText) != "off" && (sscanf(cropText.c_str(), "%lf:%lf", &cw, &ch) != 2 || cw <= 0 || ch <= 0))) {
+            err = TX("error.publish_invalid");
+            return false;
+        }
+        t.target = lower(U8(trim(f.target)));
+        t.targetSizeMB = sizeMB;
+        t.crop = lower(cropText) == "off" ? "" : cropText;
+        t.cacheMaxGB = cacheGB;
+        t.masterCache = f.masterCache;
+        t.embed = f.embed;
+        t.autoCredit = f.autoCredit;
+        t.animPreview = f.animPreview == 1 ? "gif" : f.animPreview == 2 ? "webp" : "off";
         t.stillFormat = f.stillFormat == 1 ? "tiff" : "png";
         t.tile = (int)tile;
         t.dpi = (int)dpi;

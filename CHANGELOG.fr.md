@@ -25,6 +25,11 @@ Format : une section par version, la plus récente en premier. La section d'une 
 - Affiche par tuiles : une image fixe de plus de 8192 pixels (ou de plus que ce que le GPU permet, jusqu'à 65536) est calculée tuile par tuile avec le `iResolution` complet et un `fragCoord` décalé, identique à un rendu d'un seul tenant ; bandes PNG gardées pour reprendre, sur-échantillonnage, 16 bits (`depth=10`), `samples`, `printdpi=300` ; `tile=` pour choisir la taille des tuiles.
 - Carte du coût GPU (`--heatmap[=16x9]`, menu Images) : l'image teintée du bleu au rouge selon le temps GPU de chaque zone, avec les chiffres dans le journal ; temps GPU moyen par image de l'image, des tampons et du post-traitement dans le journal et dans le rapport de rendu (`gpu_ms`).
 - Projections VR pour `mainVR` : `vr=sbs` (côte à côte), `vr=anaglyph` (rouge-cyan), `vr=fulldome` (carré fisheye 180°), métadonnées sphériques des modes stéréo ; `--cubefaces[=taille]` écrit les six faces de cubemap à l'endroit.
+- Destinations de publication (`target=tiktok`, `youtube-shorts`, `instagram-reels`, `discord-8mb`… et les vôtres dans `presets/targets.ini`) : taille, cadence, codec et poids de la plate-forme, avec un avertissement quand la durée ou le shader dépasse ; poids cible du fichier (`targetsize=8MB`, deux passes, corrigé jusqu'à ce que le fichier tienne) ; recadrage centré (`crop=9:16`).
+- Cache des maîtres (`mastercache=1`) : un seul rendu sans perte, chaque format en est tiré par ffmpeg sans le GPU, borné par `cachemax` Go, vidé par `--cache-purge` ou un bouton.
+- Vidéo reproductible (`embed=1`, `--reproduce`), licence et crédit lus dans l'en-tête du shader (`autocredit=1`, avertissement pour les licences non commerciales), contrôle d'intégrité (`--verify`, menu Images) contre la somme SHA-256 écrite dans le rapport de rendu, aperçu animé GIF / WebP (`animpreview`).
+- Page HTML autonome (WebGL 2) à partir d'un shader et de ses passes (`--export-html`, menu Images), comparée au rendu du programme dans un navigateur sans fenêtre.
+- Page « Publication » de la fenêtre Sortie (Windows) et section de la carte des réglages (Linux et macOS) ; huit nouveaux cas d'auto-test.
 
 ## 1.9.0 — 2026-10-12
 

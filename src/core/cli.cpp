@@ -13,6 +13,8 @@
 #include "looptools.h"
 #include "quality.h"
 #include "process.h"
+#include "publish.h"
+#include "webexport.h"
 #include "vr.h"
 #include "render.h"
 #include "shadertoy_import.h"
@@ -55,7 +57,7 @@ std::string num(double v) {
 
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
-    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_check", "cli.render.opt_compare", "cli.render.opt_golden", "cli.render.opt_dryrun", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
+    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_verify", "cli.render.opt_reproduce", "cli.render.opt_exporthtml", "cli.render.opt_cachepurge", "cli.render.opt_check", "cli.render.opt_compare", "cli.render.opt_golden", "cli.render.opt_dryrun", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
                           "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
@@ -76,6 +78,10 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
     std::string compareVideo;    // --compare-video=sbs|curtain|diff
     double tolerance = -1;       // --tolerance=N : ecart maximal admis (0 a 255), -1 = valeur par defaut de chaque mode
     int goldenMode = 0;          // --golden=record (1) | verify (2) : images de reference
+    bool verifyMode = false;     // --verify video : relit la video et la compare a son rapport
+    bool reproduceMode = false;  // --reproduce video : extrait la source embarquee et refait le rendu
+    bool exportHtmlMode = false; // --export-html shader : page HTML autonome
+    bool cachePurgeMode = false; // --cache-purge : vide le cache des maitres
     bool dryRun = false;         // --dry-run : estimation du temps de rendu, rien n'est ecrit
     bool checkWarned = false, diffFound = false;
     double thumbTime = -1;       // --thumb[=secondes] : vignette de couverture
@@ -108,6 +114,14 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         if (key == "png") {
             snapshot = true;
             bestThumb = lower(val) == "best";
+        } else if (key == "verify") {
+            verifyMode = true;
+        } else if (key == "reproduce") {
+            reproduceMode = true;
+        } else if (key == "export-html") {
+            exportHtmlMode = true;
+        } else if (key == "cache-purge") {
+            cachePurgeMode = true;
         } else if (key == "check") {
             checkMode = true;
             checkList = val;
@@ -211,6 +225,11 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         FILE*& f;
         ~LogCloser() { if (f) fclose(f); }
     } logCloser{logFile};
+    if (cachePurgeMode) {  // vide le cache des maitres (dossier cache/ du programme)
+        const uint64_t freed = cachePurge(exeDir);
+        out(U8(TXF("log.cache_purged", (double)freed / 1e6)) + "\n", false);
+        return kExitOk;
+    }
     if (files.empty() && watchDir.empty()) return fail(TX("cli.no_files"));
     for (const auto& f : files)
         if (!fileExists(f)) return fail(TXF("cli.file_missing", f.c_str()));
@@ -219,6 +238,36 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         return kExitNoFfmpeg;
     }
 
+    if (verifyMode) {  // integrite : duree, cadence, nombre d'images, somme SHA-256 et rapport
+        int mismatches = 0;
+        for (const auto& f : files) {
+            VerifyResult vr;
+            std::wstring ve;
+            out(U8(f) + "\n", false);
+            if (!verifyVideo(findFfmpeg(exeDir), f, vr, ve)) {
+                out(U8(TXF("log.error", ve.c_str())) + "\n", true);
+                mismatches++;
+                continue;
+            }
+            for (const std::wstring& c : vr.checks) out(U8(L"  " + c) + "\n", false);
+            for (const std::wstring& p : vr.problems) out(U8(L"  ! " + p) + "\n", false);
+            if (!vr.problems.empty()) mismatches++;
+            else out(U8(L"  " + TX("log.verify.ok")) + "\n", false);
+        }
+        return mismatches ? kExitDiff : kExitOk;
+    }
+    if (exportHtmlMode) {  // page HTML autonome : pas de GPU ici
+        int failures = 0;
+        for (const auto& f : files) {
+            std::wstring target, he;
+            if (exportHtmlBeside(f, exeDir, base, target, he)) out(U8(TXF("log.html_written", target.c_str())) + "\n", false);
+            else {
+                out(U8(TXF("log.error", he.c_str())) + "\n", true);
+                failures++;
+            }
+        }
+        return failures ? kExitRenderFailed : kExitOk;
+    }
     platform::applyGpuPreference(base.gpu);
     GLContext gl;
     std::wstring err;
@@ -287,6 +336,39 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
                             std::to_string(count) + "}\n", false);
         else out(U8(f) + "\n", false);
         std::wstring e;
+        if (reproduceMode) {  // la source embarquee dans la video est extraite et rendue de nouveau
+            SourceBundle bundle;
+            if (!readBundleFromVideo(findFfmpeg(exeDir), f, bundle, e)) {
+                failed++;
+                out(U8(TXF("log.error", e.c_str())) + "\n", true);
+                return false;
+            }
+            const size_t cutp = f.find_last_of(L"\\/");
+            const std::wstring vdir = cutp == std::wstring::npos ? L"" : f.substr(0, cutp + 1);
+            std::wstring vstem = f.substr(cutp == std::wstring::npos ? 0 : cutp + 1);
+            if (size_t dotp = vstem.find_last_of(L'.'); dotp != std::wstring::npos) vstem.erase(dotp);
+            const std::wstring srcDir = vdir + vstem + L"_source";
+            platform::makeDir(srcDir);
+            for (const auto& file : bundle.files) {
+                const std::string leaf = file.first.substr(file.first.find_last_of("\\/") == std::string::npos ? 0 : file.first.find_last_of("\\/") + 1);  // jamais de chemin
+                writeFileAtomic(srcDir + platform::pathSeparator() + W(leaf), file.second);
+            }
+            Settings rs;
+            parseLines(rs, bundle.settingsIni, false);
+            rs.outdir = vdir + vstem + L"_reproduced";
+            rs.exists = "overwrite";
+            rs.name.clear();
+            rs.report = "json";
+            out(U8(L"  " + TXF("log.reproduce_extracted", (long long)bundle.files.size(), srcDir.c_str(), W(bundle.appVersion).c_str())) + "\n", false);
+            const std::wstring shaderFile = srcDir + platform::pathSeparator() + W(bundle.shaderName.substr(bundle.shaderName.find_last_of("\\/") == std::string::npos ? 0 : bundle.shaderName.find_last_of("\\/") + 1));
+            if (convertFile(shaderFile, exeDir, rs, H, e) == Result::Ok) {
+                ok++;
+                return true;
+            }
+            failed++;
+            out(U8(TXF("log.error", e.c_str())) + "\n", true);
+            return false;
+        }
         if (checkMode) {  // controle qualite sans rendu
             CheckOptions co;
             parseCheckList(checkList, co);
