@@ -9,7 +9,9 @@
 #include "accessible.h"
 #include "core/i18n.h"
 #include "core/outputopts.h"
+#include "core/formats.h"
 #include "core/publish.h"
+#include "core/rhythm.h"
 #include "core/timemap.h"
 #include "core/util.h"
 #include "ui_controls.h"
@@ -24,7 +26,8 @@ namespace {
 enum {
     ID_OD_CLOSE = 900, ID_OD_ALPHA, ID_OD_HDR, ID_OD_PEAK, ID_OD_FALL, ID_OD_WHITE, ID_OD_SCALE, ID_OD_FILTER, ID_OD_INTERP, ID_OD_LOUD,
     ID_OD_TITLE, ID_OD_CREDIT, ID_OD_TITLEDUR, ID_OD_NEXT, ID_OD_NAME, ID_OD_EXISTS, ID_OD_META, ID_OD_ENDACT, ID_OD_CHUNK, ID_OD_PBO, ID_OD_SHUTTER, ID_OD_VARIANTS,
-    ID_OD_LOOPMODE, ID_OD_LOOPFADE, ID_OD_TIMEMAP, ID_OD_SPEED, ID_OD_SAMPLES, ID_OD_TILE, ID_OD_DPI, ID_OD_FINDLOOP, ID_OD_TIME, ID_OD_CURVE, ID_OD_AUDIOF, ID_OD_STILLF, ID_OD_PRECHECK, ID_OD_PUBLISH, ID_OD_TARGET, ID_OD_TSIZE, ID_OD_CROP, ID_OD_MASTER, ID_OD_CACHEMAX, ID_OD_EMBED, ID_OD_ACREDIT, ID_OD_ANIMP, ID_OD_PURGE
+    ID_OD_LOOPMODE, ID_OD_LOOPFADE, ID_OD_TIMEMAP, ID_OD_SPEED, ID_OD_SAMPLES, ID_OD_TILE, ID_OD_DPI, ID_OD_FINDLOOP, ID_OD_TIME, ID_OD_CURVE, ID_OD_AUDIOF, ID_OD_STILLF, ID_OD_PRECHECK, ID_OD_PUBLISH, ID_OD_TARGET, ID_OD_TSIZE, ID_OD_CROP, ID_OD_MASTER, ID_OD_CACHEMAX, ID_OD_EMBED, ID_OD_ACREDIT, ID_OD_ANIMP, ID_OD_PURGE,
+    ID_OD_RHYTHM, ID_OD_BPM, ID_OD_BARS, ID_OD_MARKERS, ID_OD_BSYNC, ID_OD_WAVE, ID_OD_ZOOM, ID_OD_POS, ID_OD_ANALYSE, ID_OD_INFO
 };
 
 struct Dlg {
@@ -34,9 +37,10 @@ struct Dlg {
     HWND name = nullptr, exists = nullptr, meta = nullptr, endAct = nullptr, chunk = nullptr, pbo = nullptr, shutter = nullptr, variants = nullptr;
     HWND loopMode = nullptr, loopFade = nullptr, timemap = nullptr, speed = nullptr, samples = nullptr, tile = nullptr, dpiEdit = nullptr, audioF = nullptr, curve = nullptr, stillF = nullptr, precheck = nullptr;
     HWND target = nullptr, tsize = nullptr, crop = nullptr, master = nullptr, cacheMax = nullptr, embed = nullptr, aCredit = nullptr, animP = nullptr;
+    HWND bpm = nullptr, bars = nullptr, markers = nullptr, bsync = nullptr, wave = nullptr, zoom = nullptr, pos = nullptr, info = nullptr;
     std::vector<HWND> headers;  // titres de section (en couleur d'accentuation)
     UINT dpi = 96;
-    int page = 0;   // 0 sortie, 1 avance, 2 temps et boucle, 3 publication
+    int page = 0;   // 0 sortie, 1 avance, 2 temps et boucle, 3 publication, 4 rythme
     int next = -1;  // page a ouvrir apres la fermeture (-1 = aucune)
     bool done = false;
 } D;
@@ -131,6 +135,11 @@ OutputFields readFields() {
         f.embed = SendMessageW(D.embed, CB_GETCURSEL, 0, 0) == 1;
         f.autoCredit = SendMessageW(D.aCredit, CB_GETCURSEL, 0, 0) == 1;
         f.animPreview = std::max(0, (int)SendMessageW(D.animP, CB_GETCURSEL, 0, 0));
+    } else if (D.page == 4) {
+        f.bpm = txt(D.bpm);
+        f.beatsPerBar = txt(D.bars);
+        f.markers = std::max(0, (int)SendMessageW(D.markers, CB_GETCURSEL, 0, 0));
+        f.beatSync = std::max(0, (int)SendMessageW(D.bsync, CB_GETCURSEL, 0, 0));
     } else {
         f.loopMode = std::max(0, (int)SendMessageW(D.loopMode, CB_GETCURSEL, 0, 0));
         f.audioFollow = SendMessageW(D.audioF, CB_GETCURSEL, 0, 0) == 1;
@@ -242,6 +251,198 @@ LRESULT CALLBACK curveProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(h, msg, wp, lp);
 }
 
+// --- Page « Rythme » : forme d'onde du son avec les temps detectes, correction d'un temps d'un clic -------------------------------------------------
+// L'analyse (core/rhythm) est refaite seulement quand le fichier son change ; changer le tempo force la recalcule sans relire le son.
+struct RhythmView {
+    Rhythm rh;
+    std::wstring audio;   // fichier analyse
+    double viewStart = 0;
+    double zoom = 0;      // 0 = tout le morceau, 100 = deux secondes
+} R;
+
+double viewSpan() {
+    const double dur = R.rh.loaded() ? std::max(0.5, R.rh.duration()) : 4.0;
+    const double minSpan = std::min(2.0, dur);
+    return dur * std::pow(minSpan / dur, R.zoom / 100.0);
+}
+
+void clampView() {
+    const double dur = R.rh.loaded() ? R.rh.duration() : 0.0;
+    R.viewStart = std::max(0.0, std::min(R.viewStart, std::max(0.0, dur - viewSpan())));
+}
+
+void syncSliders() {
+    const double dur = R.rh.loaded() ? R.rh.duration() : 0.0, span = viewSpan();
+    if (D.zoom) SendMessageW(D.zoom, TBM_SETPOS, TRUE, (LPARAM)std::lround(R.zoom));
+    if (D.pos) SendMessageW(D.pos, TBM_SETPOS, TRUE, dur > span ? (LPARAM)std::lround(R.viewStart / (dur - span) * 1000.0) : 0);
+}
+
+void refreshInfo() {
+    if (!D.info) return;
+    std::wstring t;
+    if (!R.rh.loaded()) {
+        t = TX("ui.output.rhythm_empty");
+    } else {
+        const std::vector<std::wstring> lines = rhythmSummary(R.rh);
+        for (size_t i = 1; i < lines.size(); i++) t += (i > 1 ? L"   " : L"") + lines[i];
+    }
+    SetWindowTextW(D.info, t.c_str());
+    if (D.wave) InvalidateRect(D.wave, nullptr, FALSE);
+}
+
+// Analyse (ou recalcule avec le tempo force) le son des reglages ; faux et message affiche en cas d'erreur
+bool runAnalysis(Settings s) {
+    if (s.audio.empty() || !fileExists(s.audio)) {
+        MessageBoxW(D.wnd, TX("ui.output.rhythm_noaudio").c_str(), TX("ui.output.rhythm_title").c_str(), MB_ICONINFORMATION);
+        return false;
+    }
+    HCURSOR old = SetCursor(LoadCursorW(nullptr, MAKEINTRESOURCEW(32514)));
+    bool ok = true;
+    std::wstring err;
+    if (R.rh.loaded() && R.audio == s.audio) {
+        R.rh.retune(s.bpm, s.beatsPerBar);
+    } else {
+        ok = R.rh.load(findFfmpeg(g.exeDir), s.audio, s.bpm, s.beatsPerBar, err);
+        R.audio = ok ? s.audio : L"";
+        R.viewStart = 0;
+        R.zoom = 0;
+    }
+    SetCursor(old);
+    if (!ok) MessageBoxW(D.wnd, err.c_str(), TX("ui.output.rhythm_title").c_str(), MB_ICONWARNING);
+    clampView();
+    syncSliders();
+    refreshInfo();
+    return ok;
+}
+
+void drawWave(HDC dc, const RECT& r) {
+    HBRUSH bg = CreateSolidBrush(cref(FIELD));
+    FillRect(dc, &r, bg);
+    DeleteObject(bg);
+    SetBkMode(dc, TRANSPARENT);
+    const int w = r.right - r.left, h = r.bottom - r.top;
+    if (!R.rh.loaded() || w < 20) {
+        SetTextColor(dc, cref(MUTED));
+        const std::wstring m = TX("ui.output.rhythm_empty");
+        RECT tr = r;
+        InflateRect(&tr, -S(12), -S(8));
+        DrawTextW(dc, m.c_str(), -1, &tr, DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
+        return;
+    }
+    const double span = viewSpan(), from = R.viewStart, to = from + span;
+    auto px = [&](double t) { return r.left + (int)std::lround((t - from) / span * w); };
+    const RhythmGrid& grid = R.rh.grid();
+    // sections : une teinte sur deux, nom au debut
+    for (size_t k = 0; k < grid.sections.size(); k++) {
+        const double a = grid.sections[k], b = k + 1 < grid.sections.size() ? grid.sections[k + 1] : R.rh.duration();
+        if (b < from || a > to) continue;
+        if (k % 2 == 1) {
+            RECT sr{std::max<LONG>(r.left, px(a)), r.top, std::min<LONG>(r.right, px(b)), r.bottom};
+            HBRUSH tint = CreateSolidBrush(cref(FIELD_HOT));
+            FillRect(dc, &sr, tint);
+            DeleteObject(tint);
+        }
+    }
+    // onde : une crete par colonne de pixels
+    std::vector<float> peaks;
+    R.rh.waveform(from, to, w, peaks);
+    HPEN wp = CreatePen(PS_SOLID, 1, cref(ACCENT));
+    HGDIOBJ old = SelectObject(dc, wp);
+    const int mid = r.top + h / 2;
+    for (int x = 0; x < w; x++) {
+        const int a = (int)std::lround(peaks[(size_t)x] * (h / 2 - S(14)));
+        MoveToEx(dc, r.left + x, mid - a, nullptr);
+        LineTo(dc, r.left + x, mid + a + 1);
+    }
+    SelectObject(dc, old);
+    DeleteObject(wp);
+    // temps (fins) et debuts de mesure (epais, couleur d'alerte)
+    HPEN bp = CreatePen(PS_SOLID, 1, cref(TEXT)), barp = CreatePen(PS_SOLID, std::max(2, S(2)), cref(WARN));
+    for (double t : grid.beats) {
+        if (t < from || t > to) continue;
+        old = SelectObject(dc, bp);
+        MoveToEx(dc, px(t), r.top + S(14), nullptr);
+        LineTo(dc, px(t), r.bottom - S(14));
+        SelectObject(dc, old);
+    }
+    for (double t : grid.bars) {
+        if (t < from || t > to) continue;
+        old = SelectObject(dc, barp);
+        MoveToEx(dc, px(t), r.top, nullptr);
+        LineTo(dc, px(t), r.bottom);
+        SelectObject(dc, old);
+    }
+    DeleteObject(bp);
+    DeleteObject(barp);
+    // noms de section et repere des secondes
+    SetTextColor(dc, cref(TEXT));
+    for (size_t k = 0; k < grid.sections.size(); k++) {
+        const double a = grid.sections[k];
+        if (a < from || a > to) continue;
+        const std::wstring lab = TXF("rhythm.section", (int)k + 1);
+        TextOutW(dc, px(a) + S(3), r.top + S(2), lab.c_str(), (int)lab.size());
+    }
+    SetTextColor(dc, cref(MUTED));
+    double step = 1;
+    for (double c : {1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 300.0}) {
+        step = c;
+        if (span / c <= 10) break;
+    }
+    for (double t = std::ceil(from / step) * step; t <= to; t += step) {
+        const std::wstring lab = fmtTime(t);
+        TextOutW(dc, px(t) + S(2), r.bottom - S(16), lab.c_str(), (int)lab.size());
+    }
+}
+
+LRESULT CALLBACK waveProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC dc = BeginPaint(h, &ps);
+            RECT r;
+            GetClientRect(h, &r);
+            HDC mem = CreateCompatibleDC(dc);  // sans scintillement
+            HBITMAP bmp = CreateCompatibleBitmap(dc, r.right, r.bottom);
+            HGDIOBJ oldBmp = SelectObject(mem, bmp);
+            SelectObject(mem, g.font);
+            drawWave(mem, r);
+            BitBlt(dc, 0, 0, r.right, r.bottom, mem, 0, 0, SRCCOPY);
+            SelectObject(mem, oldBmp);
+            DeleteObject(bmp);
+            DeleteDC(mem);
+            EndPaint(h, &ps);
+            return 0;
+        }
+        case WM_ERASEBKGND: return 1;
+        case WM_LBUTTONDOWN: {  // un clic pres d'un temps le supprime, ailleurs il en ajoute un
+            RECT r;
+            GetClientRect(h, &r);
+            if (R.rh.loaded() && r.right > 0) {
+                const double span = viewSpan();
+                const double t = R.viewStart + (double)(short)LOWORD(lp) / r.right * span;
+                if (R.rh.toggleBeat(t, (double)S(8) / r.right * span)) refreshInfo();
+            }
+            return 0;
+        }
+        case WM_MOUSEWHEEL: {  // molette : defilement ; Ctrl + molette : zoom autour du centre
+            if (!R.rh.loaded()) return 0;
+            const int steps = GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA;
+            if (GET_KEYSTATE_WPARAM(wp) & MK_CONTROL) {
+                const double centre = R.viewStart + viewSpan() / 2;
+                R.zoom = std::max(0.0, std::min(100.0, R.zoom + steps * 8.0));
+                R.viewStart = centre - viewSpan() / 2;
+            } else {
+                R.viewStart -= steps * viewSpan() * 0.15;
+            }
+            clampView();
+            syncSliders();
+            InvalidateRect(h, nullptr, FALSE);
+            return 0;
+        }
+    }
+    return DefWindowProcW(h, msg, wp, lp);
+}
+
 LRESULT CALLBACK dlgProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_DRAWITEM: {
@@ -268,8 +469,15 @@ LRESULT CALLBACK dlgProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_COMMAND:
             if (LOWORD(wp) == ID_OD_CLOSE || LOWORD(wp) == IDCANCEL) applyAndClose(-1);
-            else if (LOWORD(wp) == ID_OD_NEXT) applyAndClose(D.page == 1 || D.page == 3 ? 0 : 1);
+            else if (LOWORD(wp) == ID_OD_NEXT) applyAndClose(D.page == 1 ? 0 : D.page == 4 ? 3 : D.page == 3 ? 0 : 1);
             else if (LOWORD(wp) == ID_OD_PUBLISH) applyAndClose(3);
+            else if (LOWORD(wp) == ID_OD_RHYTHM) applyAndClose(4);
+            else if (LOWORD(wp) == ID_OD_ANALYSE) {  // le tempo force et les temps par mesure du moment, sur le son des reglages
+                Settings t = g.base;
+                std::wstring err;
+                if (!outputFieldsApply(readFields(), t, err)) MessageBoxW(D.wnd, err.c_str(), TX("dialog.invalid_settings").c_str(), MB_ICONWARNING);
+                else runAnalysis(t);
+            }
             else if (LOWORD(wp) == ID_OD_PURGE) {
                 const uint64_t freed = cachePurge(g.exeDir);
                 MessageBoxW(D.wnd, TXF("log.cache_purged", (double)freed / 1e6).c_str(), TX("ui.output.publish_title").c_str(), MB_ICONINFORMATION);
@@ -278,6 +486,20 @@ LRESULT CALLBACK dlgProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             else if (D.page == 2 && (HIWORD(wp) == EN_CHANGE || HIWORD(wp) == CBN_SELCHANGE) && D.curve) InvalidateRect(D.curve, nullptr, FALSE);
             else if (LOWORD(wp) == ID_OD_FINDLOOP) applyAndClose(-2);
             else if (LOWORD(wp) == ID_OD_HDR && HIWORD(wp) == CBN_SELCHANGE) updateEnabled();
+            return 0;
+        case WM_HSCROLL:
+            if (D.page == 4 && R.rh.loaded()) {
+                if ((HWND)lp == D.zoom) {
+                    const double centre = R.viewStart + viewSpan() / 2;
+                    R.zoom = (double)SendMessageW(D.zoom, TBM_GETPOS, 0, 0);
+                    R.viewStart = centre - viewSpan() / 2;
+                } else if ((HWND)lp == D.pos) {
+                    R.viewStart = (double)SendMessageW(D.pos, TBM_GETPOS, 0, 0) / 1000.0 * std::max(0.0, R.rh.duration() - viewSpan());
+                }
+                clampView();
+                if ((HWND)lp == D.zoom) syncSliders();
+                InvalidateRect(D.wave, nullptr, FALSE);
+            }
             return 0;
         case WM_CLOSE: applyAndClose(-1); return 0;
         case WM_DESTROY: D.done = true; return 0;
@@ -315,6 +537,13 @@ int runPage(HWND parent, int page) {
         cc.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
         cc.lpszClassName = L"ShaderToMP4Curve";
         RegisterClassExW(&cc);
+        WNDCLASSEXW wv{};
+        wv.cbSize = sizeof(wv);
+        wv.lpfnWndProc = waveProc;
+        wv.hInstance = hi;
+        wv.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32649));
+        wv.lpszClassName = L"ShaderToMP4Wave";
+        RegisterClassExW(&wv);
     }
     D = Dlg();
     D.dpi = theme::dpiFor(parent);
@@ -326,14 +555,14 @@ int runPage(HWND parent, int page) {
     const DWORD style = WS_CAPTION | WS_SYSMENU;
     RECT work{};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
-    const int clientH = page == 0 ? 620 : page == 1 ? 452 : page == 3 ? 470 : 450;
+    const int clientH = page == 0 ? 620 : page == 1 ? 452 : page == 3 ? 520 : page == 4 ? 580 : 450;
     RECT want{0, 0, S(600), S(clientH)};
     AdjustWindowRectExForDpi(&want, style, FALSE, WS_EX_DLGMODALFRAME, D.dpi);
     RECT pr;
     GetWindowRect(parent, &pr);
     const int ww = want.right - want.left, wh = want.bottom - want.top;
     const int x = pr.left + ((pr.right - pr.left) - ww) / 2, y = std::max((int)work.top, (int)(pr.top + ((pr.bottom - pr.top) - wh) / 2));
-    D.wnd = CreateWindowExW(WS_EX_DLGMODALFRAME, kDlgClass, TX(page == 0 ? "ui.output.title" : page == 1 ? "ui.output.adv_title" : page == 3 ? "ui.output.publish_title" : "ui.output.time_title").c_str(), style | WS_VISIBLE | WS_CLIPCHILDREN, x, y,
+    D.wnd = CreateWindowExW(WS_EX_DLGMODALFRAME, kDlgClass, TX(page == 0 ? "ui.output.title" : page == 1 ? "ui.output.adv_title" : page == 3 ? "ui.output.publish_title" : page == 4 ? "ui.output.rhythm_title" : "ui.output.time_title").c_str(), style | WS_VISIBLE | WS_CLIPCHILDREN, x, y,
                             ww, wh, parent, nullptr, hi, nullptr);
     if (!D.wnd) return -1;
     ui::darkTitleBar(D.wnd);
@@ -427,6 +656,46 @@ int runPage(HWND parent, int page) {
         label(TX("ui.output.cachemax"), lx, 280, 130);
         D.cacheMax = edit(ID_OD_CACHEMAX, f.cacheMax, fx, 280, 150);
         hint(TX("ui.output.hint_trace"), 316, 66);
+    } else if (page == 4) {
+        header(TX("ui.output.sec_rhythm"), 12);
+        label(TX("ui.output.bpm"), lx, 40, 130);
+        D.bpm = edit(ID_OD_BPM, f.bpm, fx, 40, 150);
+        label(TX("ui.output.beatsperbar"), rx, 40, 130);
+        D.bars = edit(ID_OD_BARS, f.beatsPerBar, rf, 40, 118);
+        label(TX("ui.output.markers"), lx, 72, 130);
+        D.markers = combo(ID_OD_MARKERS, {TX("ui.output.off"), TX("ui.output.markers_chapters"), TX("ui.output.markers_files"), TX("ui.output.markers_both")}, f.markers, fx, 72, 150);
+        SendMessageW(D.markers, CB_SETDROPPEDWIDTH, S(260), 0);
+        label(TX("ui.output.beatsync"), rx, 72, 130);
+        D.bsync = combo(ID_OD_BSYNC, {TX("ui.output.off"), TX("ui.output.sync_beat"), TX("ui.output.sync_bar"), TX("ui.output.sync_section")}, f.beatSync, rf, 72, 118);
+        SendMessageW(D.bsync, CB_SETDROPPEDWIDTH, S(260), 0);
+        hint(TX("ui.output.hint_rhythm"), 108, 66);
+        header(TX("ui.output.sec_beats"), 182);
+        D.wave = make(L"ShaderToMP4Wave", L"", 0, ID_OD_WAVE, 20, 210, 560, 150);
+        label(TX("ui.output.zoom"), lx, 372, 60);
+        D.zoom = make(L"STSlider", L"", WS_TABSTOP, ID_OD_ZOOM, 80, 372, 200, 26);
+        SendMessageW(D.zoom, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
+        label(TX("ui.output.position"), 300, 372, 70);
+        D.pos = make(L"STSlider", L"", WS_TABSTOP, ID_OD_POS, 372, 372, 208, 26);
+        SendMessageW(D.pos, TBM_SETRANGE, TRUE, MAKELPARAM(0, 1000));
+        D.info = make(L"STATIC", L"", SS_LEFT | SS_NOPREFIX, ID_OD_INFO, 20, 410, 560, 44);
+        hint(TX("ui.output.hint_beats"), 462, 54);
+        // la fiche deja ecrite a cote du son est relue tout de suite (l'analyse d'un nouveau son demande le bouton)
+        if (!g.base.audio.empty() && fileExists(g.base.audio + L".beats.json") && (!R.rh.loaded() || R.audio != g.base.audio)) {
+            std::wstring err;
+            Rhythm fresh;
+            if (fresh.load(findFfmpeg(g.exeDir), g.base.audio, g.base.bpm, g.base.beatsPerBar, err)) {
+                R.rh = std::move(fresh);
+                R.audio = g.base.audio;
+                R.viewStart = 0;
+                R.zoom = 0;
+            }
+        } else if (R.rh.loaded() && R.audio != g.base.audio) {
+            R.rh = Rhythm();
+            R.audio.clear();
+        }
+        clampView();
+        syncSliders();
+        refreshInfo();
     } else {
         const std::vector<std::wstring> offOn = {TX("ui.output.off"), TX("ui.output.on")};
 
@@ -470,6 +739,11 @@ int runPage(HWND parent, int page) {
             {D.chunk, "ui.output.chunk"}, {D.pbo, "ui.output.pbo"}, {D.shutter, "ui.output.shutter"}, {D.variants, "ui.output.variants"},
             {D.precheck, "ui.output.precheck"}};
         for (const auto& n : names) setAccessibleName(n.c, n.key);
+    } else if (page == 4) {
+        const struct { HWND c; const char* key; } names[] = {
+            {D.bpm, "ui.output.bpm"}, {D.bars, "ui.output.beatsperbar"}, {D.markers, "ui.output.markers"}, {D.bsync, "ui.output.beatsync"},
+            {D.wave, "ui.output.wave_name"}, {D.zoom, "ui.output.zoom"}, {D.pos, "ui.output.position"}};
+        for (const auto& n : names) setAccessibleName(n.c, n.key);
     } else if (page == 3) {
         const struct { HWND c; const char* key; } names[] = {
             {D.target, "ui.output.target"}, {D.tsize, "ui.output.targetsize"}, {D.crop, "ui.output.crop"}, {D.aCredit, "ui.output.autocredit"},
@@ -482,17 +756,19 @@ int runPage(HWND parent, int page) {
             {D.dpiEdit, "ui.output.dpi"}, {D.stillF, "ui.output.stillformat"}};
         for (const auto& n : names) setAccessibleName(n.c, n.key);
     }
-    D.bNext = button(page == 1 || page == 3 ? "ui.output.back_btn" : "ui.output.adv_btn", ID_OD_NEXT, IC_SLIDERS, ui::BtnStyle::Secondary, 20, clientH - 50, 150, hi);
+    D.bNext = button(page == 1 || page == 3 || page == 4 ? "ui.output.back_btn" : "ui.output.adv_btn", ID_OD_NEXT, IC_SLIDERS, ui::BtnStyle::Secondary, 20, clientH - 50, 150, hi);
     D.bClose = button("ui.params.close", ID_OD_CLOSE, IC_CHECK, ui::BtnStyle::Primary, 600 - 20 - 130, clientH - 50, 130, hi);
     if (page == 0) button("ui.output.publish_btn", ID_OD_PUBLISH, IC_GLOBE, ui::BtnStyle::Secondary, 190, clientH - 50, 240, hi);
     if (page == 3) button("ui.output.purge_btn", ID_OD_PURGE, IC_TRASH, ui::BtnStyle::Secondary, 190, clientH - 50, 240, hi);
+    if (page == 3) button("ui.output.rhythm_btn", ID_OD_RHYTHM, IC_AUDIO, ui::BtnStyle::Secondary, 20, clientH - 96, 250, hi);
+    if (page == 4) button("ui.output.analyse_btn", ID_OD_ANALYSE, IC_EYE, ui::BtnStyle::Secondary, 190, clientH - 50, 240, hi);
     if (page == 1) button("ui.output.time_btn", ID_OD_TIME, IC_FILM, ui::BtnStyle::Secondary, 190, clientH - 50, 240, hi);
     if (page == 2) button("ui.output.findloop_btn", ID_OD_FINDLOOP, IC_EYE, ui::BtnStyle::Secondary, 190, clientH - 50, 240, hi);
     updateEnabled();
 
     // Boîte modale : la fenêtre principale est désactivée pendant l'affichage
     EnableWindow(parent, FALSE);
-    SetFocus(page == 0 ? D.alpha : page == 1 ? D.name : page == 3 ? D.target : D.loopMode);
+    SetFocus(page == 0 ? D.alpha : page == 1 ? D.name : page == 3 ? D.target : page == 4 ? D.bpm : D.loopMode);
     MSG m;
     while (!D.done && GetMessageW(&m, nullptr, 0, 0) > 0) {
         if (!IsDialogMessageW(D.wnd, &m)) {

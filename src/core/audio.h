@@ -4,12 +4,18 @@
 // Analyse d'un fichier son au temps exact d'une image : spectre et forme d'onde (canal `audio`), niveau et bandes (uniforms lies au son).
 #pragma once
 #include "common.h"
+#include <complex>
+
+// FFT (taille puissance de deux) sur place, partagee avec l'analyse du rythme
+void fftInPlace(std::vector<std::complex<float>>& a);
 
 class AudioAnalyzer {
 public:
     // Decode tout le fichier en mono 44100 Hz, 16 bits (20 minutes au plus) par ffmpeg. Faux + err en cas d'echec.
     bool load(const std::wstring& ffmpeg, const std::wstring& path, std::wstring& err);
     bool loaded() const { return !pcm_.empty(); }
+    // Les echantillons decodes (mono, 44100 Hz, 16 bits)
+    const std::vector<int16_t>& samples() const { return pcm_; }
 
     // Ligne 0 (512 octets) : spectre d'une fenetre de 1024 echantillons se terminant au temps t (Blackman, -100 a -30 dB sur 0..255, comme
     // un analyseur web) ; ligne 1 (512 octets) : forme d'onde des 512 derniers echantillons (128 = silence).

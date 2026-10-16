@@ -39,3 +39,9 @@ Result convertMontage(const std::wstring& montagePath, const std::wstring& exeDi
 
 // Vrai si le chemin se termine par .montage (casse ignoree).
 bool isMontageFile(const std::wstring& path);
+
+// Cale les durees des clips sur une grille musicale : chaque coupe (le centre de la transition) tombe sur un point de `grid` (secondes de la video, triees),
+// le plus proche de l'endroit demande, jamais assez pres du precedent pour qu'un clip soit plus court que ses transitions. `requested` : durees demandees ;
+// `trans` : duree de la transition qui amene chaque clip (0 pour une coupe, ignoree pour le premier). La fin de la video est calee aussi. Sans point
+// utilisable, la duree demandee est gardee.
+std::vector<double> snapMontageDurations(const std::vector<double>& requested, const std::vector<double>& trans, const std::vector<double>& grid);

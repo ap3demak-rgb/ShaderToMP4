@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "webexport.h"
+#include "expr.h"
 #include "app_info.h"
 #include "compat.h"
 #include "hooks.h"
@@ -267,6 +268,10 @@ bool exportHtml(const std::wstring& shaderPath, const std::wstring& exeDir, cons
     parseLines(st, code, true);
     if (code.find("// uniform") != std::string::npos) {  // parametres animes : pas dans la page
         err = TXF("error.html_unsupported", L"// uniform");
+        return false;
+    }
+    if (mentionsRhythmVar(stripCodeComments(code))) {  // iBeat, iBass... : le rythme vient d'une analyse du son que la page ne fait pas
+        err = TXF("error.html_unsupported", L"iBeat / iBass / iOnset");
         return false;
     }
     if (!st.post.empty() || !st.lut.empty()) {

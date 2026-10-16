@@ -9,6 +9,7 @@
 #include "params.h"
 #include "process.h"
 #include "render.h"
+#include "rhythm.h"
 #include "util.h"
 #include "platform/platform.h"
 #include <sstream>
@@ -176,6 +177,28 @@ static std::string clipSignature(const std::wstring& shader, const Settings& s, 
     return fnvHex(sig);
 }
 
+std::vector<double> snapMontageDurations(const std::vector<double>& requested, const std::vector<double>& trans, const std::vector<double>& grid) {
+    const size_t n = requested.size();
+    std::vector<double> dur = requested;
+    double start = 0;  // instant ou le clip i commence a l'ecran
+    for (size_t i = 0; i < n; i++) {
+        const double into = i > 0 && i < trans.size() ? trans[i] : 0.0;           // transition qui amene le clip
+        const double next = i + 1 < n && i + 1 < trans.size() ? trans[i + 1] : 0.0;  // transition vers le suivant
+        const double minDur = std::max(0.5, into + next);
+        const double nominal = start + requested[i] - next / 2;  // centre de la coupe demandee (fin du dernier clip)
+        const double minCut = start + minDur - next / 2;
+        double best = -1;
+        for (double g : grid) {
+            if (g < minCut - 1e-9) continue;
+            if (best < 0 || std::fabs(g - nominal) < std::fabs(best - nominal) - 1e-9) best = g;
+        }
+        const double cut = best >= 0 ? best : std::max(nominal, minCut);
+        dur[i] = cut - start + next / 2;
+        start = cut - next / 2;
+    }
+    return dur;
+}
+
 static std::wstring xfadeName(const std::string& t) { return t == "fade" ? L"fadeblack" : t == "wipe" ? L"wipeleft" : L"fade"; }
 
 Result convertMontage(const std::wstring& montagePath, const std::wstring& exeDir, const Settings& base, const Hooks& H, std::wstring& err) {
@@ -208,6 +231,37 @@ Result convertMontage(const std::wstring& montagePath, const std::wstring& exeDi
     if (!formatAvailable(ffmpeg, s.codec, s.container)) {
         err = TXF("error.encoder_missing", W(requiredEncoders(s.codec, s.container).front()).c_str());
         return Result::Failed;
+    }
+    // Rythme du son : coupes calees sur les temps, les mesures ou les sections, marqueurs du fichier final
+    Rhythm rhythm;
+    bool rhythmOk = false;
+    if ((s.beatSync != "off" || s.markers != "off") && !s.audio.empty()) {
+        std::wstring re;
+        rhythmOk = rhythm.load(ffmpeg, s.audio, s.bpm, s.beatsPerBar, re);
+        if (!rhythmOk) H.log(L"  " + re);
+    } else if (s.beatSync != "off") {
+        H.log(L"  " + TX("log.beatsync_no_audio"));
+    }
+    if (s.beatSync != "off" && rhythmOk) {
+        const RhythmGrid& g = rhythm.grid();
+        if (g.beats.empty()) {
+            H.log(L"  " + TX("log.markers_notempo"));
+        } else {
+            const std::vector<double>& src = s.beatSync == "section" ? g.sections : s.beatSync == "bar" && !g.bars.empty() ? g.bars : g.beats;
+            std::vector<double> grid;
+            for (double t : src)
+                if (t - s.start > 0) grid.push_back(t - s.start);
+            std::vector<double> requested, trans;
+            for (const auto& c : def.clips) {
+                requested.push_back(c.duration);
+                trans.push_back(c.transition == "cut" ? 0.0 : c.transitionDuration);
+            }
+            const std::vector<double> snapped = snapMontageDurations(requested, trans, grid);
+            for (size_t i = 0; i < def.clips.size(); i++) {
+                if (std::fabs(snapped[i] - requested[i]) > 1e-6) H.log(L"  " + TXF("log.beatsync_clip", (int)i + 1, requested[i], snapped[i]));
+                def.clips[i].duration = snapped[i];
+            }
+        }
     }
     std::wstring overlay;
     if (!overlayFilter(s, 0, OW, OH, ffmpeg, overlay, err)) return Result::Failed;
@@ -420,6 +474,8 @@ Result convertMontage(const std::wstring& montagePath, const std::wstring& exeDi
             platform::removeFile(work + sep + en.name);
         }
     platform::removeDir(work);
+    if (rhythmOk && s.markers != "off")
+        applyMarkerSetting(s.markers, rhythm, ffmpeg, out, s.start, total, 1.0, s.interp > 0 ? s.interp : s.fps, [&](const std::wstring& l) { H.log(L"  " + l); });
     H.log(L"  " + TXF("log.ok_output", out.c_str()));
     if (H.output) H.output(out);
     return Result::Ok;

@@ -84,6 +84,10 @@ void outputFieldsFrom(const Settings& s, OutputFields& f) {
     f.animPreview = s.animPreview == "gif" ? 1 : s.animPreview == "webp" ? 2 : 0;
     f.stillFormat = s.stillFormat == "tiff" ? 1 : 0;
     f.dpi = s.dpi > 0 ? std::to_wstring(s.dpi) : L"";
+    f.bpm = s.bpm > 0 ? i18n::num(s.bpm) : L"";
+    f.beatsPerBar = std::to_wstring(s.beatsPerBar);
+    f.markers = s.markers == "chapters" ? 1 : s.markers == "file" ? 2 : s.markers == "all" ? 3 : 0;
+    f.beatSync = s.beatSync == "beat" ? 1 : s.beatSync == "bar" ? 2 : s.beatSync == "section" ? 3 : 0;
     f.variants.clear();
     for (const std::string& v : s.variants) f.variants += (f.variants.empty() ? L"" : L" ; ") + W(v);
 }
@@ -197,6 +201,15 @@ bool outputFieldsApply(const OutputFields& f, Settings& s, std::wstring& err) {
         t.samples = (int)samples;
         t.timemap = curve;
     }
+    double bpm = 0, bars = 4;
+    if (!number(f.bpm, bpm, 0) || bpm < 0 || bpm > 400 || (bpm > 0 && bpm < 20) || !number(f.beatsPerBar, bars, 4) || bars < 2 || bars > 12 || bars != std::floor(bars)) {
+        err = TX("error.rhythm_invalid");
+        return false;
+    }
+    t.bpm = bpm;
+    t.beatsPerBar = (int)bars;
+    t.markers = f.markers == 1 ? "chapters" : f.markers == 2 ? "file" : f.markers == 3 ? "all" : "off";
+    t.beatSync = f.beatSync == 1 ? "beat" : f.beatSync == 2 ? "bar" : f.beatSync == 3 ? "section" : "off";
     double chunk = 0, shutter = 0, pbo = 0;
     if (!number(f.chunk, chunk, 0) || chunk < 0 || chunk > 86400 || !number(f.shutter, shutter, 0.5) || shutter < 0.01 || shutter > 1 || !number(f.pbo, pbo, 3) ||
         pbo < 2 || pbo > 8 || pbo != std::floor(pbo)) {

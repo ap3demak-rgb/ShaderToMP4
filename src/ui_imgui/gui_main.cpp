@@ -40,6 +40,7 @@ struct App {
     FileBrowser browser;
     unsigned previewTex = 0;
     bool showAbout = false;
+    bool showBeats = false;  // ouvre l'editeur de temps (forme d'onde)
     bool fontsDirty = false;  // la langue change : japonais et chinois demandent une autre police, l'atlas est refait avant l'image suivante
     std::wstring lastDir;
     std::vector<std::wstring> drops;
@@ -782,6 +783,22 @@ void drawOutput(App& a) {
     ImGui::InputText("##cachemax", f.cacheMax, sizeof(f.cacheMax));
     note("ui.output.hint_trace");
     if (button("ui.output.purge_btn", "trash", 0, !a.model.running(), 0, "ui.output.hint_trace")) a.model.purgeCache();
+
+    section("ui.output.sec_rhythm");
+    row("ui.output.bpm");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##bpm", f.bpm, sizeof(f.bpm));
+    row("ui.output.beatsperbar");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##beatsperbar", f.beatsPerBar, sizeof(f.beatsPerBar));
+    row("ui.output.markers");
+    comboList("##markers", &f.markers, {T("ui.output.off"), T("ui.output.markers_chapters"), T("ui.output.markers_files"), T("ui.output.markers_both")}, width);
+    row("ui.output.beatsync");
+    comboList("##beatsync", &f.beatSync, {T("ui.output.off"), T("ui.output.sync_beat"), T("ui.output.sync_bar"), T("ui.output.sync_section")}, width);
+    note("ui.output.hint_rhythm");
+    if (button("ui.output.rhythm_btn", "audio", 0, !a.model.running(), 0, "ui.output.hint_beats")) {
+        if (a.model.analyseRhythm() || a.model.rhythm.loaded()) a.showBeats = true;
+    }
 }
 
 // Reglage impose par le shader selectionne : le champ est grise (il montre la valeur du shader)
@@ -1168,6 +1185,114 @@ void drawAbout(App& a) {
     ImGui::EndPopup();
 }
 
+// --- Editeur de temps : forme d'onde du son, temps detectes (fins), debuts de mesure (epais), sections ; un clic supprime ou ajoute un temps ----------
+void drawBeatEditor(App& a) {
+    Model& m = a.model;
+    if (a.showBeats) {
+        ImGui::OpenPopup("##beats");
+        a.showBeats = false;
+    }
+    const ImVec2 vp = ImGui::GetMainViewport()->Size;
+    ImGui::SetNextWindowPos(ImVec2(vp.x * 0.5f, vp.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(std::min(S(780), vp.x - S(40)), 0));
+    if (!ImGui::BeginPopupModal("##beats", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar)) return;
+    Rhythm& rh = m.rhythm;
+    ImGui::PushFont(fontBold);
+    ImGui::TextUnformatted(T("ui.output.sec_beats").c_str());
+    ImGui::PopFont();
+    {
+        std::string info;
+        if (!rh.loaded()) {
+            info = T("ui.output.rhythm_empty");
+        } else {
+            const std::vector<std::wstring> lines = rhythmSummary(rh);
+            for (size_t i = 1; i < lines.size(); i++) info += (i > 1 ? "   " : "") + U8(lines[i]);
+        }
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(colv(pal::MUTED), "%s", info.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    const float w = ImGui::GetContentRegionAvail().x, h = S(160);
+    const ImVec2 p0 = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("##wave", ImVec2(w, h));
+    const bool hovered = ImGui::IsItemHovered();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(p0, ImVec2(p0.x + w, p0.y + h), col(pal::FIELD), S(4));
+    if (rh.loaded()) {
+        const double dur = std::max(0.5, rh.duration());
+        const double minSpan = std::min(2.0, dur);
+        auto span = [&] { return dur * std::pow(minSpan / dur, m.rhythmZoom / 100.0); };
+        auto clampView = [&] { m.rhythmView = std::max(0.0, std::min(m.rhythmView, std::max(0.0, dur - span()))); };
+        if (hovered) {  // molette : defilement ; Ctrl + molette : zoom autour du centre
+            const float wheel = ImGui::GetIO().MouseWheel;
+            if (wheel != 0.0f) {
+                if (ImGui::GetIO().KeyCtrl) {
+                    const double centre = m.rhythmView + span() / 2;
+                    m.rhythmZoom = std::max(0.0, std::min(100.0, m.rhythmZoom + wheel * 8.0));
+                    m.rhythmView = centre - span() / 2;
+                } else {
+                    m.rhythmView -= wheel * span() * 0.15;
+                }
+            }
+        }
+        clampView();
+        const double from = m.rhythmView, to = from + span();
+        if (ImGui::IsItemClicked(0) && w > 0) {  // un clic pres d'un temps le supprime, ailleurs il en ajoute un
+            const double t = from + (ImGui::GetIO().MousePos.x - p0.x) / w * span();
+            rh.toggleBeat(t, S(8) / w * span());
+        }
+        auto px = [&](double t) { return p0.x + (float)((t - from) / span() * w); };
+        const RhythmGrid& g = rh.grid();
+        dl->PushClipRect(p0, ImVec2(p0.x + w, p0.y + h), true);
+        for (size_t k = 0; k < g.sections.size(); k++) {  // sections : une teinte sur deux, nom au debut
+            const double sa = g.sections[k], sb = k + 1 < g.sections.size() ? g.sections[k + 1] : rh.duration();
+            if (sb < from || sa > to) continue;
+            if (k % 2 == 1) dl->AddRectFilled(ImVec2(px(sa), p0.y), ImVec2(px(sb), p0.y + h), col(pal::FIELD_HOT));
+        }
+        std::vector<float> peaks;
+        const int cols = std::max(1, (int)w);
+        rh.waveform(from, to, cols, peaks);
+        const float mid = p0.y + h / 2, amp = h / 2 - S(14);
+        for (int x = 0; x < cols; x++) dl->AddLine(ImVec2(p0.x + x + 0.5f, mid - peaks[(size_t)x] * amp), ImVec2(p0.x + x + 0.5f, mid + peaks[(size_t)x] * amp + 1), col(pal::ACCENT));
+        for (double t : g.beats)
+            if (t >= from && t <= to) dl->AddLine(ImVec2(px(t), p0.y + S(14)), ImVec2(px(t), p0.y + h - S(14)), col(pal::TEXT));
+        for (double t : g.bars)
+            if (t >= from && t <= to) dl->AddLine(ImVec2(px(t), p0.y), ImVec2(px(t), p0.y + h), col(pal::WARN), S(2));
+        for (size_t k = 0; k < g.sections.size(); k++)
+            if (g.sections[k] >= from && g.sections[k] <= to) dl->AddText(ImVec2(px(g.sections[k]) + S(3), p0.y + S(2)), col(pal::TEXT), TXF8("rhythm.section", (int)k + 1).c_str());
+        double step = 1;
+        for (double c : {1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 300.0}) {
+            step = c;
+            if (span() / c <= 10) break;
+        }
+        for (double t = std::ceil(from / step) * step; t <= to; t += step) dl->AddText(ImVec2(px(t) + S(2), p0.y + h - S(16)), col(pal::MUTED), U8(fmtTime(t)).c_str());
+        dl->PopClipRect();
+        float zoom = (float)m.rhythmZoom, pos = dur > span() ? (float)(m.rhythmView / (dur - span())) : 0.0f;
+        ImGui::SetNextItemWidth(w * 0.4f);
+        if (ImGui::SliderFloat("##zoom", &zoom, 0.0f, 100.0f, T("ui.output.zoom").c_str())) {
+            const double centre = m.rhythmView + span() / 2;
+            m.rhythmZoom = zoom;
+            m.rhythmView = centre - span() / 2;
+            clampView();
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(w * 0.4f);
+        if (ImGui::SliderFloat("##pos", &pos, 0.0f, 1.0f, T("ui.output.position").c_str())) m.rhythmView = pos * std::max(0.0, dur - span());
+    } else {
+        ImGui::Dummy(ImVec2(0, S(30)));
+    }
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextColored(colv(pal::FAINT), "%s", T("ui.output.hint_beats").c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+    if (button("ui.output.analyse_btn", "eye", 0, true)) m.analyseRhythm();
+    ImGui::SameLine();
+    if (button("ui.output.clear_edits_btn", "trash", 0, rh.loaded() && !rh.edits().empty())) rh.clearEdits();
+    ImGui::SameLine();
+    if (button("ui.params.close", "check", 1, true) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+}
+
 void drawDialogs(App& a) {
     Model& m = a.model;
     const ImVec2 vp = ImGui::GetMainViewport()->Size;
@@ -1293,6 +1418,7 @@ void drawFrame(App& a, GLFWwindow* win) {
     ImGui::PopStyleColor();
     drawBottom(a);
     drawAbout(a);
+    drawBeatEditor(a);
     drawDialogs(a);
     drawEditor(a.model);
     a.browser.draw();

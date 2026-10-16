@@ -12,7 +12,9 @@ namespace {
 
 constexpr int kFft = 1024;  // fenetre de l'analyse : 512 raies de spectre
 
-void fft(std::vector<std::complex<float>>& a) {
+}  // namespace
+
+void fftInPlace(std::vector<std::complex<float>>& a) {
     const size_t n = a.size();
     for (size_t i = 1, j = 0; i < n; i++) {  // permutation par inversion de bits
         size_t bit = n >> 1;
@@ -34,8 +36,6 @@ void fft(std::vector<std::complex<float>>& a) {
         }
     }
 }
-
-}  // namespace
 
 bool AudioAnalyzer::load(const std::wstring& ffmpeg, const std::wstring& path, std::wstring& err) {
     if (!fileExists(path)) {
@@ -72,7 +72,7 @@ void AudioAnalyzer::rows(double t, uint8_t out[1024]) const {
         const float w = 0.42f - 0.5f * std::cos(2.0f * 3.14159265f * i / (kFft - 1)) + 0.08f * std::cos(4.0f * 3.14159265f * i / (kFft - 1));  // Blackman
         x[i] = sample(end - kFft + i) / 32768.0f * w;
     }
-    fft(x);
+    fftInPlace(x);
     for (int k = 0; k < 512; k++) {
         const float mag = std::abs(x[k]) / (kFft * 0.42f);  // normalise par la fenetre
         const float db = 20.0f * std::log10(std::max(mag, 1e-12f));

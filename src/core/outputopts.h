@@ -30,6 +30,9 @@ struct OutputFields {
     std::wstring target, targetSize, crop, cacheMax;
     bool masterCache = false, embed = false, autoCredit = false;
     int animPreview = 0;
+    // Son et rythme : tempo force (vide = detecte), temps par mesure, marqueurs (0 aucun, 1 chapitres, 2 fichiers, 3 les deux), montage sur la musique (0 aucun, 1 temps, 2 mesures, 3 sections)
+    std::wstring bpm, beatsPerBar;
+    int markers = 0, beatSync = 0;
     bool precheck = false;       // controle qualite avant le rendu
     int stillFormat = 0;         // 0 PNG, 1 TIFF
     bool audioFollow = false;    // le son suit la vitesse constante

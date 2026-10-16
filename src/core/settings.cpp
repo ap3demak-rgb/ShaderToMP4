@@ -25,7 +25,7 @@ bool sameSettings(const Settings& a, const Settings& b) {
            sameChannels(a, b) && formatMouseKeys(a.mouseKeys) == formatMouseKeys(b.mouseKeys) && formatKeyPresses(a.keys) == formatKeyPresses(b.keys) && a.date == b.date && a.variants == b.variants && a.gpu == b.gpu && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
            a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.paramSpecs == b.paramSpecs && a.post == b.post && a.lut == b.lut && a.alpha == b.alpha && a.hdr == b.hdr && a.hdrPeak == b.hdrPeak &&
            a.hdrFall == b.hdrFall && a.hdrWhite == b.hdrWhite && a.interp == b.interp && a.scale == b.scale && a.scaleFilter == b.scaleFilter &&
-           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report && a.samples == b.samples && a.precheck == b.precheck && a.target == b.target && a.targetSizeMB == b.targetSizeMB && a.crop == b.crop && a.masterCache == b.masterCache && a.cacheMaxGB == b.cacheMaxGB && a.embed == b.embed && a.animPreview == b.animPreview && a.autoCredit == b.autoCredit && a.stillFormat == b.stillFormat && a.tile == b.tile && a.dpi == b.dpi;
+           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report && a.samples == b.samples && a.precheck == b.precheck && a.target == b.target && a.targetSizeMB == b.targetSizeMB && a.crop == b.crop && a.masterCache == b.masterCache && a.cacheMaxGB == b.cacheMaxGB && a.embed == b.embed && a.bpm == b.bpm && a.beatsPerBar == b.beatsPerBar && a.markers == b.markers && a.beatSync == b.beatSync && a.animPreview == b.animPreview && a.autoCredit == b.autoCredit && a.stillFormat == b.stillFormat && a.tile == b.tile && a.dpi == b.dpi;
 }
 
 // Valeur complete d'une cle qui garde ses espaces (chemin, modele de nom) : le commentaire `      ; texte` que writeIni peut
@@ -168,6 +168,10 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "mastercache") s.masterCache = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
         else if (k == "cachemax") s.cacheMaxGB = std::max(0.1, std::min(10000.0, std::stod(v)));
         else if (k == "embed") s.embed = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
+        else if (k == "bpm") s.bpm = lower(v) == "off" || lower(v) == "auto" ? 0.0 : std::max(0.0, std::min(400.0, std::stod(v)));
+        else if (k == "beatsperbar") s.beatsPerBar = std::max(2, std::min(12, std::stoi(v)));
+        else if (k == "markers") s.markers = (lower(v) == "chapters" || lower(v) == "file" || lower(v) == "all") ? lower(v) : "off";
+        else if (k == "beatsync") s.beatSync = (lower(v) == "beat" || lower(v) == "bar" || lower(v) == "section") ? lower(v) : "off";
         else if (k == "animpreview") s.animPreview = (lower(v) == "gif" || lower(v) == "webp") ? lower(v) : "off";
         else if (k == "autocredit") s.autoCredit = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
         else if (k == "precheck") s.precheck = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
@@ -195,7 +199,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
 
 bool isSettingKey(const std::string& key) {
     static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
-                                        "blur", "shutter", "loop", "loopmode", "loopfade", "timemap", "speed", "audiofollow", "samples", "precheck", "target", "targetsize", "crop", "mastercache", "cachemax", "embed", "animpreview", "autocredit", "stillformat", "tile", "printdpi", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
+                                        "blur", "shutter", "loop", "loopmode", "loopfade", "timemap", "speed", "audiofollow", "samples", "precheck", "target", "targetsize", "crop", "mastercache", "cachemax", "embed", "animpreview", "autocredit", "stillformat", "tile", "printdpi", "bpm", "beatsperbar", "markers", "beatsync", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
                                         "report", "scale", "scalefilter", "loudnorm", "title", "credit", "titledur", "chunk", "encoder", "color", "container",
                                         "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "key", "date", "endaction", "variant", "gpu"};
     for (const char* k : kKeys)
@@ -349,6 +353,10 @@ void writeIni(const std::wstring& path, const Settings& s) {
     }
     if (s.embed) put("embed", "1", "ini.embed");
     if (s.animPreview != "off") put("animpreview", s.animPreview, "ini.animpreview");
+    if (s.bpm > 0) put("bpm", num(s.bpm), "ini.bpm");
+    if (s.beatsPerBar != 4) put("beatsperbar", std::to_string(s.beatsPerBar), "ini.beatsperbar");
+    if (s.markers != "off") put("markers", s.markers, "ini.markers");
+    if (s.beatSync != "off") put("beatsync", s.beatSync, "ini.beatsync");
     if (s.autoCredit) put("autocredit", "1", "ini.autocredit");
     if (s.stillFormat != "png") put("stillformat", s.stillFormat, "ini.stillformat");
     if (s.tile > 0) put("tile", std::to_string(s.tile), "ini.tile");
