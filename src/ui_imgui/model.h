@@ -63,6 +63,8 @@ struct Fields {
     char loopFade[16] = "1", timemap[256] = "", speed[16] = "", samples[16] = "", tile[16] = "", dpi[16] = "";
     // Son et rythme : tempo force, temps par mesure, marqueurs (0 aucun, 1 chapitres, 2 fichiers, 3 les deux), montage sur la musique (0 aucun, 1 temps, 2 mesures, 3 sections)
     char bpm[16] = "", beatsPerBar[8] = "4";
+    // Calcul reparti : contextes de rendu en parallele, dossier partage de la ferme
+    char parallel[8] = "1", farm[512] = "";
     int markers = 0, beatSync = 0;
 };
 

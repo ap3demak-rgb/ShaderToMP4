@@ -117,6 +117,30 @@ bool moveFile(const std::wstring& from, const std::wstring& to, bool overwrite) 
     return rename(U8(from).c_str(), U8(to).c_str()) == 0;
 }
 
+bool createExclusive(const std::wstring& path, const std::string& data) {
+    const int fd = open(U8(path).c_str(), O_CREAT | O_EXCL | O_WRONLY, 0644);
+    if (fd < 0) return false;
+    const bool ok = data.empty() || write(fd, data.data(), data.size()) == (ssize_t)data.size();
+    close(fd);
+    if (!ok) unlink(U8(path).c_str());
+    return ok;
+}
+
+bool fileModTime(const std::wstring& path, long long& unixSeconds) {
+    struct stat st;
+    if (stat(U8(path).c_str(), &st) != 0) return false;
+    unixSeconds = (long long)st.st_mtime;
+    return true;
+}
+
+std::wstring hostName() {
+    char b[256] = {0};
+    if (gethostname(b, sizeof(b) - 1) != 0 || !b[0]) return L"pc";
+    return W(b);
+}
+
+long processId() { return (long)getpid(); }
+
 bool freeSpace(const std::wstring& path, uint64_t& bytes) {
     struct statvfs v;
     if (statvfs(U8(path).c_str(), &v) != 0) return false;
@@ -463,6 +487,8 @@ bool createGLContext(void*& ctx, std::wstring& err) {
 namespace {
 GLFWwindow* g_ownedShared = nullptr;  // fenetre creee par prepareOffThreadContexts
 }  // namespace
+
+bool multiContext() { return false; }
 
 bool prepareOffThreadContexts() {
     if (g_shared) return true;  // l'interface en a deja confie une

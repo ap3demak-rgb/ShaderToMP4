@@ -14,6 +14,7 @@
 #include "quality.h"
 #include "process.h"
 #include "publish.h"
+#include "parts.h"
 #include "rhythm.h"
 #include "webexport.h"
 #include "vr.h"
@@ -58,7 +59,7 @@ std::string num(double v) {
 
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
-    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_verify", "cli.render.opt_beats", "cli.render.opt_reproduce", "cli.render.opt_exporthtml", "cli.render.opt_cachepurge", "cli.render.opt_check", "cli.render.opt_compare", "cli.render.opt_golden", "cli.render.opt_dryrun", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
+    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_verify", "cli.render.opt_beats", "cli.render.opt_farm", "cli.render.opt_reproduce", "cli.render.opt_exporthtml", "cli.render.opt_cachepurge", "cli.render.opt_check", "cli.render.opt_compare", "cli.render.opt_golden", "cli.render.opt_dryrun", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
                           "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
@@ -79,6 +80,7 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
     std::string compareVideo;    // --compare-video=sbs|curtain|diff
     double tolerance = -1;       // --tolerance=N : ecart maximal admis (0 a 255), -1 = valeur par defaut de chaque mode
     int goldenMode = 0;          // --golden=record (1) | verify (2) : images de reference
+    bool farmStatusMode = false; // --farm-status dossier : etat d'une ferme de rendu
     bool beatsMode = false;      // --beats[=list|clear] son : tempo, temps forts et sections d'un fichier son
     std::string beatsOpt;
     bool verifyMode = false;     // --verify video : relit la video et la compare a son rapport
@@ -117,6 +119,9 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         if (key == "png") {
             snapshot = true;
             bestThumb = lower(val) == "best";
+        } else if (key == "farm-status") {
+            farmStatusMode = true;
+            if (!val.empty()) files.push_back(W(val));
         } else if (key == "beats") {
             beatsMode = true;
             beatsOpt = lower(val);
@@ -236,6 +241,20 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         const uint64_t freed = cachePurge(exeDir);
         out(U8(TXF("log.cache_purged", (double)freed / 1e6)) + "\n", false);
         return kExitOk;
+    }
+    if (farmStatusMode) {  // etat d'un dossier de ferme : pas de GPU, pas de ffmpeg
+        if (files.empty()) return fail(TX("cli.no_files"));
+        int missing = 0;
+        for (const auto& f : files) {
+            std::vector<std::wstring> lines;
+            if (!farmStatus(f, base.farmTimeout, lines)) {
+                out(U8(TXF("log.error", TXF("farm.status_none", f.c_str()).c_str())) + "\n", true);
+                missing++;
+                continue;
+            }
+            for (const std::wstring& l : lines) out(U8(l) + "\n", false);
+        }
+        return missing ? kExitRenderFailed : kExitOk;
     }
     if (files.empty() && watchDir.empty()) return fail(TX("cli.no_files"));
     for (const auto& f : files)
@@ -724,11 +743,16 @@ int runDiagnosticCli(const std::wstring& exeDir, const std::function<void(const 
 int runBenchmarkCli(const std::wstring& exeDir, const std::vector<std::wstring>& args,
                     const std::function<void(const std::string&, bool)>& write) {
     double seconds = 2.0, maxDrop = 15.0;
-    bool json = false, quick = false;
+    bool json = false, quick = false, parallelBench = false;
+    int parallelWorkers = 0;
     std::wstring comparePath;  // --compare=fichier.json : resultat d'un --benchmark --json precedent
     for (const auto& a : args) {
         const std::string s = U8(a);
         if (s == "--json") json = true;
+        else if (s.compare(0, 10, "--parallel") == 0) {  // gain du rendu en parallele (contextes OpenGL) sur ce poste
+            parallelBench = true;
+            parallelWorkers = s.size() > 11 ? std::max(2, std::min(16, atoi(s.c_str() + 11))) : 0;
+        }
         else if (s == "--quick") quick = true;  // sans le 4K (machines lentes, integration continue)
         else if (s.compare(0, 10, "--seconds=") == 0) seconds = std::max(0.5, std::min(30.0, atof(s.c_str() + 10)));
         else if (s.compare(0, 10, "--compare=") == 0) comparePath = W(s.substr(10));
@@ -833,12 +857,47 @@ int runBenchmarkCli(const std::wstring& exeDir, const std::vector<std::wstring>&
         first = false;
     }
     js += "]";
+    std::string parallelText, parallelJs;
+    if (parallelBench) {  // la meme video en huit parties, rendue avec 1 puis N contextes : le temps total et le gain
+        const int hw = (int)std::max(2u, std::thread::hardware_concurrency());
+        const int workers = parallelWorkers > 0 ? parallelWorkers : std::min(4, hw);
+        Settings s;
+        s.width = 1280;
+        s.height = 720;
+        s.fps = 60;
+        s.duration = std::max(4.0, seconds * 2);
+        s.chunk = s.duration / 8;
+        s.crf = 23;
+        s.preset = "veryfast";
+        s.encoder = "cpu";
+        s.outdir = dir;
+        s.exists = "overwrite";
+        double base1 = 0;
+        for (int w : {1, workers}) {
+            s.parallel = w;
+            Hooks H;
+            H.log = [](const std::wstring&) {};
+            std::wstring e;
+            const auto t0 = std::chrono::steady_clock::now();
+            const bool ok = convertFile(shader, exeDir, s, H, e) == Result::Ok;
+            const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            if (w == 1) base1 = ok ? sec : 0;
+            const double gain = ok && sec > 0 && base1 > 0 ? base1 / sec : 0;
+            char b[200];
+            snprintf(b, sizeof(b), "parallel=%-2d  %7.2f s  x%.2f%s\n", w, ok ? sec : 0.0, gain, platform::multiContext() || w == 1 ? "" : "  (serial: one context on this system)");
+            parallelText += b;
+            snprintf(b, sizeof(b), "%s{\"workers\":%d,\"seconds\":%.2f,\"speedup\":%.2f}", parallelJs.empty() ? "" : ",", w, ok ? sec : 0.0, gain);
+            parallelJs += b;
+        }
+        js += ",\"parallel\":[" + parallelJs + "]";
+    }
     if (!previous.empty())
         js += ",\"compare\":{\"max_drop_percent\":" + std::to_string((int)maxDrop) + ",\"regressions\":" + std::to_string(regressions) + ",\"results\":[" + cmpJs + "]}";
     js += "}\n";
     removeTree(dir);
     destroyGLContext(gl);
     std::string report = U8(TX("diag.benchmark_title")) + "\n" + text;
+    if (parallelBench) report += "\n" + U8(TX("diag.bench_parallel")) + "\n" + parallelText;
     if (!previous.empty()) {
         report += "\n" + U8(TXF("diag.bench_compare", (int)maxDrop)) + "\n" + (cmpText.empty() ? U8(TX("diag.bench_no_match")) + "\n" : cmpText);
     }

@@ -27,7 +27,7 @@ enum {
     ID_OD_CLOSE = 900, ID_OD_ALPHA, ID_OD_HDR, ID_OD_PEAK, ID_OD_FALL, ID_OD_WHITE, ID_OD_SCALE, ID_OD_FILTER, ID_OD_INTERP, ID_OD_LOUD,
     ID_OD_TITLE, ID_OD_CREDIT, ID_OD_TITLEDUR, ID_OD_NEXT, ID_OD_NAME, ID_OD_EXISTS, ID_OD_META, ID_OD_ENDACT, ID_OD_CHUNK, ID_OD_PBO, ID_OD_SHUTTER, ID_OD_VARIANTS,
     ID_OD_LOOPMODE, ID_OD_LOOPFADE, ID_OD_TIMEMAP, ID_OD_SPEED, ID_OD_SAMPLES, ID_OD_TILE, ID_OD_DPI, ID_OD_FINDLOOP, ID_OD_TIME, ID_OD_CURVE, ID_OD_AUDIOF, ID_OD_STILLF, ID_OD_PRECHECK, ID_OD_PUBLISH, ID_OD_TARGET, ID_OD_TSIZE, ID_OD_CROP, ID_OD_MASTER, ID_OD_CACHEMAX, ID_OD_EMBED, ID_OD_ACREDIT, ID_OD_ANIMP, ID_OD_PURGE,
-    ID_OD_RHYTHM, ID_OD_BPM, ID_OD_BARS, ID_OD_MARKERS, ID_OD_BSYNC, ID_OD_WAVE, ID_OD_ZOOM, ID_OD_POS, ID_OD_ANALYSE, ID_OD_INFO
+    ID_OD_RHYTHM, ID_OD_BPM, ID_OD_BARS, ID_OD_MARKERS, ID_OD_BSYNC, ID_OD_WAVE, ID_OD_ZOOM, ID_OD_POS, ID_OD_ANALYSE, ID_OD_INFO, ID_OD_PARALLEL, ID_OD_FARM
 };
 
 struct Dlg {
@@ -37,6 +37,7 @@ struct Dlg {
     HWND name = nullptr, exists = nullptr, meta = nullptr, endAct = nullptr, chunk = nullptr, pbo = nullptr, shutter = nullptr, variants = nullptr;
     HWND loopMode = nullptr, loopFade = nullptr, timemap = nullptr, speed = nullptr, samples = nullptr, tile = nullptr, dpiEdit = nullptr, audioF = nullptr, curve = nullptr, stillF = nullptr, precheck = nullptr;
     HWND target = nullptr, tsize = nullptr, crop = nullptr, master = nullptr, cacheMax = nullptr, embed = nullptr, aCredit = nullptr, animP = nullptr;
+    HWND parallel = nullptr, farm = nullptr;
     HWND bpm = nullptr, bars = nullptr, markers = nullptr, bsync = nullptr, wave = nullptr, zoom = nullptr, pos = nullptr, info = nullptr;
     std::vector<HWND> headers;  // titres de section (en couleur d'accentuation)
     UINT dpi = 96;
@@ -126,6 +127,8 @@ OutputFields readFields() {
         f.shutter = txt(D.shutter);
         f.variants = txt(D.variants);
         f.precheck = SendMessageW(D.precheck, CB_GETCURSEL, 0, 0) == 1;
+        f.parallel = txt(D.parallel);
+        f.farm = txt(D.farm);
     } else if (D.page == 3) {
         f.target = txt(D.target);
         f.targetSize = txt(D.tsize);
@@ -555,7 +558,7 @@ int runPage(HWND parent, int page) {
     const DWORD style = WS_CAPTION | WS_SYSMENU;
     RECT work{};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
-    const int clientH = page == 0 ? 620 : page == 1 ? 452 : page == 3 ? 520 : page == 4 ? 580 : 450;
+    const int clientH = page == 0 ? 620 : page == 1 ? 630 : page == 3 ? 520 : page == 4 ? 580 : 450;
     RECT want{0, 0, S(600), S(clientH)};
     AdjustWindowRectExForDpi(&want, style, FALSE, WS_EX_DLGMODALFRAME, D.dpi);
     RECT pr;
@@ -724,6 +727,12 @@ int runPage(HWND parent, int page) {
         label(TX("ui.output.precheck"), rx, 302, 130);
         D.precheck = combo(ID_OD_PRECHECK, offOn, f.precheck ? 1 : 0, rf, 302, 118);
         hint(TX("ui.output.hint_engine"), 338, 50);
+        header(TX("ui.output.sec_distributed"), 396);
+        label(TX("ui.output.parallel"), lx, 424, 130);
+        D.parallel = edit(ID_OD_PARALLEL, f.parallel, fx, 424, 150);
+        label(TX("ui.output.farm"), lx, 456, 130);
+        D.farm = edit(ID_OD_FARM, f.farm, fx, 456, 428);
+        hint(TX("ui.output.hint_distributed"), 488, 84);
     }
 
     // noms accessibles : chaque champ est annonce par son libelle (lecteurs d'ecran)
@@ -737,7 +746,7 @@ int runPage(HWND parent, int page) {
         const struct { HWND c; const char* key; } names[] = {
             {D.name, "ui.output.name"}, {D.exists, "ui.output.exists"}, {D.meta, "ui.output.metadata"}, {D.endAct, "ui.output.endaction"},
             {D.chunk, "ui.output.chunk"}, {D.pbo, "ui.output.pbo"}, {D.shutter, "ui.output.shutter"}, {D.variants, "ui.output.variants"},
-            {D.precheck, "ui.output.precheck"}};
+            {D.precheck, "ui.output.precheck"}, {D.parallel, "ui.output.parallel"}, {D.farm, "ui.output.farm"}};
         for (const auto& n : names) setAccessibleName(n.c, n.key);
     } else if (page == 4) {
         const struct { HWND c; const char* key; } names[] = {

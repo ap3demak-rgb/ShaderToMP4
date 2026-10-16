@@ -12,6 +12,7 @@
 #include "dateinput.h"
 #include "gl.h"
 #include "montage.h"
+#include "parts.h"
 #include "overlay.h"
 #include "params.h"
 #include "postfx.h"
@@ -126,6 +127,17 @@ struct ReportData {
     bool loopPerfect = false;
 };
 
+// Version de ffmpeg (premiere ligne de `ffmpeg -version`, sans la mention de droits) : les parties d'une ferme ne se joignent sans nouvel encodage que si tous les
+// ordinateurs ont la meme
+static std::string ffmpegVersionLine(const std::wstring& ffmpeg) {
+    std::string line;
+    runProcess(L"\"" + ffmpeg + L"\" -hide_banner -version", [&](const std::wstring& l) {
+        if (line.empty()) line = U8(l);
+    });
+    const size_t c = line.find(" Copyright");
+    return trim(c == std::string::npos ? line : line.substr(0, c));
+}
+
 static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, const Hooks& H, std::wstring& err,
                              const Forced* forced, ReportData* rd);
 
@@ -238,6 +250,8 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     const bool thumb = !preview && H.snapshot && H.thumbTime != -1;                     // vignette : une image, 1280 pixels au plus
     if (thumb) s.start = H.thumbTime == -2 ? s.start + s.duration / 2 : H.thumbTime;
     const bool videoMode = !preview && !H.snapshot && !sheet;
+    const bool partMode = videoMode && H.partLast > H.partFirst;  // une seule partie d'un rendu parallele ou d'une ferme : ni fichier final ni annexe
+    if (partMode) s.exists = "overwrite";
     const int SMP = (!preview && H.snapshot && !thumb) ? std::min(100000, std::max(1, s.samples)) : 1;  // image fixe : echantillons moyennes
     const OutKind kind = outKind(s.container);
     const bool still = !preview && H.snapshot && !thumb;  // image PNG (16 bits par composante possibles)
@@ -436,7 +450,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         }
     }
 
-    if (videoMode && s.precheck && !H.cancelled()) {  // controle rapide avant le rendu : flashs et valeurs invalides, avertissements seulement
+    if (videoMode && s.precheck && !partMode && !H.cancelled()) {  // controle rapide avant le rendu : flashs et valeurs invalides, avertissements seulement
         Hooks Hc = H;
         Hc.progress = nullptr;
         Hc.previewFrame = nullptr;
@@ -1537,16 +1551,24 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     };
     const long long chunkFrames = (videoMode && kind == OutKind::Video && s.chunk > 0) ? std::max(1LL, std::llround(s.chunk * s.fps)) : 0;
     Result result = Result::Ok;
-    if (wantTarget && (s.codec.compare(0, 7, "prores_") == 0 || isDnxhr(s.codec))) {  // ces codecs n'ont pas de debit : le poids est fixe par l'image
+    bool produced = true;  // faux : la video finale est assemblee par un autre ordinateur de la ferme
+    if (partMode) {
+        result = encodeRange(H.partFirst, H.partLast, H.partOut, false, 0, err);
+    } else if (wantTarget && (s.codec.compare(0, 7, "prores_") == 0 || isDnxhr(s.codec))) {  // ces codecs n'ont pas de debit : le poids est fixe par l'image
         err = TXF("error.targetsize_codec", codecLabel(s.codec));
         result = Result::Failed;
     } else if (useMaster) {
         result = masterFlow();
+    } else if (videoMode && !s.farm.empty() && (chunkFrames == 0 || N <= chunkFrames)) {  // la ferme se partage par parties
+        err = TX("error.farm_needs_chunk");
+        result = Result::Failed;
     } else if (chunkFrames == 0 || N <= chunkFrames) {
         if (sequence && !platform::dirExists(seqDir)) platform::makeDir(seqDir);
         result = encodeRange(0, N, sequence ? seqPattern : out, hasAudio, 0, err);
     } else {
-        const std::wstring partsDir = out.substr(0, out.find_last_of(L'.')) + L".parts";
+        const bool farmMode = !s.farm.empty();
+        const std::wstring partsDir = farmMode ? s.farm + L"/parts" : out.substr(0, out.find_last_of(L'.')) + L".parts";
+        platform::makeDir(farmMode ? s.farm : partsDir);
         platform::makeDir(partsDir);
         // Signature : tout ce qui change le resultat. Differente -> les anciennes parties sont jetees.
         std::string sigSrc;
@@ -1573,7 +1595,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         const std::string sig = fnvHex(sigSrc);
         const std::wstring sigFile = partsDir + L"/signature.txt";
         std::string old;
-        if (!readFile(sigFile, old) || trim(old) != sig) {
+        if (!farmMode && (!readFile(sigFile, old) || trim(old) != sig)) {  // en ferme, le dossier est celui de tous les ordinateurs : job.txt garde la signature
             clearDir(partsDir);
             if (FILE* f = platform::openFile(sigFile, "wb")) {
                 fputs(sig.c_str(), f);
@@ -1586,7 +1608,41 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         int resumed = 0;
         bool resumeLogged = false;
         std::vector<std::wstring> parts;
-        for (long long i = 0; i < nChunks && result == Result::Ok; i++) {
+        // Plusieurs contextes de rendu (parallel=N) ou plusieurs ordinateurs (farm=dossier) : les parties sont rendues par parts.cpp
+        bool useRunner = farmMode || s.parallel > 1;
+        if (useRunner && !farmMode && bp.any()) {  // les passes a historique devraient etre rejouees depuis le debut dans chaque partie
+            H.log(L"  " + TX("log.parallel_history"));
+            useRunner = false;
+        } else if (useRunner && !farmMode && !platform::multiContext()) {
+            H.log(L"  " + TX("log.parallel_single_context"));
+            useRunner = false;
+        }
+        PartsPlan pplan;
+        PartsStats pstats;
+        pplan.nChunks = nChunks;
+        pplan.chunkFrames = chunkFrames;
+        pplan.totalFrames = N;
+        pplan.partsDir = partsDir;
+        pplan.ext = ext;
+        pplan.workers = platform::multiContext() ? std::max(1, s.parallel) : 1;
+        pplan.farmDir = farmMode ? s.farm : L"";
+        pplan.lockTimeout = s.farmTimeout;
+        if (useRunner) {
+            pplan.jobInfo = {{"signature", sig}, {"version", APP_VER_STR}, {"ffmpeg", ffmpegVersionLine(ffmpeg)}, {"encoder", enc}, {"format", U8(ext.substr(1))}};
+            if (farmMode && s.parallel > 1 && !platform::multiContext()) H.log(L"  " + TX("log.parallel_single_context"));
+            if (bp.any() && farmMode) H.log(L"  " + TX("log.farm_history"));
+            const RenderPartFn renderPart = [&](int, long long, long long n0, long long n1, const std::wstring& tmp, const Hooks& Hw, std::wstring& e) -> Result {
+                Hooks hp = Hw;
+                hp.partFirst = n0;
+                hp.partLast = n1;
+                hp.partOut = tmp;
+                return convertOneImpl(shaderPath, exeDir, base, hp, e, forced, nullptr);
+            };
+            result = runParts(pplan, H, renderPart, err, pstats);
+            for (long long i = 0; i < nChunks; i++) parts.push_back(partsDir + L"/" + wfmt(L"%05lld", i) + ext);
+            if (result == Result::Ok && !pstats.assembler) produced = false;
+        }
+        for (long long i = 0; i < nChunks && result == Result::Ok && !useRunner; i++) {
             const long long n0 = i * chunkFrames, n1 = std::min(N, n0 + chunkFrames);
             const std::wstring part = partsDir + L"/" + wfmt(L"%05lld", i) + ext;
             parts.push_back(part);
@@ -1609,8 +1665,9 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             }
             done += n1 - n0;
         }
-        if (result == Result::Ok) {  // assemblage : copie des flux, son ajoute ici
+        if (result == Result::Ok && produced) {  // assemblage : copie des flux, son ajoute ici
             H.log(L"  " + TX("log.assembling"));
+            const std::wstring assembleTo = farmMode ? out.substr(0, out.find_last_of(L'.')) + L"." + farmMachineId() + L".part" + ext : out;  // ferme : jamais a moitie ecrit
             const std::wstring listFile = partsDir + L"/list.txt";
             std::string list;
             for (const auto& p : parts) list += "file '" + U8(p.substr(p.find_last_of(L"\\/") + 1)) + "'\n";
@@ -1623,15 +1680,23 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             cmd += L" -map 0:v";
             if (hasAudio) cmd += L" -map 1:a" + audioCodecArgs(s.container) + L" -af \"" + audioFilter + L"\" -shortest";
             cmd += L" -c:v copy" + std::wstring(s.codec == "h265" ? L" -tag:v hvc1" : L"") + containerArgs(s.container) + metaArgs +
-                   L" \"" + out + L"\"";
+                   L" \"" + assembleTo + L"\"";
             int rc = runProcess(cmd, [&](const std::wstring& line) { H.log(TX("log.ffmpeg_prefix") + line); });
-            if (rc != 0) {
+            if (rc != 0 || (farmMode && !platform::moveFile(assembleTo, out, true))) {
                 err = TX("error.assemble_failed");
                 result = Result::Failed;
+                if (farmMode) {
+                    platform::removeFile(assembleTo);
+                    farmAbandon(pplan, pstats);
+                }
+            } else if (farmMode) {  // la ferme garde ses parties et son compte rendu : le dossier n'est vide que par l'utilisateur
+                farmAssembled(pplan, pstats, out, [&](const std::wstring& l) { H.log(L"  " + l); });
             } else {
                 clearDir(partsDir);
                 platform::removeDir(partsDir);
             }
+        } else if (result == Result::Ok && !produced) {
+            H.log(L"  " + (pstats.alreadyAssembled ? TXF("log.farm_already", pstats.assembledBy.c_str()) : TXF("log.farm_assembled_by", pstats.assembledBy.c_str())));
         } else if (result == Result::Cancelled) {
             H.log(L"  " + TXF("log.interrupted",
                        (long long)std::count_if(parts.begin(), parts.end(), [](const std::wstring& p) { return fileExists(p); }),
@@ -1639,6 +1704,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         }
     }
     cleanupGL();
+    if (partMode || (result == Result::Ok && !produced)) return result;  // une partie, ou une video assemblee ailleurs : rien d'autre a faire ici
 
     if (rd) {
         rd->loopSeconds = loopSec;

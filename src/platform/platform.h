@@ -21,6 +21,10 @@ bool removeFile(const std::wstring& path);
 bool removeDir(const std::wstring& path);  // dossier vide
 bool moveFile(const std::wstring& from, const std::wstring& to, bool overwrite);
 bool freeSpace(const std::wstring& path, uint64_t& bytes);  // octets libres du volume contenant path
+// Cree le fichier avec `data` seulement s'il n'existe pas (creation atomique, y compris sur un dossier partage) : faux s'il existe deja ou si la creation echoue.
+// Sert de verrou entre plusieurs processus ou plusieurs ordinateurs (ferme de rendu).
+bool createExclusive(const std::wstring& path, const std::string& data);
+bool fileModTime(const std::wstring& path, long long& unixSeconds);  // date de derniere ecriture (horloge du systeme de fichiers), en secondes depuis 1970
 struct DirEntry {
     std::wstring name;
     bool isDir = false;
@@ -30,6 +34,8 @@ std::wstring homeDir();  // dossier personnel de l'utilisateur (point de départ
 wchar_t pathSeparator();  // '\\' ou '/'
 
 // --- Système -------------------------------------------------------------------------------------------------------
+std::wstring hostName();      // nom de l'ordinateur
+long processId();             // identifiant du processus
 std::string systemLanguage();                                    // code à deux lettres de la langue de l'utilisateur ("fr", "en"...)
 std::wstring exeFileName(const std::wstring& baseName);          // "ffmpeg" -> "ffmpeg.exe" ou "ffmpeg"
 std::wstring findInPath(const std::wstring& fileName);          // chemin complet du programme trouvé dans le PATH (et, sous macOS, dans les dossiers Homebrew), sinon vide
@@ -91,6 +97,9 @@ bool createGLContext(void*& ctx, std::wstring& err);
 // Contextes OpenGL crees dans d'autres threads que le principal (auto-test de l'apercu en temps reel) : Windows le permet
 // toujours ; sous Linux / macOS GLFW exige une fenetre cachee creee par le thread principal. A appeler depuis ce thread,
 // release apres l'arret des threads concernes. Renvoie false si impossible.
+// Vrai si plusieurs contextes OpenGL peuvent travailler en meme temps dans des threads differents (rendu parallele). Windows : oui. Linux / macOS : un seul
+// contexte est partage (fenetre GLFW ou EGL unique), le rendu parallele y est remplace par un rendu en serie.
+bool multiContext();
 bool prepareOffThreadContexts();
 void releaseOffThreadContexts();
 void destroyGLContext(void*& ctx);

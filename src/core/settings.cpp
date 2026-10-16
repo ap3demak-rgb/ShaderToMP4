@@ -25,7 +25,7 @@ bool sameSettings(const Settings& a, const Settings& b) {
            sameChannels(a, b) && formatMouseKeys(a.mouseKeys) == formatMouseKeys(b.mouseKeys) && formatKeyPresses(a.keys) == formatKeyPresses(b.keys) && a.date == b.date && a.variants == b.variants && a.gpu == b.gpu && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
            a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.paramSpecs == b.paramSpecs && a.post == b.post && a.lut == b.lut && a.alpha == b.alpha && a.hdr == b.hdr && a.hdrPeak == b.hdrPeak &&
            a.hdrFall == b.hdrFall && a.hdrWhite == b.hdrWhite && a.interp == b.interp && a.scale == b.scale && a.scaleFilter == b.scaleFilter &&
-           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report && a.samples == b.samples && a.precheck == b.precheck && a.target == b.target && a.targetSizeMB == b.targetSizeMB && a.crop == b.crop && a.masterCache == b.masterCache && a.cacheMaxGB == b.cacheMaxGB && a.embed == b.embed && a.bpm == b.bpm && a.beatsPerBar == b.beatsPerBar && a.markers == b.markers && a.beatSync == b.beatSync && a.animPreview == b.animPreview && a.autoCredit == b.autoCredit && a.stillFormat == b.stillFormat && a.tile == b.tile && a.dpi == b.dpi;
+           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report && a.samples == b.samples && a.precheck == b.precheck && a.target == b.target && a.targetSizeMB == b.targetSizeMB && a.crop == b.crop && a.masterCache == b.masterCache && a.cacheMaxGB == b.cacheMaxGB && a.embed == b.embed && a.parallel == b.parallel && a.farm == b.farm && a.farmTimeout == b.farmTimeout && a.bpm == b.bpm && a.beatsPerBar == b.beatsPerBar && a.markers == b.markers && a.beatSync == b.beatSync && a.animPreview == b.animPreview && a.autoCredit == b.autoCredit && a.stillFormat == b.stillFormat && a.tile == b.tile && a.dpi == b.dpi;
 }
 
 // Valeur complete d'une cle qui garde ses espaces (chemin, modele de nom) : le commentaire `      ; texte` que writeIni peut
@@ -54,7 +54,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         }
     }
     std::string k = lower(trim(kIn)), v = trim(vIn);
-    if (k == "outdir" || k == "audio" || k == "name" || k == "variant" || k == "mouse" || k == "key" || k == "lut" || k == "title" || k == "credit" || (k.size() == 9 && k.compare(0, 8, "ichannel") == 0)) v = withoutIniComment(vIn);
+    if (k == "outdir" || k == "farm" || k == "audio" || k == "name" || k == "variant" || k == "mouse" || k == "key" || k == "lut" || k == "title" || k == "credit" || (k.size() == 9 && k.compare(0, 8, "ichannel") == 0)) v = withoutIniComment(vIn);
     if (k == "variant") {  // « nom:cle=valeur|cle=valeur » : une ligne par variante
         if (!v.empty()) s.variants.push_back(v);
         return;
@@ -78,6 +78,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
     if (k == "lut") { s.lut = lower(v) == "off" ? L"" : W(v); return; }  // chemin du fichier .cube (peut contenir des espaces)
     if (k == "outdir") { s.outdir = W(v); return; }  // chemin complet (peut contenir des espaces)
     if (k == "audio") { s.audio = W(v); return; }
+    if (k == "farm") { s.farm = lower(v) == "off" ? L"" : W(v); return; }  // dossier partage (peut contenir des espaces)
     if (k.size() == 9 && k.compare(0, 8, "ichannel") == 0 && k[8] >= '0' && k[8] <= '3') {  // chemin complet
         s.channel[k[8] - '0'] = W(v);
         return;
@@ -168,6 +169,8 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "mastercache") s.masterCache = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
         else if (k == "cachemax") s.cacheMaxGB = std::max(0.1, std::min(10000.0, std::stod(v)));
         else if (k == "embed") s.embed = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
+        else if (k == "parallel") s.parallel = std::max(1, std::min(16, std::stoi(v)));
+        else if (k == "farmtimeout") s.farmTimeout = std::max(5.0, std::min(86400.0, std::stod(v)));
         else if (k == "bpm") s.bpm = lower(v) == "off" || lower(v) == "auto" ? 0.0 : std::max(0.0, std::min(400.0, std::stod(v)));
         else if (k == "beatsperbar") s.beatsPerBar = std::max(2, std::min(12, std::stoi(v)));
         else if (k == "markers") s.markers = (lower(v) == "chapters" || lower(v) == "file" || lower(v) == "all") ? lower(v) : "off";
@@ -199,7 +202,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
 
 bool isSettingKey(const std::string& key) {
     static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
-                                        "blur", "shutter", "loop", "loopmode", "loopfade", "timemap", "speed", "audiofollow", "samples", "precheck", "target", "targetsize", "crop", "mastercache", "cachemax", "embed", "animpreview", "autocredit", "stillformat", "tile", "printdpi", "bpm", "beatsperbar", "markers", "beatsync", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
+                                        "blur", "shutter", "loop", "loopmode", "loopfade", "timemap", "speed", "audiofollow", "samples", "precheck", "target", "targetsize", "crop", "mastercache", "cachemax", "embed", "animpreview", "autocredit", "stillformat", "tile", "printdpi", "parallel", "farm", "farmtimeout", "bpm", "beatsperbar", "markers", "beatsync", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
                                         "report", "scale", "scalefilter", "loudnorm", "title", "credit", "titledur", "chunk", "encoder", "color", "container",
                                         "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "key", "date", "endaction", "variant", "gpu"};
     for (const char* k : kKeys)
@@ -247,7 +250,7 @@ std::vector<Override> shaderOverrides(const std::wstring& shaderPath) {
         const std::string key = lower(trim(body.substr(0, eq)));
         if (!isSettingKey(key)) continue;
         std::string val = trim(body.substr(eq + 1));
-        if (key != "outdir" && key != "audio" && key != "name" && key != "mouse" && key != "key" && key != "lut" && key != "title" && key != "credit" && key.compare(0, 8, "ichannel") != 0) val = val.substr(0, val.find_first_of(" \t"));
+        if (key != "outdir" && key != "farm" && key != "audio" && key != "name" && key != "mouse" && key != "key" && key != "lut" && key != "title" && key != "credit" && key.compare(0, 8, "ichannel") != 0) val = val.substr(0, val.find_first_of(" \t"));
         if (val.empty()) continue;
         list.push_back({key, val});
     }
@@ -353,6 +356,9 @@ void writeIni(const std::wstring& path, const Settings& s) {
     }
     if (s.embed) put("embed", "1", "ini.embed");
     if (s.animPreview != "off") put("animpreview", s.animPreview, "ini.animpreview");
+    if (s.parallel > 1) put("parallel", std::to_string(s.parallel), "ini.parallel");
+    if (!s.farm.empty()) put("farm", U8(s.farm));  // pas de commentaire : la valeur garde ses espaces
+    if (s.farm.size() && s.farmTimeout != 120) put("farmtimeout", num(s.farmTimeout), "ini.farmtimeout");
     if (s.bpm > 0) put("bpm", num(s.bpm), "ini.bpm");
     if (s.beatsPerBar != 4) put("beatsperbar", std::to_string(s.beatsPerBar), "ini.beatsperbar");
     if (s.markers != "off") put("markers", s.markers, "ini.markers");

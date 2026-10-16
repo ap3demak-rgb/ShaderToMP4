@@ -26,6 +26,15 @@ struct Hooks {
     std::function<void(const std::wstring&)> output;
     // temps GPU moyens par image (image, tampons, post-traitement, en ms) mesures sur les images echantillonnees jusqu'ici : appele pendant le rendu
     std::function<void(double image, double buffers, double post)> gpuTimes;
+    // Rendu d'une seule partie (rendu parallele, ferme) : les images [partFirst, partLast) sont ecrites telles quelles dans partOut, sans son, sans assemblage
+    // ni fichier annexe ; tout le reste du travail (reglages, shader, signature) est celui du rendu complet. partLast <= partFirst : rendu ordinaire.
+    long long partFirst = 0, partLast = 0;
+    std::wstring partOut;
+    // Auto-test seulement : panne provoquee d'un contexte de rendu (numero du contexte, numero de la partie : vrai = il echoue) et retard (ms) avant de
+    // rendre une partie (une partie lente, pour verifier qu'elle est redistribuee)
+    std::function<bool(int worker, long long chunk)> injectFailure;
+    std::function<int(int worker, long long chunk)> injectDelay;
+    double speculateAfter = 8.0;  // secondes apres lesquelles une partie encore en cours peut etre rendue aussi par un contexte libre (la plus rapide gagne)
     bool cancelled() const { return cancel && cancel->load(); }
     bool paused() const { return pause && pause->load(); }
 };

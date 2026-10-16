@@ -6,7 +6,7 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
-## Unreleased
+## 2.0.0 — 2026-10-16
 
 ### Added
 
@@ -33,6 +33,8 @@ Format: one section per version, newest first. The section of a tagged version i
 - Sound and rhythm: the sound file is analysed (tempo, beats, bars, attacks per band, smoothed energy, sections) and kept in `<sound>.beats.json`; any shader reads `iBeat`, `iBeatCount`, `iBPM`, `iBass`, `iMid`, `iTreble`, `iEnergy` and `iOnset` without declaring them, sampled at the exact time of each frame; parameters follow them by an expression (`// uniform float k = iBass*0.5+0.2 attack=0.02 release=0.3`, `--param=`, with `threshold`); `bpm` forces the tempo, `beatsperbar` sets the bars; `--beats[=list|clear]`.
 - Markers (`markers=chapters|file|all`): the sections as chapters of the video, every beat, bar and section in `.markers.txt` and `.markers.csv`; montage whose cuts fall on the beats, bars or sections of the music (`beatsync`).
 - Beat editor (**Sound and rhythm…** on the Publication page of the Output window, and in the settings card on Linux and macOS): the waveform with the detected beats, bars and sections, a click removes or adds a beat; seven new self-test cases (click track at 120 BPM).
+- Parts rendered at the same time (`parallel=N`): N OpenGL contexts render the parts of a video together, same frames as the render one part after the other; a context that fails is removed with a message and its work goes to the others; a slow part is also given to a free context (the first to finish wins); serial with a message for shaders with history passes and on Linux and macOS. `--benchmark --parallel` measures the gain (small on the test PC).
+- Render farm without a server (`farm=folder`, `--farm=`): several computers render the parts of one video on a shared folder, each part reserved by an atomic lock file, locks of switched-off computers taken over after `farmtimeout`, finished parts never redone, the first computer that sees every part assembles; another job, version, ffmpeg or encoder is refused with a precise message; `--farm-status folder` and `farm-report.json`. No network connection is opened.
 
 ## 1.9.0 — 2026-10-12
 

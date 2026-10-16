@@ -85,6 +85,8 @@ void outputFieldsFrom(const Settings& s, OutputFields& f) {
     f.stillFormat = s.stillFormat == "tiff" ? 1 : 0;
     f.dpi = s.dpi > 0 ? std::to_wstring(s.dpi) : L"";
     f.bpm = s.bpm > 0 ? i18n::num(s.bpm) : L"";
+    f.parallel = std::to_wstring(s.parallel);
+    f.farm = s.farm;
     f.beatsPerBar = std::to_wstring(s.beatsPerBar);
     f.markers = s.markers == "chapters" ? 1 : s.markers == "file" ? 2 : s.markers == "all" ? 3 : 0;
     f.beatSync = s.beatSync == "beat" ? 1 : s.beatSync == "bar" ? 2 : s.beatSync == "section" ? 3 : 0;
@@ -210,6 +212,13 @@ bool outputFieldsApply(const OutputFields& f, Settings& s, std::wstring& err) {
     t.beatsPerBar = (int)bars;
     t.markers = f.markers == 1 ? "chapters" : f.markers == 2 ? "file" : f.markers == 3 ? "all" : "off";
     t.beatSync = f.beatSync == 1 ? "beat" : f.beatSync == 2 ? "bar" : f.beatSync == 3 ? "section" : "off";
+    double par = 1;
+    if (!number(f.parallel, par, 1) || par < 1 || par > 16 || par != std::floor(par)) {
+        err = TX("error.parallel_invalid");
+        return false;
+    }
+    t.parallel = (int)par;
+    t.farm = trim(U8(f.farm)) == "off" ? L"" : W(trim(U8(f.farm)));
     double chunk = 0, shutter = 0, pbo = 0;
     if (!number(f.chunk, chunk, 0) || chunk < 0 || chunk > 86400 || !number(f.shutter, shutter, 0.5) || shutter < 0.01 || shutter > 1 || !number(f.pbo, pbo, 3) ||
         pbo < 2 || pbo > 8 || pbo != std::floor(pbo)) {
