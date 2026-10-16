@@ -15,7 +15,7 @@
 <p align="center">
   <img alt="Version" src="https://img.shields.io/badge/version-2.0.0-FF5A96?style=flat-square">
   <img alt="Plateforme" src="https://img.shields.io/badge/plateforme-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-0078D4?style=flat-square">
-  <img alt="Portable" src="https://img.shields.io/badge/portable-sans%20installeur-3DDC97?style=flat-square">
+  <img alt="Portable" src="https://img.shields.io/badge/portable-installeur%20facultatif-3DDC97?style=flat-square">
   <img alt="Langues" src="https://img.shields.io/badge/langues-6-7C6CFF?style=flat-square">
   <img alt="C++" src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white">
   <a href="LICENSE"><img alt="Licence" src="https://img.shields.io/badge/licence-GPL--3.0--or--later-3DDC97?style=flat-square"></a>
@@ -27,7 +27,7 @@
 
 **ShaderToMP4** convertit un shader [Shadertoy](https://www.shadertoy.com) (onglet *Image*, avec ses passes Buffer A–D, Common, Cubemap A et Sound) en vidéo, **image par image**, avec un temps exact (`iTime = image / fps`). Pas de capture d'écran, donc pas de saccades, pas de perte, quelle que soit la puissance de ta carte graphique : un shader qui tourne à 5 images par seconde en direct donne une vidéo parfaitement fluide.
 
-Un seul programme portable pour **Windows, Linux et macOS**, **sans installeur**, avec une interface sombre moderne en français et en anglais.
+Un seul programme portable pour **Windows, Linux et macOS** (rien à installer ; un **installeur** facultatif pour Windows), avec une interface sombre moderne en français et en anglais.
 
 ---
 
@@ -42,7 +42,7 @@ Un seul programme portable pour **Windows, Linux et macOS**, **sans installeur**
 | **Rapide** | Rendu et encodage en parallèle, lecture GPU asynchrone, encodage matériel (NVENC, AMF, QuickSync, VAAPI, VideoToolbox) en option. |
 | **Fiable** | Les longs rendus se font par parties : si quelque chose plante, tu reprends exactement où tu t'étais arrêté. |
 | **Pratique** | Aperçu intégré, préréglages (YouTube, 4K, vertical 9:16), audio avec fondus, boucle parfaite, file d'attente de plusieurs shaders, pause et annulation. |
-| **Portable** | Rien à installer, quel que soit le système. Réglages, langues et `ffmpeg` restent dans le dossier de l'application. |
+| **Portable** | Rien à installer, quel que soit le système (un installeur Windows facultatif existe). Réglages, langues et `ffmpeg` restent dans le dossier de l'application. |
 
 ## L'interface
 
@@ -103,6 +103,8 @@ Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : 
    | Linux x86-64 | `ShaderToMP4-<version>-linux-x86_64.tar.gz` | `./ShaderToMP4` |
    | Linux ARM64 | `ShaderToMP4-<version>-linux-aarch64.tar.gz` | `./ShaderToMP4` |
    | macOS 10.13+, Apple Silicon et Intel | `ShaderToMP4-<version>-macos-universal.zip` | `ShaderToMP4.app` |
+
+   **Installeur Windows (facultatif).** `ShaderToMP4-<version>-win64-setup.exe` fait comme l'archive, avec des raccourcis du menu Démarrer et du bureau, une entrée dans *Applications et fonctionnalités* pour désinstaller, et `ffmpeg.exe` déjà dedans (version 9.0.2, build GPL, rien à télécharger). Il installe pour votre compte seulement, sans droits d'administrateur, par défaut dans `%LOCALAPPDATA%\Programs\ShaderToMP4` (Program Files est refusé : le programme range ses réglages à côté de lui et doit pouvoir y écrire). Il n'écrit que : les fichiers du programme, `HKCU\Software\ShaderToMP4` (dossier et version), l'entrée de désinstallation, le raccourci du menu Démarrer et, si vous les cochez, un raccourci du bureau et « Ouvrir avec » pour `.glsl` et `.montage` (`HKCU\Software\Classes`, vos programmes par défaut ne changent pas). Installer une version plus récente par-dessus garde vos réglages et préréglages ; une version plus ancienne est refusée ; un `ffmpeg.exe` que vous y avez mis vous-même n'est jamais remplacé ni supprimé. La désinstallation garde vos réglages sauf si vous cochez la case (`/DELETE_SETTINGS` en mode silencieux) ; vos shaders et vos vidéos ne sont jamais touchés. En silencieux : `setup.exe /S /D=C:\dossier` (aussi `/LANG=1036`, `/DESKTOP`, `/ASSOC`), `Uninstall.exe /S`. L'installeur **n'est pas signé** : Windows SmartScreen peut avertir d'un éditeur inconnu ; comparez la somme SHA-256 du fichier avec `SHA256SUMS.txt` de la version. Le programme lui-même ne change pas et reste portable : l'archive zip reste la référence. Essayé sur ce PC seulement (Windows 10 : installation silencieuse, mise à jour, refus d'une version plus ancienne, programme en cours, composants facultatifs, désinstallation avec et sans les réglages, aucune trace) ; les autres versions de Windows et les autres comptes n'ont pas été essayés, et les pages de l'installeur n'ont été regardées qu'en anglais et en français.
 
 2. Si `ffmpeg` est absent, le programme propose de le télécharger (Windows : environ 80 Mo depuis [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) ; Linux : un build statique de [BtbN](https://github.com/BtbN/FFmpeg-Builds) ; vérifié par SHA-256) et l'installe à côté de lui. Sous macOS, installe-le avec Homebrew (`brew install ffmpeg`) ou place le binaire `ffmpeg` à côté du `.app` : aucune source ne publie d'empreinte SHA-256 vérifiable pour macOS, il n'y a donc pas de téléchargement automatique.
 3. **Glisse** un ou plusieurs fichiers shader (`.glsl` ou `.txt`) dans la fenêtre, ou clique sur **Ajouter**.
@@ -400,6 +402,7 @@ Tirées de [CHANGELOG.fr.md](CHANGELOG.fr.md), qui donne le détail ; la liste e
 
 | Version | Principaux ajouts |
 |---|---|
+| Non publié | Installeur Windows (NSIS, par utilisateur, ffmpeg inclus, facultatif) |
 | 2.0.0 | Contrôle qualité (flashs, NaN, scintillement, aliasing, précision), comparaison de shaders et images de référence, estimation du temps de rendu avec alerte ; boucles sans couture (fondu, aller-retour), courbe de temps et vrai ralenti, recherche de la période, contrôle de la couture, vignette intelligente, image fixe moyennée ; affiches par tuiles jusqu'à 65536 pixels, carte du coût GPU et temps GPU par passe, VR côte à côte / anaglyphe / fulldome, faces de cubemap ; destinations de publication, poids cible, cache des maîtres, vidéo reproductible, page HTML autonome ; son et rythme (tempo, variables de temps, repères, éditeur de temps) ; parties rendues en parallèle et ferme de rendu sans serveur |
 | 1.9.0 | Transparence, HDR10 / HLG, taille de sortie, interpolation, volume sonore, titre et crédit, montage, planches-contact ; paramètres animés et post-traitement ; fenêtre Sortie ; éditeur avec passes ; réglages d'un seul shader, lots, ordre de la file, médias déposés ; rapport de rendu ; dossier surveillé avancé et comparaison du benchmark ; rendu sans fenêtre par EGL ; néerlandais, japonais et chinois |
 | 1.8.0 | `iMouse` et `iDate` animés, clavier simulé, tampons à taille propre, vidéos 360° `mainVR`, volumes Shadertoy, `warmup` |

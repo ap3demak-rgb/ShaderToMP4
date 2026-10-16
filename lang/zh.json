@@ -1010,5 +1010,20 @@
   "ui.output.sec_distributed": "分布式计算",
   "ui.output.parallel": "并行上下文数",
   "ui.output.farm": "农场文件夹",
-  "ui.output.hint_distributed": "两者都需要分部分渲染（“部分”以秒计，须短于视频）。并行上下文在本机同时渲染多个部分（不适用于带 Buffer 通道的着色器，也不适用于 Linux 和 macOS）。农场文件夹让多台电脑渲染同一视频：在每台上用同一共享文件夹运行同一命令；--farm-status 列出各部分。除共享文件夹本身外，不经过网络。"
+  "ui.output.hint_distributed": "两者都需要分部分渲染（“部分”以秒计，须短于视频）。并行上下文在本机同时渲染多个部分（不适用于带 Buffer 通道的着色器，也不适用于 Linux 和 macOS）。农场文件夹让多台电脑渲染同一视频：在每台上用同一共享文件夹运行同一命令；--farm-status 列出各部分。除共享文件夹本身外，不经过网络。",
+  "installer.sec_program": "程序文件（必需）",
+  "installer.sec_startmenu": "开始菜单快捷方式",
+  "installer.sec_desktop": "桌面快捷方式",
+  "installer.sec_assoc": ".glsl 和 .montage 的“打开方式”",
+  "installer.desc_program": "程序、ffmpeg（视频编码器，GPL）、许可证和语言文件。",
+  "installer.desc_startmenu": "将 ShaderToMP4 及其卸载程序添加到开始菜单。",
+  "installer.desc_desktop": "在桌面上添加 ShaderToMP4 快捷方式。",
+  "installer.desc_assoc": "仅为您的账户把 ShaderToMP4 加入这些文件的“打开方式”。不会替换默认程序。",
+  "installer.running": "ShaderToMP4 正在运行。请先关闭它，然后选择“重试”。",
+  "installer.older": "已安装更新的版本（%ls）。此安装程序为较旧版本（%ls），不会替换它。",
+  "installer.progfiles": "ShaderToMP4 将设置保存在程序旁边，因此需要一个可写入的文件夹。请选择您用户配置文件中或其他磁盘上的文件夹，不要选 Program Files。",
+  "installer.purge_title": "卸载选项",
+  "installer.purge_sub": "选择除程序外要删除的内容。",
+  "installer.purge_check": "同时删除我的设置、预设、参数值和母版缓存（着色器和视频绝不会被删除）。",
+  "installer.finish_run": "启动 ShaderToMP4"
 }

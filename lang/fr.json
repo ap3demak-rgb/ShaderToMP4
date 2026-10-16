@@ -1010,5 +1010,20 @@
   "ui.output.sec_distributed": "Calcul réparti",
   "ui.output.parallel": "Contextes en parallèle",
   "ui.output.farm": "Dossier de la ferme",
-  "ui.output.hint_distributed": "Les deux demandent le rendu par parties (Parties, en secondes, plus court que la vidéo). Les contextes en parallèle rendent plusieurs parties en même temps sur ce PC (pas pour les shaders à passes Buffer, ni sous Linux et macOS). Un dossier de ferme permet à plusieurs ordinateurs de rendre la même vidéo : lancez la même commande sur chacun avec le même dossier partagé ; --farm-status liste les parties. Rien ne passe par le réseau en dehors de ce que fait le dossier partagé."
+  "ui.output.hint_distributed": "Les deux demandent le rendu par parties (Parties, en secondes, plus court que la vidéo). Les contextes en parallèle rendent plusieurs parties en même temps sur ce PC (pas pour les shaders à passes Buffer, ni sous Linux et macOS). Un dossier de ferme permet à plusieurs ordinateurs de rendre la même vidéo : lancez la même commande sur chacun avec le même dossier partagé ; --farm-status liste les parties. Rien ne passe par le réseau en dehors de ce que fait le dossier partagé.",
+  "installer.sec_program": "Fichiers du programme (obligatoire)",
+  "installer.sec_startmenu": "Raccourcis du menu Démarrer",
+  "installer.sec_desktop": "Raccourci sur le bureau",
+  "installer.sec_assoc": "« Ouvrir avec » pour .glsl et .montage",
+  "installer.desc_program": "Le programme, ffmpeg (encodeur vidéo, GPL), les licences et les fichiers de langue.",
+  "installer.desc_startmenu": "Ajoute ShaderToMP4 et son désinstalleur au menu Démarrer.",
+  "installer.desc_desktop": "Ajoute un raccourci ShaderToMP4 sur le bureau.",
+  "installer.desc_assoc": "Ajoute ShaderToMP4 à « Ouvrir avec » pour ces fichiers, pour votre compte seulement. Votre programme par défaut n'est pas remplacé.",
+  "installer.running": "ShaderToMP4 est en cours d'exécution. Fermez-le, puis choisissez Réessayer.",
+  "installer.older": "Une version plus récente (%ls) est déjà installée. Cet installeur contient une version plus ancienne (%ls) et ne la remplace pas.",
+  "installer.progfiles": "ShaderToMP4 range ses réglages à côté du programme : il lui faut un dossier où vous pouvez écrire. Choisissez un dossier de votre profil ou d'un autre disque, pas Program Files.",
+  "installer.purge_title": "Options de désinstallation",
+  "installer.purge_sub": "Choisissez ce qui est supprimé en plus du programme.",
+  "installer.purge_check": "Supprimer aussi mes réglages, mes préréglages, les valeurs de paramètres et le cache des maîtres (vos shaders et vos vidéos ne sont jamais supprimés).",
+  "installer.finish_run": "Lancer ShaderToMP4"
 }

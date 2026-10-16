@@ -1010,5 +1010,20 @@
   "ui.output.sec_distributed": "分散計算",
   "ui.output.parallel": "並列コンテキスト数",
   "ui.output.farm": "ファームのフォルダ",
-  "ui.output.hint_distributed": "どちらもパート分割レンダリング（パート、秒単位、動画より短く）が必要です。並列コンテキストはこの PC で複数のパートを同時にレンダリングします（Buffer パスのシェーダー、Linux、macOS では不可）。ファームのフォルダを使うと複数のコンピューターで同じ動画をレンダリングできます。各台で同じコマンドと同じ共有フォルダを使い、--farm-status でパートを確認します。共有フォルダ以外にネットワークは使いません。"
+  "ui.output.hint_distributed": "どちらもパート分割レンダリング（パート、秒単位、動画より短く）が必要です。並列コンテキストはこの PC で複数のパートを同時にレンダリングします（Buffer パスのシェーダー、Linux、macOS では不可）。ファームのフォルダを使うと複数のコンピューターで同じ動画をレンダリングできます。各台で同じコマンドと同じ共有フォルダを使い、--farm-status でパートを確認します。共有フォルダ以外にネットワークは使いません。",
+  "installer.sec_program": "プログラムファイル（必須）",
+  "installer.sec_startmenu": "スタートメニューのショートカット",
+  "installer.sec_desktop": "デスクトップのショートカット",
+  "installer.sec_assoc": ".glsl / .montage の「プログラムから開く」",
+  "installer.desc_program": "プログラム本体、ffmpeg（動画エンコーダー、GPL）、ライセンス、言語ファイル。",
+  "installer.desc_startmenu": "ShaderToMP4 とアンインストーラーをスタートメニューに追加します。",
+  "installer.desc_desktop": "デスクトップに ShaderToMP4 のショートカットを追加します。",
+  "installer.desc_assoc": "これらのファイルの「プログラムから開く」に ShaderToMP4 を追加します（お使いのアカウントのみ）。既定のプログラムは変更されません。",
+  "installer.running": "ShaderToMP4 が実行中です。終了してから「再試行」を選んでください。",
+  "installer.older": "新しいバージョン（%ls）がすでにインストールされています。このインストーラーは古いバージョン（%ls）のため、置き換えません。",
+  "installer.progfiles": "ShaderToMP4 は設定をプログラムの隣に保存するため、書き込み可能なフォルダーが必要です。Program Files ではなく、ユーザープロファイル内または別のドライブのフォルダーを選んでください。",
+  "installer.purge_title": "アンインストールのオプション",
+  "installer.purge_sub": "プログラム以外に削除するものを選んでください。",
+  "installer.purge_check": "設定、プリセット、パラメーター値、マスターキャッシュも削除する（シェーダーと動画は削除されません）。",
+  "installer.finish_run": "ShaderToMP4 を起動"
 }

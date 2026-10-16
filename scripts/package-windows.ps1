@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Patrick JAILLET
-# Archive portable Windows : dist\ShaderToMP4-<version>-win64.zip (un dossier, aucun installeur).
+# Archive portable Windows : dist\ShaderToMP4-<version>-win64.zip (un dossier : l'archive portable de reference ; l'installeur est fabrique par package-installer.ps1).
 # Usage : .\scripts\package-windows.ps1   (apres .\scripts\build.bat ou la compilation CMake)
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")

@@ -1010,5 +1010,20 @@
   "ui.output.sec_distributed": "Calcolo distribuito",
   "ui.output.parallel": "Contesti in parallelo",
   "ui.output.farm": "Cartella della farm",
-  "ui.output.hint_distributed": "Entrambi richiedono il rendering a parti (Parti, in secondi, più brevi del video). I contesti in parallelo renderizzano più parti insieme su questo PC (non per shader con passaggi Buffer, né su Linux e macOS). Una cartella farm permette a più computer di renderizzare lo stesso video: eseguite lo stesso comando su ciascuno con la stessa cartella condivisa; --farm-status elenca le parti. Nulla passa dalla rete oltre a ciò che fa la cartella condivisa."
+  "ui.output.hint_distributed": "Entrambi richiedono il rendering a parti (Parti, in secondi, più brevi del video). I contesti in parallelo renderizzano più parti insieme su questo PC (non per shader con passaggi Buffer, né su Linux e macOS). Una cartella farm permette a più computer di renderizzare lo stesso video: eseguite lo stesso comando su ciascuno con la stessa cartella condivisa; --farm-status elenca le parti. Nulla passa dalla rete oltre a ciò che fa la cartella condivisa.",
+  "installer.sec_program": "File del programma (obbligatorio)",
+  "installer.sec_startmenu": "Collegamenti nel menu Start",
+  "installer.sec_desktop": "Collegamento sul desktop",
+  "installer.sec_assoc": "«Apri con» per .glsl e .montage",
+  "installer.desc_program": "Il programma, ffmpeg (encoder video, GPL), le licenze e i file di lingua.",
+  "installer.desc_startmenu": "Aggiunge ShaderToMP4 e il suo programma di disinstallazione al menu Start.",
+  "installer.desc_desktop": "Aggiunge un collegamento a ShaderToMP4 sul desktop.",
+  "installer.desc_assoc": "Aggiunge ShaderToMP4 a «Apri con» per questi file, solo per il vostro account. Il programma predefinito non viene sostituito.",
+  "installer.running": "ShaderToMP4 è in esecuzione. Chiudetelo, poi scegliete Riprova.",
+  "installer.older": "È già installata una versione più recente (%ls). Questo programma di installazione ne contiene una più vecchia (%ls) e non la sostituisce.",
+  "installer.progfiles": "ShaderToMP4 salva le impostazioni accanto al programma, quindi serve una cartella scrivibile. Scegliete una cartella del vostro profilo o di un altro disco, non Programmi.",
+  "installer.purge_title": "Opzioni di disinstallazione",
+  "installer.purge_sub": "Scegliete cosa viene rimosso oltre al programma.",
+  "installer.purge_check": "Elimina anche le mie impostazioni, i preset, i valori dei parametri e la cache dei master (shader e video non vengono mai eliminati).",
+  "installer.finish_run": "Avvia ShaderToMP4"
 }
