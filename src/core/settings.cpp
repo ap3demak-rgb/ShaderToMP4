@@ -25,7 +25,7 @@ bool sameSettings(const Settings& a, const Settings& b) {
            sameChannels(a, b) && formatMouseKeys(a.mouseKeys) == formatMouseKeys(b.mouseKeys) && formatKeyPresses(a.keys) == formatKeyPresses(b.keys) && a.date == b.date && a.variants == b.variants && a.gpu == b.gpu && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
            a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.paramSpecs == b.paramSpecs && a.post == b.post && a.lut == b.lut && a.alpha == b.alpha && a.hdr == b.hdr && a.hdrPeak == b.hdrPeak &&
            a.hdrFall == b.hdrFall && a.hdrWhite == b.hdrWhite && a.interp == b.interp && a.scale == b.scale && a.scaleFilter == b.scaleFilter &&
-           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report && a.samples == b.samples && a.precheck == b.precheck && a.target == b.target && a.targetSizeMB == b.targetSizeMB && a.crop == b.crop && a.masterCache == b.masterCache && a.cacheMaxGB == b.cacheMaxGB && a.embed == b.embed && a.source == b.source && a.source2 == b.source2 && a.sourceMatch == b.sourceMatch && a.sourceAudio == b.sourceAudio && a.reverse == b.reverse && a.sourceFps == b.sourceFps && a.transitionDur == b.transitionDur && a.transitionOffset == b.transitionOffset && a.parallel == b.parallel && a.farm == b.farm && a.farmTimeout == b.farmTimeout && a.bpm == b.bpm && a.beatsPerBar == b.beatsPerBar && a.markers == b.markers && a.beatSync == b.beatSync && a.animPreview == b.animPreview && a.autoCredit == b.autoCredit && a.stillFormat == b.stillFormat && a.tile == b.tile && a.dpi == b.dpi;
+           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report && a.samples == b.samples && a.precheck == b.precheck && a.target == b.target && a.targetSizeMB == b.targetSizeMB && a.crop == b.crop && a.masterCache == b.masterCache && a.cacheMaxGB == b.cacheMaxGB && a.embed == b.embed && a.source == b.source && a.source2 == b.source2 && a.sourceMatch == b.sourceMatch && a.sourceAudio == b.sourceAudio && a.reverse == b.reverse && a.sourceFps == b.sourceFps && a.transitionDur == b.transitionDur && a.transitionOffset == b.transitionOffset && a.parallel == b.parallel && a.farm == b.farm && a.farmTimeout == b.farmTimeout && a.bpm == b.bpm && a.beatsPerBar == b.beatsPerBar && a.markers == b.markers && a.beatSync == b.beatSync && a.animPreview == b.animPreview && a.autoCredit == b.autoCredit && a.stillFormat == b.stillFormat && a.tile == b.tile && a.dpi == b.dpi && a.aovSpecs == b.aovSpecs && a.exrCompression == b.exrCompression && a.exrPrecision == b.exrPrecision && a.alphaMode == b.alphaMode && a.depthRange == b.depthRange && a.tiffFloat == b.tiffFloat && a.vectorBlur == b.vectorBlur;
 }
 
 // Valeur complete d'une cle qui garde ses espaces (chemin, modele de nom) : le commentaire `      ; texte` que writeIni peut
@@ -45,6 +45,23 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         const std::string rk = trim(kIn);
         if (rk.size() > 4 && lower(rk.substr(0, 4)) == "key ") {
             s.paramSpecs.push_back(trim(rk.substr(4)) + "=" + trim(vIn));
+            return;
+        }
+        if (rk.size() > 4 && lower(rk.substr(0, 4)) == "aov ") {  // « // aov depth=bufferB.r » : une passe de sortie (le nom est sensible a la casse)
+            s.aovSpecs.push_back(trim(rk.substr(4)) + "=" + trim(vIn));
+            return;
+        }
+        if (lower(rk) == "aov") {  // « aov=depth=bufferB.r;normal=bufferC.rgb;alpha » (config.ini, ligne de commande), `off` efface
+            const std::string t = trim(vIn);
+            if (lower(t) == "off") s.aovSpecs.clear();
+            size_t q = 0;
+            while (q < t.size() && lower(t) != "off") {
+                size_t e2 = t.find(';', q);
+                if (e2 == std::string::npos) e2 = t.size();
+                const std::string one = trim(t.substr(q, e2 - q));
+                if (!one.empty()) s.aovSpecs.push_back(one);
+                q = e2 + 1;
+            }
             return;
         }
         if (lower(rk) == "param") {
@@ -191,6 +208,12 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         else if (k == "animpreview") s.animPreview = (lower(v) == "gif" || lower(v) == "webp") ? lower(v) : "off";
         else if (k == "autocredit") s.autoCredit = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
         else if (k == "precheck") s.precheck = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
+        else if (k == "exrcompression") s.exrCompression = (lower(v) == "none" || lower(v) == "zips") ? lower(v) : "zip";
+        else if (k == "exrprecision") s.exrPrecision = (lower(v) == "float" || lower(v) == "full" || lower(v) == "32") ? "float" : "half";
+        else if (k == "alphamode") s.alphaMode = (lower(v) == "premult" || lower(v) == "premultiplied") ? "premult" : "straight";
+        else if (k == "vectorblur") s.vectorBlur = std::max(0.0, std::min(1.0, std::stod(v)));
+        else if (k == "tifffloat") s.tiffFloat = !(v == "0" || lower(v) == "off" || lower(v) == "false" || lower(v) == "no");
+        else if (k == "depthrange") s.depthRange = lower(v) == "off" ? "" : v;
         else if (k == "stillformat") s.stillFormat = (lower(v) == "tiff" || lower(v) == "tif") ? "tiff" : "png";
         else if (k == "tile") s.tile = std::stoi(v) <= 0 ? 0 : std::max(64, std::min(16384, std::stoi(v)));
         else if (k == "printdpi") s.dpi = std::max(0, std::min(10000, std::stoi(v)));
@@ -215,7 +238,7 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
 
 bool isSettingKey(const std::string& key) {
     static const char* const kKeys[] = {"width", "height", "fps", "duration", "start", "crf", "preset", "ss", "supersample", "bitrate",
-                                        "blur", "shutter", "loop", "loopmode", "loopfade", "timemap", "speed", "audiofollow", "samples", "precheck", "target", "targetsize", "crop", "mastercache", "cachemax", "embed", "animpreview", "autocredit", "stillformat", "tile", "printdpi", "source", "source2", "sourcematch", "sourceaudio", "reverse", "sourcefps", "transitionduration", "transitionoffset", "parallel", "farm", "farmtimeout", "bpm", "beatsperbar", "markers", "beatsync", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
+                                        "blur", "shutter", "loop", "loopmode", "loopfade", "timemap", "speed", "audiofollow", "samples", "precheck", "target", "targetsize", "crop", "mastercache", "cachemax", "embed", "animpreview", "autocredit", "stillformat", "aov", "exrcompression", "exrprecision", "alphamode", "depthrange", "tifffloat", "vectorblur", "tile", "printdpi", "source", "source2", "sourcematch", "sourceaudio", "reverse", "sourcefps", "transitionduration", "transitionoffset", "parallel", "farm", "farmtimeout", "bpm", "beatsperbar", "markers", "beatsync", "fadein", "fadeout", "pbo", "warmup", "vr", "vripd", "param", "post", "lut", "alpha", "hdr", "hdrpeak", "hdrfall", "hdrwhite", "interp",
                                         "report", "scale", "scalefilter", "loudnorm", "title", "credit", "titledur", "chunk", "encoder", "color", "container",
                                         "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "key", "date", "endaction", "variant", "gpu"};
     for (const char* k : kKeys)
@@ -284,7 +307,10 @@ void parseLines(Settings& s, const std::string& text, bool onlySlashComments) {
             continue;
         }
         size_t eq = line.find('=');
-        if (eq == std::string::npos) continue;
+        if (eq == std::string::npos) {
+            if (onlySlashComments && line.size() > 4 && lower(line.substr(0, 4)) == "aov ") applyKV(s, "aov", line.substr(4));  // « // aov alpha »
+            continue;
+        }
         applyKV(s, line.substr(0, eq), line.substr(eq + 1));
     }
 }
@@ -388,6 +414,17 @@ void writeIni(const std::wstring& path, const Settings& s) {
     if (s.beatSync != "off") put("beatsync", s.beatSync, "ini.beatsync");
     if (s.autoCredit) put("autocredit", "1", "ini.autocredit");
     if (s.stillFormat != "png") put("stillformat", s.stillFormat, "ini.stillformat");
+    if (!s.aovSpecs.empty()) {
+        std::string all;
+        for (const std::string& a : s.aovSpecs) all += (all.empty() ? "" : ";") + a;
+        put("aov", all, "ini.aov");
+    }
+    if (s.exrCompression != "zip") put("exrcompression", s.exrCompression, "ini.exrcompression");
+    if (s.exrPrecision != "half") put("exrprecision", s.exrPrecision, "ini.exrprecision");
+    if (s.alphaMode != "straight") put("alphamode", s.alphaMode, "ini.alphamode");
+    if (!s.depthRange.empty()) put("depthrange", s.depthRange, "ini.depthrange");
+    if (s.tiffFloat) put("tifffloat", "1", "ini.tifffloat");
+    if (s.vectorBlur > 0) put("vectorblur", num(s.vectorBlur), "ini.vectorblur");
     if (s.tile > 0) put("tile", std::to_string(s.tile), "ini.tile");
     if (s.dpi > 0) put("printdpi", std::to_string(s.dpi), "ini.dpi");
     put("warmup", std::to_string(s.warmup), "ini.warmup");

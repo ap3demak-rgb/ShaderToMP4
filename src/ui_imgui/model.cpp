@@ -184,6 +184,13 @@ void Model::fromSettings(const Settings& real) {
     copyTo(f.transDur, sizeof(f.transDur), U8(o.transDur));
     copyTo(f.transOffset, sizeof(f.transOffset), U8(o.transOffset));
     f.sourceMatch = o.sourceMatch;
+    copyTo(f.aov, sizeof(f.aov), U8(o.aov));
+    copyTo(f.depthRange, sizeof(f.depthRange), U8(o.depthRange));
+    f.exrComp = o.exrComp;
+    f.exrFloat = o.exrFloat;
+    f.premult = o.premult;
+    f.tiffFloat = o.tiffFloat;
+    copyTo(f.vectorBlur, sizeof(f.vectorBlur), U8(o.vectorBlur));
     f.sourceAudio = o.sourceAudio;
     f.reverse = o.reverse;
     f.exists = o.exists;
@@ -292,6 +299,13 @@ bool Model::toSettings(Settings& s, std::wstring& err) const {
     o.transDur = W(f.transDur);
     o.transOffset = W(f.transOffset);
     o.sourceMatch = f.sourceMatch;
+    o.aov = W(f.aov);
+    o.depthRange = W(f.depthRange);
+    o.exrComp = f.exrComp;
+    o.exrFloat = f.exrFloat;
+    o.premult = f.premult;
+    o.tiffFloat = f.tiffFloat;
+    o.vectorBlur = W(f.vectorBlur);
     o.sourceAudio = f.sourceAudio;
     o.reverse = f.reverse;
     o.exists = f.exists;

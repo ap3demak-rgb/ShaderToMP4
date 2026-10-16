@@ -41,5 +41,6 @@ std::wstring outPixFmt(const Settings& s, const std::string& enc);
 std::wstring outFormat(const Settings& s, const std::string& enc);       // fin de la chaine de filtres
 std::wstring outPixFmtArg(const Settings& s, const std::string& enc);    // option -pix_fmt
 // Filtres et options ffmpeg pour une image animee ou une sequence (GIF, WebP, PNG, TIFF, EXR) ; deep : entree 16 bits.
-std::wstring imageFilterTail(const Settings& s);
+// alphaMode : ffmpeg connait l'option alpha_mode de setparams (ffmpeg recent) ; sans elle, la couleur premultipliee serait redressee a l'ecriture
+std::wstring imageFilterTail(const Settings& s, bool alphaModeFilter = true);
 std::wstring imageEncoderArgs(const Settings& s);

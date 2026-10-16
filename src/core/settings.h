@@ -97,6 +97,15 @@ struct Settings {
     bool autoCredit = false;         // credit incruste et metadonnees d'auteur et de licence pris dans l'en-tete du shader
     bool precheck = false;           // controle qualite rapide (flashs, valeurs invalides) avant chaque rendu video : avertit, ne bloque jamais
     std::string stillFormat = "png";  // image fixe : png | tiff (16 bits par composante avec depth=10)
+    // Sorties multicouches (container=exr) : passes ecrites en plus de la couleur (« nom=bufferB.r », « alpha »), compression et precision du fichier,
+    // alpha droit ou premultiplie, bornes de la profondeur (« proche:loin », vide = valeurs brutes)
+    std::vector<std::string> aovSpecs;
+    std::string exrCompression = "zip";  // none | zips | zip
+    std::string exrPrecision = "half";   // half | float
+    std::string alphaMode = "straight";  // straight | premult
+    std::string depthRange;
+    double vectorBlur = 0;                // flou de mouvement vectoriel de la sortie EXR : fraction de l'obturateur (0 = aucun, 1 = tout le deplacement entre deux images)
+    bool tiffFloat = false;               // sequence TIFF ecrite par le programme en virgule flottante 32 bits (RGB ou RGBA)
     int tile = 0;                  // image fixe : cote des tuiles en pixels (0 = automatique : tuiles des que l'image depasse 8192 pixels ou la limite du GPU)
     int dpi = 0;                   // image fixe PNG : resolution ecrite dans le fichier (points par pouce), 0 = rien
     // Son et rythme : tempo force, temps par mesure, marqueurs ecrits, montage cale sur la musique

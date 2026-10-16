@@ -818,6 +818,29 @@ void drawOutput(App& a) {
     ImGui::InputText("##transoffset", f.transOffset, sizeof(f.transOffset));
     note("ui.output.hint_source");
 
+    section("ui.output.sec_compo");
+    row("ui.output.aov");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##aov", f.aov, sizeof(f.aov));
+    row("ui.output.exrcomp");
+    comboList("##exrcomp", &f.exrComp, {T("ui.output.comp_zip"), T("ui.output.comp_zips"), T("ui.output.comp_none")}, width);
+    row("ui.output.exrprec");
+    int ep = f.exrFloat ? 1 : 0;
+    if (comboList("##exrprec", &ep, {T("ui.output.prec_half"), T("ui.output.prec_float")}, width)) f.exrFloat = ep == 1;
+    row("ui.output.alphamode");
+    int am = f.premult ? 1 : 0;
+    if (comboList("##alphamode", &am, {T("ui.output.alpha_straight"), T("ui.output.alpha_premult")}, width)) f.premult = am == 1;
+    row("ui.output.tifffloat");
+    int tf = f.tiffFloat ? 1 : 0;
+    if (comboList("##tifffloat", &tf, offOn, width)) f.tiffFloat = tf == 1;
+    row("ui.output.depthrange");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##depthrange", f.depthRange, sizeof(f.depthRange));
+    row("ui.output.vectorblur");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##vectorblur", f.vectorBlur, sizeof(f.vectorBlur));
+    note("ui.output.hint_compo");
+
     section("ui.output.sec_rhythm");
     row("ui.output.bpm");
     ImGui::SetNextItemWidth(width);

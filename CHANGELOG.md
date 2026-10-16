@@ -16,6 +16,10 @@ Format: one section per version, newest first. The section of a tagged version i
 - Transitions: `source2=` and `iProgress` (0 to 1) with `transitionduration` and `transitionoffset`; the sounds are cross-faded; 25 shaders in the new `transitions/` folder.
 - Chroma key, luma key and difference key example shaders with an alpha output (`examples/effects/`).
 - “Source (effect mode)” page of the Output window (Windows) and section of the settings card (Linux and macOS); seven new self-test cases; the packages and the installer carry `transitions/` and `examples/effects/`.
+- Multilayer OpenEXR written by the program itself, with no library: HDR colour in floating point, output passes declared in the shader (`// aov depth=bufferB.r`, `normal`, `id`, `alpha`, `motion`), ZIP / ZIPS / no compression, half or 32-bit float, header with the shader, author, license and alpha mode; reader of the program for the self-test; `--exr-info`.
+- Vector motion blur of the EXR output (`vectorblur`), along the estimated or shader-computed motion pass.
+- Estimated motion vectors between consecutive frames (block matching, labelled as an estimate); depth bounds `depthrange` declared in the file; 16-bit depth map `--depthmap`.
+- Straight or premultiplied alpha (`alphamode`) for EXR, 16-bit PNG, TIFF and DPX; floating-point 32-bit TIFF sequences (`tifffloat=1`); DPX sequences (`container=dpx`, 10 bits, BT.709 and frame rate in the header); “Compositing (EXR)” page of the Output window and section of the settings card; eight new self-test cases.
 
 ## 2.1.0 — 2026-10-16
 

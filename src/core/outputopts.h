@@ -43,6 +43,10 @@ struct OutputFields {
     std::wstring source, source2, sourceFps, transDur, transOffset;
     int sourceMatch = 0;
     bool sourceAudio = true, reverse = false;
+    // Sorties multicouches : passes de sortie (separees par « ; »), compression EXR (0 zip, 1 zips, 2 aucune), EXR 32 bits, alpha premultiplie, bornes de profondeur, TIFF flottant
+    std::wstring aov, depthRange, vectorBlur;
+    int exrComp = 0;
+    bool exrFloat = false, premult = false, tiffFloat = false;
     std::wstring tile, dpi;      // image fixe : cote des tuiles (vide = automatique), resolution ecrite dans le PNG en ppp (vide = aucune)
 };
 

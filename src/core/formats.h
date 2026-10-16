@@ -42,6 +42,7 @@ std::wstring findFfmpeg(const std::wstring& exeDir);
 // Encodeurs logiciels demandes par ce couple codec / conteneur (le premier present est utilise).
 std::vector<std::string> requiredEncoders(const std::string& codec, const std::string& container);
 // false si ffmpeg est present mais ne contient aucun des encodeurs requis (vrai si ffmpeg est introuvable : inconnu).
+bool ffmpegHasAlphaMode(const std::wstring& ffmpeg);  // setparams=alpha_mode existe (sert a l'alpha premultiplie)
 bool formatAvailable(const std::wstring& ffmpeg, const std::string& codec, const std::string& container);
 bool codecAvailable(const std::wstring& ffmpeg, const std::string& codec);
 bool containerAvailable(const std::wstring& ffmpeg, const std::string& container);
