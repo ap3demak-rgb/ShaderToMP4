@@ -30,6 +30,9 @@ Format : une section par version, la plus récente en premier. La section d'une 
 - Vidéo reproductible (`embed=1`, `--reproduce`), licence et crédit lus dans l'en-tête du shader (`autocredit=1`, avertissement pour les licences non commerciales), contrôle d'intégrité (`--verify`, menu Images) contre la somme SHA-256 écrite dans le rapport de rendu, aperçu animé GIF / WebP (`animpreview`).
 - Page HTML autonome (WebGL 2) à partir d'un shader et de ses passes (`--export-html`, menu Images), comparée au rendu du programme dans un navigateur sans fenêtre.
 - Page « Publication » de la fenêtre Sortie (Windows) et section de la carte des réglages (Linux et macOS) ; huit nouveaux cas d'auto-test.
+- Son et rythme : le fichier son est analysé (tempo, temps, mesures, attaques par bande, énergie lissée, sections) et gardé dans `<son>.beats.json` ; tout shader lit `iBeat`, `iBeatCount`, `iBPM`, `iBass`, `iMid`, `iTreble`, `iEnergy` et `iOnset` sans les déclarer, échantillonnés à l'instant exact de chaque image ; les paramètres les suivent par une expression (`// uniform float k = iBass*0.5+0.2 attack=0.02 release=0.3`, `--param=`, avec `threshold`) ; `bpm` impose le tempo, `beatsperbar` règle les mesures ; `--beats[=list|clear]`.
+- Repères (`markers=chapters|file|all`) : les sections en chapitres de la vidéo, chaque temps, mesure et section dans `.markers.txt` et `.markers.csv` ; montage dont les coupes tombent sur les temps, les mesures ou les sections de la musique (`beatsync`).
+- Éditeur de temps (**Son et rythme…** sur la page Publication de la fenêtre Sortie, et dans la carte des réglages sous Linux et macOS) : la forme d'onde avec les temps, mesures et sections détectés, un clic supprime ou ajoute un temps ; sept nouveaux cas d'auto-test (piste de clics à 120 BPM).
 
 ## 1.9.0 — 2026-10-12
 

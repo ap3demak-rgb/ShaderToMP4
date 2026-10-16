@@ -14,6 +14,7 @@
 #include "quality.h"
 #include "process.h"
 #include "publish.h"
+#include "rhythm.h"
 #include "webexport.h"
 #include "vr.h"
 #include "render.h"
@@ -57,7 +58,7 @@ std::string num(double v) {
 
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
-    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_verify", "cli.render.opt_reproduce", "cli.render.opt_exporthtml", "cli.render.opt_cachepurge", "cli.render.opt_check", "cli.render.opt_compare", "cli.render.opt_golden", "cli.render.opt_dryrun", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
+    for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_verify", "cli.render.opt_beats", "cli.render.opt_reproduce", "cli.render.opt_exporthtml", "cli.render.opt_cachepurge", "cli.render.opt_check", "cli.render.opt_compare", "cli.render.opt_golden", "cli.render.opt_dryrun", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
                           "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
@@ -78,6 +79,8 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
     std::string compareVideo;    // --compare-video=sbs|curtain|diff
     double tolerance = -1;       // --tolerance=N : ecart maximal admis (0 a 255), -1 = valeur par defaut de chaque mode
     int goldenMode = 0;          // --golden=record (1) | verify (2) : images de reference
+    bool beatsMode = false;      // --beats[=list|clear] son : tempo, temps forts et sections d'un fichier son
+    std::string beatsOpt;
     bool verifyMode = false;     // --verify video : relit la video et la compare a son rapport
     bool reproduceMode = false;  // --reproduce video : extrait la source embarquee et refait le rendu
     bool exportHtmlMode = false; // --export-html shader : page HTML autonome
@@ -114,6 +117,10 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         if (key == "png") {
             snapshot = true;
             bestThumb = lower(val) == "best";
+        } else if (key == "beats") {
+            beatsMode = true;
+            beatsOpt = lower(val);
+            if (!beatsOpt.empty() && beatsOpt != "list" && beatsOpt != "clear") return fail(TXF("cli.unknown_option", W(arg).c_str()));
         } else if (key == "verify") {
             verifyMode = true;
         } else if (key == "reproduce") {
@@ -238,6 +245,35 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
         return kExitNoFfmpeg;
     }
 
+    if (beatsMode) {  // rythme d'un fichier son : pas de GPU
+        int failures = 0;
+        for (const auto& f : files) {
+            Rhythm r;
+            std::wstring re;
+            out(U8(f) + "\n", false);
+            if (!r.load(findFfmpeg(exeDir), f, base.bpm, base.beatsPerBar, re)) {
+                out(U8(TXF("log.error", re.c_str())) + "\n", true);
+                failures++;
+                continue;
+            }
+            if (beatsOpt == "clear") r.clearEdits();
+            for (const std::wstring& l : rhythmSummary(r)) out(U8(L"  " + l) + "\n", false);
+            if (beatsOpt == "list") {
+                const RhythmGrid& g = r.grid();
+                std::string line;
+                auto dump = [&](const char* name, const std::vector<double>& v) {
+                    line = std::string("  ") + name + ":";
+                    for (double t : v) line += " " + num(t);
+                    out(line + "\n", false);
+                };
+                dump("beats", g.beats);
+                dump("bars", g.bars);
+                dump("sections", g.sections);
+                dump("onsets", g.onsets);
+            }
+        }
+        return failures ? kExitRenderFailed : kExitOk;
+    }
     if (verifyMode) {  // integrite : duree, cadence, nombre d'images, somme SHA-256 et rapport
         int mismatches = 0;
         for (const auto& f : files) {

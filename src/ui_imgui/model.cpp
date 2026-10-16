@@ -172,6 +172,10 @@ void Model::fromSettings(const Settings& real) {
     copyTo(f.samples, sizeof(f.samples), U8(o.samples));
     copyTo(f.tile, sizeof(f.tile), U8(o.tile));
     copyTo(f.dpi, sizeof(f.dpi), U8(o.dpi));
+    copyTo(f.bpm, sizeof(f.bpm), U8(o.bpm));
+    copyTo(f.beatsPerBar, sizeof(f.beatsPerBar), U8(o.beatsPerBar));
+    f.markers = o.markers;
+    f.beatSync = o.beatSync;
     f.exists = o.exists;
     f.endAction = o.endAction;
     f.metadata = o.metadata;
@@ -266,6 +270,10 @@ bool Model::toSettings(Settings& s, std::wstring& err) const {
     o.samples = W(f.samples);
     o.tile = W(f.tile);
     o.dpi = W(f.dpi);
+    o.bpm = W(f.bpm);
+    o.beatsPerBar = W(f.beatsPerBar);
+    o.markers = f.markers;
+    o.beatSync = f.beatSync;
     o.exists = f.exists;
     o.endAction = f.endAction;
     o.metadata = f.metadata;
@@ -986,6 +994,33 @@ void Model::cancelRun() {
 
 void Model::purgeCache() {
     appendLog(TXF("log.cache_purged", (double)cachePurge(exeDir) / 1e6));
+}
+
+bool Model::analyseRhythm() {
+    Settings cur = base;
+    std::wstring err;
+    dialogTitle = TX("ui.output.rhythm_title");
+    if (!toSettings(cur, err)) {
+        dialogText = err;
+        return false;
+    }
+    if (cur.audio.empty() || !platform::fileExists(cur.audio)) {
+        dialogText = TX("ui.output.rhythm_noaudio");
+        return false;
+    }
+    if (rhythm.loaded() && rhythmAudio == cur.audio) {
+        rhythm.retune(cur.bpm, cur.beatsPerBar);
+        return true;
+    }
+    Rhythm fresh;
+    if (!fresh.load(findFfmpeg(exeDir), cur.audio, cur.bpm, cur.beatsPerBar, err)) {
+        dialogText = err;
+        return false;
+    }
+    rhythm = std::move(fresh);
+    rhythmAudio = cur.audio;
+    rhythmView = rhythmZoom = 0;
+    return true;
 }
 
 void Model::openOutputFolder() {

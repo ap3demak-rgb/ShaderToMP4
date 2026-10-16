@@ -3,6 +3,7 @@
 
 #include "params.h"
 #include "compat.h"
+#include "expr.h"
 #include "i18n.h"
 #include "render.h"
 #include "util.h"
@@ -24,7 +25,7 @@ bool reservedName(const std::string& n) {
         "iChannel3", "iChannelTime", "iChannelResolution", "main", "mainImage", "mainVR", "mainSound", "mainCubemap", "texture", "uniform",
         "float", "int", "bool", "void", "vec2", "vec3", "vec4", "ivec2", "ivec3", "ivec4", "mat2", "mat3", "mat4", "sampler2D", "sampler3D",
         "samplerCube", "in", "out", "inout", "const", "if", "else", "for", "while", "do", "return", "break", "continue", "discard", "true",
-        "false", "struct", "layout", "precision", "highp", "mediump", "lowp"};
+        "false", "struct", "layout", "precision", "highp", "mediump", "lowp", "iBeat", "iBeatCount", "iBPM", "iBass", "iMid", "iTreble", "iEnergy", "iOnset"};
     for (const char* w : kWords)
         if (n == w) return true;
     return n.compare(0, 3, "st_") == 0 || n.compare(0, 3, "gl_") == 0;
@@ -65,6 +66,74 @@ bool parseValue(const std::string& type, int n, const std::string& textIn, doubl
     for (int i = 0; i < n; i++)
         if (!toDouble(parts[(size_t)i], out[i])) return false;
     return true;
+}
+
+// « iBass * 0.5 + 0.2 attack=0.02 release=0.3 threshold=0.1 smooth=0.1 » : l'expression, puis ses reglages (attack, release, smooth = les deux, threshold)
+bool splitExprOptions(const std::string& textIn, std::string& expr, double& attack, double& release, double& threshold) {
+    std::string t = trim(textIn);
+    attack = release = threshold = 0;
+    for (;;) {
+        const size_t sp = t.find_last_of(" \t");
+        if (sp == std::string::npos) break;
+        const std::string tok = t.substr(sp + 1);
+        const size_t eq = tok.find('=');
+        if (eq == std::string::npos) break;
+        const std::string key = lower(tok.substr(0, eq));
+        double v = 0;
+        if ((key != "attack" && key != "release" && key != "smooth" && key != "threshold") || !toDouble(tok.substr(eq + 1), v) || v < 0) break;
+        if (key == "attack" || key == "smooth") attack = std::min(v, 30.0);
+        if (key == "release" || key == "smooth") release = std::min(v, 30.0);
+        if (key == "threshold") threshold = std::min(v, 0.99);
+        t = trim(t.substr(0, sp));
+    }
+    expr = t;
+    return !expr.empty();
+}
+
+// Declaration globale « float iBass ... » ecrite par l'auteur : le nom est pris, le programme ne declare pas le sien
+bool declaredGlobally(const std::string& stripped, const std::string& name) {
+    static const char* const kTypes[] = {"float", "int", "uint", "bool", "vec2", "vec3", "vec4", "const", "uniform", "highp", "mediump", "lowp"};
+    int depth = 0;
+    std::string prev;
+    size_t prevEnd = 0;
+    for (size_t i = 0; i < stripped.size();) {
+        const char c = stripped[i];
+        if (c == '{') depth++;
+        else if (c == '}') depth = std::max(0, depth - 1);
+        if (isalpha((unsigned char)c) || c == '_') {
+            size_t e = i;
+            while (e < stripped.size() && (isalnum((unsigned char)stripped[e]) || stripped[e] == '_')) e++;
+            const std::string id = stripped.substr(i, e - i);
+            if (id == name && depth == 0 && !prev.empty()) {
+                bool gap = true;
+                for (size_t q = prevEnd; q < i; q++)
+                    if (!isspace((unsigned char)stripped[q])) gap = false;
+                size_t nx = e;
+                while (nx < stripped.size() && isspace((unsigned char)stripped[nx])) nx++;
+                const char after = nx < stripped.size() ? stripped[nx] : ';';
+                bool isType = false;
+                for (const char* ty : kTypes)
+                    if (prev == ty) isType = true;
+                if (gap && isType && (after == '=' || after == ';' || after == '[')) return true;
+            }
+            prev = id;
+            prevEnd = e;
+            i = e;
+            continue;
+        }
+        i++;
+    }
+    return false;
+}
+
+// Mot entier `name` dans le code (commentaires retires)
+bool usesWord(const std::string& stripped, const std::string& name) {
+    for (size_t p = stripped.find(name); p != std::string::npos; p = stripped.find(name, p + 1)) {
+        const bool before = p > 0 && (isalnum((unsigned char)stripped[p - 1]) || stripped[p - 1] == '_');
+        const bool after = p + name.size() < stripped.size() && (isalnum((unsigned char)stripped[p + name.size()]) || stripped[p + name.size()] == '_');
+        if (!before && !after) return true;
+    }
+    return false;
 }
 
 int componentsOf(const std::string& type) {
@@ -117,7 +186,11 @@ bool parseDecl(const std::string& body, ParamInfo& p, std::wstring& err) {
     if (!rest.empty()) {
         if (rest[0] != '=') return false;
         const std::string def = trim(rest.substr(1));
-        if (lower(def).compare(0, 6, "audio.") == 0) {
+        if (mentionsRhythmVar(def)) {
+            if (p.type != "float" && p.type != "int") return false;
+            if (!splitExprOptions(def, p.expr, p.attack, p.release, p.threshold)) return false;
+            p.audio = "expr";
+        } else if (lower(def).compare(0, 6, "audio.") == 0) {
             p.audio = lower(def.substr(6));
             if ((p.audio != "level" && p.audio != "bass" && p.audio != "mid" && p.audio != "treble") || (p.type != "float" && p.type != "int")) return false;
         } else if (!parseValue(p.type, p.n, def, p.def)) {
@@ -259,6 +332,11 @@ bool loadShaderParams(const std::wstring& exeDir, const std::wstring& shaderPath
 bool ParamSet::load(const std::string& code, const Settings& s, const std::wstring& valuesFile, std::wstring& err, std::vector<std::wstring>* notes) {
     params_.clear();
     decls_.clear();
+    hasExpr_ = false;
+    hasSpectrum_ = false;
+    bpm_ = s.bpm;
+    beatsPerBar_ = s.beatsPerBar;
+    if (rhythm_.loaded() && (rhythm_.forcedBpm() != bpm_ || rhythm_.beatsPerBar() != beatsPerBar_)) rhythm_.retune(bpm_, beatsPerBar_);
     const std::string stripped = stripCodeComments(code);
     // 1. declarations « // uniform type nom = defaut [min..max] »
     size_t pos = 0;
@@ -284,6 +362,7 @@ bool ParamSet::load(const std::string& code, const Settings& s, const std::wstri
             err = TXF("error.param_name_taken", W(p.info.name).c_str());
             return false;
         }
+        if (!p.info.expr.empty() && !compileExpr(p, err)) return false;
         params_.push_back(p);
     }
     auto find = [&](const std::string& name) -> Param* {
@@ -320,6 +399,20 @@ bool ParamSet::load(const std::string& code, const Settings& s, const std::wstri
             continue;
         }
         std::string spec = trim(specLine.substr(eq + 1));
+        if (mentionsRhythmVar(spec)) {  // `--param=vitesse=iBass*0.5+0.2 release=0.3` : expression du rythme
+            if (p->info.type != "float" && p->info.type != "int") {
+                err = TXF("error.param_spec", W(name).c_str(), W(spec).c_str());
+                return false;
+            }
+            if (!splitExprOptions(spec, p->info.expr, p->info.attack, p->info.release, p->info.threshold) || !compileExpr(*p, err)) {
+                if (err.empty()) err = TXF("error.param_spec", W(name).c_str(), W(spec).c_str());
+                return false;
+            }
+            p->info.audio = "expr";
+            p->info.animated = false;
+            p->keys.clear();
+            continue;
+        }
         Interp interp = Interp::Linear;
         for (const char* w : {"linear", "smooth", "constant", "step"}) {
             const size_t n = strlen(w);
@@ -362,7 +455,7 @@ bool ParamSet::load(const std::string& code, const Settings& s, const std::wstri
             err = TXF("error.param_spec", W(name).c_str(), W(spec).c_str());
             return false;
         }
-        if (!p->info.audio.empty()) {  // un parametre lie au son ne s'anime pas
+        if (!p->info.audio.empty()) {  // un parametre lie au son ne s'anime pas (sauf a le remplacer par une expression)
             if (notes) notes->push_back(TXF("log.param_audio_ignored", W(name).c_str()));
             continue;
         }
@@ -380,24 +473,98 @@ bool ParamSet::load(const std::string& code, const Settings& s, const std::wstri
     for (const Param& p : params_) {
         const char* glType = p.info.type == "color" ? "vec3" : p.info.type.c_str();
         decls_ += std::string("uniform ") + glType + " " + p.info.name + ";\n";
+        if (!p.info.expr.empty()) hasExpr_ = true;
+        if (!p.info.audio.empty() && p.info.audio != "expr") hasSpectrum_ = true;
+    }
+    // variables du rythme lues par le code du shader : declarees ici (rien a declarer dans le shader)
+    for (int i = 0; i < EV_TIME; i++) {
+        rhythmUsed_[i] = usesWord(stripped, kExprVarNames[i]) && !declaredGlobally(stripped, kExprVarNames[i]);
+        if (rhythmUsed_[i]) decls_ += std::string("uniform ") + (i == EV_BEATCOUNT ? "int " : "float ") + kExprVarNames[i] + ";\n";
     }
     return true;
 }
 
-bool ParamSet::needsAudio() const {
-    for (const Param& p : params_)
-        if (!p.info.audio.empty()) return true;
+bool ParamSet::compileExpr(Param& p, std::wstring& err) const {
+    std::string e;
+    if (!p.expr.parse(p.info.expr, e)) {
+        err = TXF("error.param_expr", W(p.info.name).c_str(), W(e).c_str());
+        return false;
+    }
+    p.seriesBuilt = false;
+    p.series.clear();
+    return true;
+}
+
+bool ParamSet::needsRhythm() const {
+    if (hasExpr_) return true;
+    for (bool u : rhythmUsed_)
+        if (u) return true;
     return false;
 }
 
+bool ParamSet::needsAudio() const { return hasSpectrum_ || needsRhythm(); }
+
 bool ParamSet::setAudio(const std::wstring& ffmpeg, const std::wstring& path, std::wstring& err) {
-    audioOk_ = audio_.load(ffmpeg, path, err);
-    return audioOk_;
+    audioOk_ = !hasSpectrum_;
+    if (hasSpectrum_ && !(audioOk_ = audio_.load(ffmpeg, path, err))) return false;
+    return !needsRhythm() || loadRhythm(ffmpeg, path, err);
+}
+
+bool ParamSet::loadRhythm(const std::wstring& ffmpeg, const std::wstring& path, std::wstring& err) {
+    if (rhythm_.loaded()) return true;
+    return rhythm_.load(ffmpeg, path, bpm_, beatsPerBar_, err);
+}
+
+double ParamSet::rawExpr(const Param& p, double t) const {
+    ExprEnv env;
+    env.v[EV_TIME] = t;
+    if (rhythm_.loaded()) {
+        const RhythmValues r = rhythm_.at(t);
+        const double th = p.info.threshold;
+        auto gate = [&](double v) { return th > 0 ? (v < th ? 0.0 : (v - th) / (1.0 - th)) : v; };
+        env.v[EV_BEAT] = r.beat;
+        env.v[EV_BEATCOUNT] = r.beatCount;
+        env.v[EV_BPM] = r.bpm;
+        env.v[EV_BASS] = gate(r.bass);
+        env.v[EV_MID] = gate(r.mid);
+        env.v[EV_TREBLE] = gate(r.treble);
+        env.v[EV_ENERGY] = gate(r.energy);
+        env.v[EV_ONSET] = gate(r.onset);
+    }
+    return p.expr.eval(env);
+}
+
+// Valeur de l'expression au temps t, lissee par attack / release : une fonction du temps seulement (la serie entiere est calculee une fois depuis le debut du
+// son), donc la meme a chaque rendu, en apercu, apres une coupure ou en rendu par parties
+double ParamSet::exprValue(const Param& p, double t) const {
+    if ((p.info.attack <= 0 && p.info.release <= 0) || !rhythm_.loaded()) return rawExpr(p, t);
+    constexpr double kStep = 0.01;
+    if (!p.seriesBuilt) {
+        const size_t n = (size_t)std::ceil(std::max(1.0, rhythm_.duration()) / kStep) + 2;
+        p.series.assign(n, 0.0f);
+        double y = 0;
+        for (size_t i = 0; i < n; i++) {
+            const double x = rawExpr(p, (double)i * kStep);
+            if (i == 0) y = x;
+            const double tau = x > y ? p.info.attack : p.info.release;
+            y = tau > 0 ? y + (x - y) * (1.0 - std::exp(-kStep / tau)) : x;
+            p.series[i] = (float)y;
+        }
+        p.seriesBuilt = true;
+    }
+    const double pos = std::min((double)(p.series.size() - 1), std::max(0.0, t / kStep));
+    const size_t i0 = (size_t)std::floor(pos), i1 = std::min(p.series.size() - 1, i0 + 1);
+    return p.series[i0] + (p.series[i1] - p.series[i0]) * (pos - (double)i0);
 }
 
 void ParamSet::evaluate(const Param& p, double t, double out[4]) const {
     const ParamInfo& in = p.info;
     for (int i = 0; i < 4; i++) out[i] = in.value[i];
+    if (!in.expr.empty()) {
+        out[0] = exprValue(p, t);
+        clampValue(in, out);
+        return;
+    }
     if (!in.audio.empty()) {
         if (!audioOk_) {
             out[0] = in.def[0];
@@ -427,6 +594,24 @@ void ParamSet::evaluate(const Param& p, double t, double out[4]) const {
 }
 
 void ParamSet::apply(GLuint prog, double t) const {
+    if (rhythm_.loaded() || needsRhythm()) {  // variables du rythme, lues au temps exact de l'image
+        const RhythmValues r = rhythm_.loaded() ? rhythm_.at(t) : RhythmValues();
+        for (int i = 0; i < EV_TIME; i++) {
+            if (!rhythmUsed_[i]) continue;
+            const GLint loc = ogl::GetUniformLocation(prog, kExprVarNames[i]);
+            if (loc < 0) continue;
+            switch (i) {
+                case EV_BEAT: ogl::Uniform1f(loc, r.beat); break;
+                case EV_BEATCOUNT: ogl::Uniform1i(loc, r.beatCount); break;
+                case EV_BPM: ogl::Uniform1f(loc, r.bpm); break;
+                case EV_BASS: ogl::Uniform1f(loc, r.bass); break;
+                case EV_MID: ogl::Uniform1f(loc, r.mid); break;
+                case EV_TREBLE: ogl::Uniform1f(loc, r.treble); break;
+                case EV_ENERGY: ogl::Uniform1f(loc, r.energy); break;
+                default: ogl::Uniform1f(loc, r.onset); break;
+            }
+        }
+    }
     for (const Param& p : params_) {
         const GLint loc = ogl::GetUniformLocation(prog, p.info.name.c_str());
         if (loc < 0) continue;  // ce programme (une autre passe) ne le lit pas
@@ -445,6 +630,10 @@ std::string ParamSet::signature() const {
     char b[64];
     for (const Param& p : params_) {
         s += "|" + p.info.name + ":" + p.info.type + ":" + p.info.audio;
+        if (!p.info.expr.empty()) {
+            snprintf(b, sizeof(b), ":%.9g:%.9g:%.9g", p.info.attack, p.info.release, p.info.threshold);
+            s += "{" + p.info.expr + b + "}";
+        }
         for (int i = 0; i < 4; i++) {
             snprintf(b, sizeof(b), ",%.9g", p.info.value[i]);
             s += b;
@@ -460,6 +649,7 @@ std::string ParamSet::signature() const {
             }
         }
     }
+    if (rhythm_.loaded()) s += rhythm_.signature();
     return s;
 }
 

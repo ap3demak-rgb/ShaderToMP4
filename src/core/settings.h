@@ -78,6 +78,11 @@ struct Settings {
     std::string stillFormat = "png";  // image fixe : png | tiff (16 bits par composante avec depth=10)
     int tile = 0;                  // image fixe : cote des tuiles en pixels (0 = automatique : tuiles des que l'image depasse 8192 pixels ou la limite du GPU)
     int dpi = 0;                   // image fixe PNG : resolution ecrite dans le fichier (points par pouce), 0 = rien
+    // Son et rythme : tempo force, temps par mesure, marqueurs ecrits, montage cale sur la musique
+    double bpm = 0;                // tempo impose a l'analyse du son (temps par minute) ; 0 = detection automatique
+    int beatsPerBar = 4;           // temps par mesure (2 a 12) pour les mesures et les sections
+    std::string markers = "off";   // off | chapters (sections en chapitres du fichier) | file (fichiers de reperes) | all : marqueurs tires du rythme du son
+    std::string beatSync = "off";  // montage : off | beat | bar | section : coupes posees sur les temps, les mesures ou les debuts de section
     int samples = 1;               // image fixe (PNG) : moyenne de N echantillons independants du meme instant (iFrame different), 1..100000
 };
 

@@ -6,6 +6,7 @@
 // qui ne parle au modèle que par une file d'événements vidée par pump() dans le thread de l'interface.
 #pragma once
 #include "common.h"
+#include "core/rhythm.h"
 #include "core/batches.h"
 #include "core/channeldrop.h"
 #include "core/filesettings.h"
@@ -60,6 +61,9 @@ struct Fields {
     bool masterCache = false, embed = false, autoCredit = false;
     int animPreview = 0;
     char loopFade[16] = "1", timemap[256] = "", speed[16] = "", samples[16] = "", tile[16] = "", dpi[16] = "";
+    // Son et rythme : tempo force, temps par mesure, marqueurs (0 aucun, 1 chapitres, 2 fichiers, 3 les deux), montage sur la musique (0 aucun, 1 temps, 2 mesures, 3 sections)
+    char bpm[16] = "", beatsPerBar[8] = "4";
+    int markers = 0, beatSync = 0;
 };
 
 struct LogLine {
@@ -126,6 +130,11 @@ public:
     void cancelRun();
     void openOutputFolder();
     void purgeCache();  // vide le cache des maitres (cache/ a cote du programme)
+    // Rythme du son des reglages (editeur de temps) : analyse, ou recalcul avec le tempo force quand le son n'a pas change ; faux et message si impossible
+    bool analyseRhythm();
+    Rhythm rhythm;
+    std::wstring rhythmAudio;
+    double rhythmView = 0, rhythmZoom = 0;  // debut de la partie montree (s) ; 0 = tout le morceau, 100 = deux secondes
     void startFfmpegDownload();
     bool ffmpegMissing() const;
 

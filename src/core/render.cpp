@@ -1687,6 +1687,12 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         if (makeAnimPreview(ffmpeg, out, dest, webp, totalSec)) H.log(L"  " + TXF("log.anim_preview", dest.c_str()));
         else H.log(L"  " + TX("log.anim_preview_failed"));
     }
+    if (result == Result::Ok && videoMode && kind == OutKind::Video && s.markers != "off" && !H.cancelled()) {  // temps forts et sections : chapitres et fichiers de reperes
+        std::wstring e;
+        if (s.audio.empty()) H.log(L"  " + TX("log.markers_no_audio"));
+        else if (!params.loadRhythm(ffmpeg, s.audio, e)) H.log(L"  " + e);
+        else applyMarkerSetting(s.markers, *params.rhythm(), ffmpeg, out, s.start, totalSec, followSpeed, s.interp > 0 ? s.interp : s.fps, [&](const std::wstring& l) { H.log(L"  " + l); });
+    }
     if (result == Result::Ok) {
         if (videoMode && loopSec > 1.0 && waitSec > 0.3 * loopSec)
             H.log(L"  " + TXF("log.measure_encoder_bound",

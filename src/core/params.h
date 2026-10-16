@@ -7,6 +7,8 @@
 #pragma once
 #include "common.h"
 #include "audio.h"
+#include "expr.h"
+#include "rhythm.h"
 #include "gl.h"
 #include "settings.h"
 
@@ -17,7 +19,10 @@ struct ParamInfo {
     int n = 1;              // composantes (color : 3)
     bool hasRange = false;  // [min..max] ecrit dans la declaration
     double lo = 0, hi = 1;  // bornes du curseur (0..1 par defaut)
-    std::string audio;      // "" ou level | bass | mid | treble : la valeur suit le son
+    std::string audio;      // "" ou level | bass | mid | treble : la valeur suit le son ; "expr" : une expression du rythme (expr)
+    std::string expr;       // expression des variables du rythme (iBass * 0.5 + 0.2) ; "" = aucune
+    double attack = 0, release = 0;  // lissage de l'expression : temps de montee et de descente (s), 0 = aucun
+    double threshold = 0;   // seuil des variables du rythme (0 a 1) : en dessous la variable vaut 0
     bool animated = false;  // images cles dans le shader ou la ligne de commande : le curseur ne sert plus
     double def[4] = {0, 0, 0, 0};    // valeur de la declaration
     double value[4] = {0, 0, 0, 0};  // valeur de base : enregistree si elle existe, sinon la declaration
@@ -34,7 +39,13 @@ public:
     const std::string& declarations() const { return decls_; }
     // Vrai s'il y a un parametre lie au son : setAudio doit alors etre appelee (fichier du reglage `audio`).
     bool needsAudio() const;
+    // Vrai si le shader lit une variable du rythme (iBeat, iBass...) ou si un parametre est une expression du rythme : le fichier son est analyse
+    bool needsRhythm() const;
     bool setAudio(const std::wstring& ffmpeg, const std::wstring& path, std::wstring& err);
+    // Analyse du rythme demandee par autre chose (marqueurs, montage sur la musique) ; sans effet si deja faite
+    bool loadRhythm(const std::wstring& ffmpeg, const std::wstring& path, std::wstring& err);
+    // L'analyse du rythme, ou nullptr si elle n'a pas ete faite
+    const Rhythm* rhythm() const { return rhythm_.loaded() ? &rhythm_ : nullptr; }
     // Renseigne les uniforms du programme (actif) pour le temps t (iTime).
     void apply(GLuint prog, double t) const;
     // Texte qui change des qu'un parametre, une cle ou une liaison change (signature du rendu par parties).
@@ -55,12 +66,24 @@ private:
         ParamInfo info;
         std::vector<Key> keys;
         Interp interp = Interp::Linear;
+        Expr expr;                            // expression compilee (info.expr)
+        mutable std::vector<float> series;    // expression lissee, echantillonnee a 100 Hz sur la duree du son (calculee a la demande)
+        mutable bool seriesBuilt = false;
     };
     void evaluate(const Param& p, double t, double out[4]) const;
+    double rawExpr(const Param& p, double t) const;
+    double exprValue(const Param& p, double t) const;
+    bool compileExpr(Param& p, std::wstring& err) const;
     std::vector<Param> params_;
     std::string decls_;
     AudioAnalyzer audio_;
     bool audioOk_ = false;
+    Rhythm rhythm_;
+    double bpm_ = 0;          // tempo impose (Settings::bpm)
+    int beatsPerBar_ = 4;
+    bool rhythmUsed_[EV_TIME] = {false, false, false, false, false, false, false, false};  // variables lues par le code du shader (declarees en uniform)
+    bool hasExpr_ = false;
+    bool hasSpectrum_ = false;
 };
 
 // Bornes du curseur d'un parametre : [min..max] de la declaration, sinon de 0 (ou 2x la valeur si negative) a 2x la valeur par defaut, au moins 1.

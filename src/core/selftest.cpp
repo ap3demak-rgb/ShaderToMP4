@@ -6,6 +6,9 @@
 #include "gl.h"
 #include "locate.h"
 #include "montage.h"
+#include "rhythm.h"
+#include "params.h"
+#include "expr.h"
 #include "compare.h"
 #include "looptools.h"
 #include "quality.h"
@@ -65,6 +68,51 @@ const FmtCase kFmtCases[] = {
     {"h264", "tiff", 8, "tiff", "rgb24", 64, 64, true},
     {"h264", "exr", 8, "exr", "", 64, 64, false},
 };
+
+// Piste synthetique de l'analyse du rythme : un clic (sinus de 2 kHz) a `bpm` temps par minute, le premier a `offset` secondes ; un temps sur `perBar` est
+// un accent (un grave de 80 Hz en plus) ; une nappe continue de 440 Hz dont le niveau est donne par `padGain(t)` dessine des sections de caractere
+// different. Mono, 44100 Hz, 16 bits, ecrite en WAV.
+bool writeClickTrack(const std::wstring& path, double seconds, double bpm, double offset, int perBar, const std::function<double(double)>& padGain) {
+    const int rate = 44100;
+    const size_t n = (size_t)(seconds * rate);
+    std::vector<double> mix(n, 0.0);
+    for (size_t i = 0; i < n; i++) mix[i] = padGain((double)i / rate) * std::sin(2 * 3.14159265358979 * 440.0 * (double)i / rate);
+    const double period = 60.0 / bpm;
+    for (int k = 0; offset + k * period < seconds - 0.06; k++) {
+        const size_t at = (size_t)((offset + k * period) * rate);
+        const bool accent = k % perBar == 0;
+        for (size_t i = 0; i < (size_t)(0.06 * rate) && at + i < n; i++) {
+            const double t = (double)i / rate;
+            double v = 0.4 * std::exp(-t / 0.008) * std::sin(2 * 3.14159265358979 * 2000.0 * t);
+            if (accent) v += 0.7 * std::exp(-t / 0.02) * std::sin(2 * 3.14159265358979 * 80.0 * t);
+            mix[at + i] += v;
+        }
+    }
+    std::string wav(44, '\0');
+    auto put32 = [&](size_t pos, uint32_t v) { memcpy(&wav[pos], &v, 4); };
+    auto put16 = [&](size_t pos, uint16_t v) { memcpy(&wav[pos], &v, 2); };
+    memcpy(&wav[0], "RIFF", 4);
+    put32(4, (uint32_t)(36 + n * 2));
+    memcpy(&wav[8], "WAVEfmt ", 8);
+    put32(16, 16);
+    put16(20, 1);
+    put16(22, 1);
+    put32(24, rate);
+    put32(28, rate * 2);
+    put16(32, 2);
+    put16(34, 16);
+    memcpy(&wav[36], "data", 4);
+    put32(40, (uint32_t)(n * 2));
+    for (size_t i = 0; i < n; i++) {
+        const int16_t v = (int16_t)std::lround(std::min(0.95, std::max(-0.95, mix[i])) * 32767.0);
+        wav.append((const char*)&v, 2);
+    }
+    FILE* f = platform::openFile(path, "wb");
+    if (!f) return false;
+    const bool ok = fwrite(wav.data(), 1, wav.size(), f) == wav.size();
+    fclose(f);
+    return ok;
+}
 
 std::string probeInfo(const std::wstring& ffmpeg, const std::wstring& path) {
     std::string all;
@@ -2147,7 +2195,247 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             if (!exportHtml(okShader, exeDir, st, page, e)) problem = bad("export " + U8(e));
             else if (!readFile(page, html) || html.find("mainImage") == std::string::npos || html.find("webgl2") == std::string::npos) problem = bad("page content");
             else if (exportHtml(vrShader, exeDir, st, outDir + sep + L"p19_web_vr.html", e) || e.empty()) problem = bad("mainVR accepted");
+            else if (exportHtml(put(L"p19_web_beat.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(iBeat, iBass, 0.0, 1.0); }\n"), exeDir, st, outDir + sep + L"p19_web_beat.html", e) || e.empty()) problem = bad("rhythm variables accepted");
             check("selftest.fmt_html", problem);
+        }
+    }
+    // Son et rythme (phase 20) : analyse d'une piste de clics a tempo connu (120 temps par minute, premier clic a 0,13 s, accent tous les quatre temps,
+    // trois sections de huit secondes), variables du shader, expressions lissees, marqueurs, montage cale sur la musique, corrections a la main
+    {
+        const std::wstring sep(1, platform::pathSeparator());
+        auto put = [&](const std::wstring& name, const std::string& body) {
+            const std::wstring path = outDir + sep + name;
+            if (FILE* f = platform::openFile(path, "wb")) {
+                fwrite(body.data(), 1, body.size(), f);
+                fclose(f);
+            }
+            return path;
+        };
+        auto check = [&](const char* key, const std::wstring& problem, const std::wstring& extra = L"") {
+            total++;
+            report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX(key) + extra + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+            if (!problem.empty()) fails++;
+        };
+        auto bad = [&](const std::string& what) { return TXF("selftest.fmt_bad", W(what).c_str()); };
+        auto renderOne = [&](const std::wstring& shaderPath, const Settings& st, std::wstring& e, std::string& logText) {
+            Hooks H;
+            H.log = [&](const std::wstring& l) { logText += U8(l) + "\n"; };
+            return convertFile(shaderPath, exeDir, st, H, e) == Result::Ok;
+        };
+        auto preview = [&](const std::wstring& shaderPath, double time, std::vector<uint8_t>& got, std::wstring& e) {
+            Settings st = base("h264", "mp4", 8);
+            st.width = 16;
+            st.height = 16;
+            Hooks H;
+            H.log = [](const std::wstring&) {};
+            H.previewTime = time;
+            H.previewFrame = [&](int, int, std::vector<uint8_t>&& px) { got = std::move(px); };
+            return convertFile(shaderPath, exeDir, st, H, e) == Result::Ok && got.size() == 16 * 16 * 4;
+        };
+        const std::wstring wav = outDir + sep + L"p20_click.wav";
+        const std::string wavUtf8 = U8(wav);
+        auto pad = [](double t) { return t >= 8 && t < 16 ? 0.30 : 0.04; };
+        platform::removeFile(wav + L".beats.json");
+        const bool made = writeClickTrack(wav, 24.0, 120.0, 0.13, 4, pad);
+        auto nearErr = [](const std::vector<double>& v, double t) { return std::fabs(nearestOf(v, t) - t); };
+        Rhythm rh;
+        std::wstring e;
+        bool analysed = made && rh.load(ffmpeg, wav, 0, 4, e);
+        {  // tempo, temps forts, mesures et sections de la piste : decalage maximal accepte 30 ms
+            std::wstring problem;
+            double maxErr = 0;
+            if (!made) problem = bad("no click track");
+            else if (!analysed) problem = e.empty() ? bad("analysis") : e;
+            else {
+                const RhythmGrid& g = rh.grid();
+                int matched = 0, count = 0;
+                for (double t = 0.13; t < 23.9; t += 0.5) {
+                    count++;
+                    const double d = nearErr(g.beats, t);
+                    maxErr = std::max(maxErr, d);
+                    if (d < 0.03) matched++;
+                }
+                double barErr = 0;
+                for (double t = 2.13; t < 23.9; t += 2.0) barErr = std::max(barErr, nearErr(g.bars, t));
+                if (std::fabs(g.bpm - 120.0) > 0.5) problem = bad("bpm " + std::to_string(g.bpm));
+                else if (matched != count) problem = bad("beats " + std::to_string(matched) + "/" + std::to_string(count) + " max " + std::to_string(maxErr * 1000) + " ms");
+                else if (barErr > 0.03 || g.bars.size() < 11) problem = bad("bars: first beat of the bar off by " + std::to_string(barErr * 1000) + " ms");
+                else if (g.sections.size() != 3 || std::fabs(g.sections[1] - 8.13) > 0.45 || std::fabs(g.sections[2] - 16.13) > 0.45) problem = bad("sections " + std::to_string(g.sections.size()));
+                else if (g.onsets.size() < 40) problem = bad("onsets " + std::to_string(g.onsets.size()));
+                else if (!fileExists(wav + L".beats.json")) problem = bad("no .beats.json");
+            }
+            check("selftest.fmt_rhythm", problem, wfmt(L" (%.0f ms)", maxErr * 1000));
+        }
+        {  // fiche relue (meme grille), valeurs du shader (phase, attaque, compte), tempo force, determinisme
+            std::wstring problem;
+            Rhythm again, forced;
+            if (!analysed) problem = bad("no analysis");
+            else if (!again.load(ffmpeg, wav, 0, 4, e) || !again.fromCache() || again.grid().beats != rh.grid().beats || again.grid().sections != rh.grid().sections)
+                problem = bad("cache read " + U8(e));
+            else {
+                const RhythmValues mid = again.at(3.38), click = again.at(3.16), twice = rh.at(3.38);
+                if (mid.beat < 0.4 || mid.beat > 0.6 || mid.beatCount != 7 || std::fabs(mid.bpm - 120.0f) > 1.5f) problem = bad("beat " + std::to_string(mid.beat) + " count " + std::to_string(mid.beatCount));
+                else if (click.onset < 0.4f || mid.onset > 0.35f) problem = bad("onset " + std::to_string(click.onset) + " / " + std::to_string(mid.onset));
+                else if (memcmp(&mid, &twice, sizeof(mid)) != 0) problem = bad("not deterministic");
+                else if (!forced.load(ffmpeg, wav, 60.0, 4, e) || std::fabs(forced.grid().bpm - 60.0) > 0.5) problem = bad("forced tempo " + std::to_string(forced.grid().bpm));
+                else {
+                    double off = 0;
+                    for (size_t k = 2; k + 2 < forced.grid().beats.size(); k++) off = std::max(off, std::min(std::fabs(std::fmod(forced.grid().beats[k] - 0.13 + 1000.0, 0.5)),
+                                                                                                    0.5 - std::fabs(std::fmod(forced.grid().beats[k] - 0.13 + 1000.0, 0.5))));
+                    if (off > 0.03) problem = bad("forced tempo phase " + std::to_string(off * 1000) + " ms");
+                }
+            }
+            check("selftest.fmt_rhythm_values", problem);
+        }
+        {  // corrections a la main : un temps supprime, un temps ajoute, relus dans la fiche, effaces
+            std::wstring problem;
+            Rhythm a, b, c;
+            if (!a.load(ffmpeg, wav, 0, 4, e)) problem = e;
+            else {
+                const size_t n0 = a.grid().beats.size();
+                a.toggleBeat(5.13, 0.1);
+                const bool removed = a.grid().beats.size() == n0 - 1 && nearErr(a.grid().beats, 5.13) > 0.2;
+                if (!removed) problem = bad("remove");
+                else if (!b.load(ffmpeg, wav, 0, 4, e) || !b.fromCache() || b.grid().beats.size() != n0 - 1 || b.edits().removed.size() != 1) problem = bad("edits not read back");
+                else {
+                    b.toggleBeat(5.38, 0.1);
+                    if (b.grid().beats.size() != n0 || nearErr(b.grid().beats, 5.38) > 0.006) problem = bad("add");
+                    else {
+                        b.clearEdits();
+                        if (!c.load(ffmpeg, wav, 0, 4, e) || !c.edits().empty() || c.grid().beats != rh.grid().beats) problem = bad("clear");
+                    }
+                }
+            }
+            check("selftest.fmt_rhythm_edit", problem);
+        }
+        {  // expressions : iBass * 0.5 + 0.2, seuil, montee et descente lissees (fonction du temps seulement), erreurs de saisie
+            std::wstring problem;
+            Expr ex;
+            std::string pe;
+            ExprEnv env;
+            env.v[EV_BASS] = 0.4;
+            env.v[EV_ENERGY] = 0.9;
+            if (!ex.parse("iBass*0.5+0.2", pe) || std::fabs(ex.eval(env) - 0.4) > 1e-9 || !ex.usesRhythm()) problem = bad("expr basic");
+            else if (!ex.parse("max(iBass, 0.5) - smoothstep(0, 1, iEnergy) * 2 ^ 2 / 4", pe) || std::fabs(ex.eval(env) - (0.5 - (0.9 * 0.9 * (3 - 1.8)) * 4 / 4)) > 1e-9) problem = bad("expr functions");
+            else if (ex.parse("iBass*", pe) || ex.parse("foo(1)", pe) || ex.parse("iBass + zzz", pe) || ex.parse("", pe)) problem = bad("expr errors");
+            else {
+                const std::string code = "// audio=" + wavUtf8 + "\n// uniform float e = iEnergy attack=0.01 release=1.0 [0..1]\n// uniform float g = iBass threshold=0.9 [0..1]\n"
+                                         "// uniform float k = iBass*0.5+0.2 [0..1]\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(e, g, k, 1.0); }\n";
+                Settings st = base("h264", "mp4", 8);
+                parseLines(st, code, true);
+                ParamSet ps;
+                std::wstring le;
+                double a[4], b[4], c[4];
+                if (!ps.load(code, st, L"", le) || !ps.needsRhythm() || !ps.setAudio(ffmpeg, wav, le)) problem = bad("params " + U8(le));
+                else {
+                    ps.valueAt("e", 16.6, a);
+                    ps.valueAt("e", 3.0, c);
+                    ps.valueAt("e", 16.6, b);
+                    const double raw = ps.rhythm()->at(16.6).energy;
+                    double gate[4], kk[4];
+                    ps.valueAt("g", 3.5, gate);
+                    ps.valueAt("k", 4.15, kk);
+                    const double wantK = std::min(1.0, ps.rhythm()->at(4.15).bass * 0.5 + 0.2);
+                    if (a[0] != b[0]) problem = bad("smoothing not a pure function of time");
+                    else if (a[0] < raw + 0.05) problem = bad("release " + std::to_string(a[0]) + " raw " + std::to_string(raw));
+                    else if (gate[0] != 0) problem = bad("threshold " + std::to_string(gate[0]));
+                    else if (std::fabs(kk[0] - wantK) > 1e-6 || kk[0] <= 0.21) problem = bad("expression " + std::to_string(kk[0]) + " want " + std::to_string(wantK));
+                    else {  // une autre expression change la signature du rendu par parties
+                        ParamSet other;
+                        std::string code2 = code;
+                        code2.replace(code2.find("iBass*0.5+0.2"), 13, "iBass*0.6+0.2");
+                        if (!other.load(code2, st, L"", le) || other.signature() == ps.signature()) problem = bad("signature");
+                    }
+                }
+            }
+            check("selftest.fmt_rhythm_expr", problem);
+        }
+        if (analysed) {  // le shader lit iBeat, iOnset, iBeatCount sans rien declarer, au temps exact de l'image ; une declaration de l'auteur n'est pas doublee
+            std::wstring problem;
+            const std::wstring sh = put(L"p20_vars.glsl", "// audio=" + wavUtf8 + "\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(iBeat, iOnset, float(iBeatCount) / 255.0, 1.0); }\n");
+            const std::wstring own = put(L"p20_own.glsl", "// audio=" + wavUtf8 + "\nconst float iBass = 0.25;\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(iBeat, 0.0, iBass, 1.0); }\n");
+            const std::wstring expr = put(L"p20_expr.glsl", "// audio=" + wavUtf8 + "\n// uniform float k = iBass*0.5+0.2 [0..1]\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(k, 0.0, 0.0, 1.0); }\n");
+            std::vector<uint8_t> got, got2, got3;
+            for (double t : {3.38, 3.16}) {
+                got.clear();
+                const RhythmValues v = rh.at(t);
+                if (!preview(sh, t, got, e)) {
+                    problem = e.empty() ? TX("selftest.render_failed") : e;
+                    break;
+                }
+                if (std::abs((int)got[2] - (int)std::lround(v.beat * 255.0f)) > 2 || std::abs((int)got[1] - (int)std::lround(v.onset * 255.0f)) > 2 || std::abs((int)got[0] - v.beatCount) > 1) {
+                    problem = bad("t=" + std::to_string(t) + " rgb " + std::to_string(got[2]) + "," + std::to_string(got[1]) + "," + std::to_string(got[0]) + " want " +
+                                  std::to_string(v.beat * 255.0f) + "," + std::to_string(v.onset * 255.0f) + "," + std::to_string(v.beatCount));
+                    break;
+                }
+            }
+            if (problem.empty()) {
+                if (!preview(own, 3.38, got2, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else if (std::abs((int)got2[0] - 64) > 2) problem = bad("own declaration " + std::to_string(got2[0]));
+                else if (!preview(expr, 4.15, got3, e)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else if (std::abs((int)got3[2] - (int)std::lround(std::min(1.0, rh.at(4.15).bass * 0.5 + 0.2) * 255.0)) > 2) problem = bad("expression in the shader " + std::to_string(got3[2]));
+            }
+            check("selftest.fmt_rhythm_shader", problem);
+        }
+        if (analysed && formatAvailable(ffmpeg, "h264", "mp4")) {  // marqueurs : chapitres du fichier (une section chacun) et fichiers de reperes, relus par ffmpeg
+            std::wstring problem;
+            const std::wstring sh = put(L"p20_mark.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(p / iResolution.xy, 0.5, 1.0); }\n");
+            Settings st = base("h264", "mp4", 8);
+            st.duration = 24;
+            st.audio = wav;
+            st.markers = "all";
+            st.name = L"p20_marked";
+            std::string logText;
+            if (!renderOne(sh, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                const std::wstring video = outputFile(sh, st, false);
+                const std::string info = probeInfo(ffmpeg, video);
+                std::vector<double> starts;
+                for (size_t p = info.find("Chapter #"); p != std::string::npos; p = info.find("Chapter #", p + 1)) {
+                    const size_t q = info.find("start ", p);
+                    if (q != std::string::npos) starts.push_back(atof(info.c_str() + q + 6));
+                }
+                std::string csv, txt;
+                const std::wstring stem = video.substr(0, video.find_last_of(L'.'));
+                readFile(stem + L".markers.csv", csv);
+                readFile(stem + L".markers.txt", txt);
+                auto count = [&](const std::string& s, const std::string& what) {
+                    int n = 0;
+                    for (size_t p = s.find(what); p != std::string::npos; p = s.find(what, p + 1)) n++;
+                    return n;
+                };
+                if (starts.size() != 3 || std::fabs(starts[0]) > 0.01 || std::fabs(starts[1] - 8.13) > 0.45 || std::fabs(starts[2] - 16.13) > 0.45) problem = bad("chapters " + std::to_string(starts.size()));
+                else if (count(csv, "\nbeat,") < 40 || count(csv, "\nbar,") < 10 || count(csv, "\nsection,") != 3 || txt.empty()) problem = bad("marker files");
+                else if (info.find("Audio:") == std::string::npos) problem = bad("no audio in the video");
+            }
+            check("selftest.fmt_rhythm_markers", problem);
+        }
+        {  // montage cale sur la musique : calcul des durees, puis un montage de trois clips dont les coupes tombent sur les mesures
+            std::wstring problem;
+            std::vector<double> grid;
+            for (double t = 0.13 + 2.0; t < 30; t += 2.0) grid.push_back(t);
+            const std::vector<double> a = snapMontageDurations({3.3, 3.3, 3.3}, {0, 0, 0}, grid);
+            const std::vector<double> b = snapMontageDurations({3, 3}, {0, 0.5}, grid);
+            const std::vector<double> none = snapMontageDurations({3, 3}, {0, 0}, {});
+            if (a.size() != 3 || std::fabs(a[0] - 4.13) > 1e-6 || std::fabs(a[1] - 4.0) > 1e-6 || std::fabs(a[2] - 4.0) > 1e-6) problem = bad("snap cuts");
+            else if (b.size() != 2 || std::fabs((b[0] - 0.25) - 2.13) > 1e-6 || std::fabs(b[0] + b[1] - 0.5 - 4.13) > 1e-6) problem = bad("snap crossfade");
+            else if (none.size() != 2 || std::fabs(none[0] - 3) > 1e-9 || std::fabs(none[1] - 3) > 1e-9) problem = bad("snap without grid");
+            else if (analysed && formatAvailable(ffmpeg, "h264", "mp4")) {
+                put(L"p20_a.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(1.0, 0.0, 0.0, 1.0); }\n");
+                put(L"p20_b.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(0.0, 1.0, 0.0, 1.0); }\n");
+                put(L"p20_c.glsl", "void mainImage(out vec4 o, in vec2 p){ o = vec4(0.0, 0.0, 1.0, 1.0); }\n");
+                const std::wstring montage = put(L"p20_sync.montage", "set width=64\nset height=64\nset fps=10\nset codec=h264\nset container=mp4\nset crf=18\nset preset=ultrafast\nset audio=" + wavUtf8 +
+                                                                        "\nset beatsync=bar\nduration=3.3\np20_a.glsl\np20_b.glsl 3.3 cut\np20_c.glsl 3.3 cut\n");
+                Settings st = base("h264", "mp4", 8);
+                st.name = L"p20_sync";
+                std::string logText;
+                if (!renderOne(montage, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+                else {
+                    const double d = probeDuration(probeInfo(ffmpeg, outputFile(montage, st, false)));
+                    if (d < 11.95 || d > 12.35) problem = bad("montage duration " + std::to_string(d) + " (12.13 wanted)");
+                }
+            }
+            check("selftest.fmt_rhythm_beatsync", problem);
         }
     }
     // Canaux dynamiques et cubemap par fichiers : audio (spectre), video (images au bon temps), six faces de couleurs distinctes
