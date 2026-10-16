@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-2.0.0-FF5A96?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-2.1.0-FF5A96?style=flat-square">
   <img alt="Plateforme" src="https://img.shields.io/badge/plateforme-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-0078D4?style=flat-square">
   <img alt="Portable" src="https://img.shields.io/badge/portable-installeur%20facultatif-3DDC97?style=flat-square">
   <img alt="Langues" src="https://img.shields.io/badge/langues-6-7C6CFF?style=flat-square">
@@ -402,7 +402,7 @@ Tirées de [CHANGELOG.fr.md](CHANGELOG.fr.md), qui donne le détail ; la liste e
 
 | Version | Principaux ajouts |
 |---|---|
-| Non publié | Installeur Windows (NSIS, par utilisateur, ffmpeg inclus, facultatif) |
+| 2.1.0 | Installeur Windows (NSIS, par utilisateur, ffmpeg inclus, facultatif) |
 | 2.0.0 | Contrôle qualité (flashs, NaN, scintillement, aliasing, précision), comparaison de shaders et images de référence, estimation du temps de rendu avec alerte ; boucles sans couture (fondu, aller-retour), courbe de temps et vrai ralenti, recherche de la période, contrôle de la couture, vignette intelligente, image fixe moyennée ; affiches par tuiles jusqu'à 65536 pixels, carte du coût GPU et temps GPU par passe, VR côte à côte / anaglyphe / fulldome, faces de cubemap ; destinations de publication, poids cible, cache des maîtres, vidéo reproductible, page HTML autonome ; son et rythme (tempo, variables de temps, repères, éditeur de temps) ; parties rendues en parallèle et ferme de rendu sans serveur |
 | 1.9.0 | Transparence, HDR10 / HLG, taille de sortie, interpolation, volume sonore, titre et crédit, montage, planches-contact ; paramètres animés et post-traitement ; fenêtre Sortie ; éditeur avec passes ; réglages d'un seul shader, lots, ordre de la file, médias déposés ; rapport de rendu ; dossier surveillé avancé et comparaison du benchmark ; rendu sans fenêtre par EGL ; néerlandais, japonais et chinois |
 | 1.8.0 | `iMouse` et `iDate` animés, clavier simulé, tampons à taille propre, vidéos 360° `mainVR`, volumes Shadertoy, `warmup` |

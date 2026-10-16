@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-2.0.0-FF5A96?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-2.1.0-FF5A96?style=flat-square">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-0078D4?style=flat-square">
   <img alt="Portable" src="https://img.shields.io/badge/portable-installer%20optional-3DDC97?style=flat-square">
   <img alt="Languages" src="https://img.shields.io/badge/languages-6-7C6CFF?style=flat-square">
@@ -402,7 +402,7 @@ Taken from [CHANGELOG.md](CHANGELOG.md), which has the details; the list is chec
 
 | Version | Main additions |
 |---|---|
-| Unreleased | Windows installer (NSIS, per user, ffmpeg included, optional) |
+| 2.1.0 | Windows installer (NSIS, per user, ffmpeg included, optional) |
 | 2.0.0 | Quality check (flashes, NaN, flicker, aliasing, precision), shader comparison and reference frames, render time estimate with alert; seamless loops (crossfade, ping-pong), time curve and real slow motion, loop period search, seam check, smart thumbnail, averaged still image; posters by tiles up to 65536 pixels, GPU cost map and GPU time per pass, side-by-side / anaglyph / fulldome VR, cubemap faces; publication targets, target file size, master cache, reproducible video, standalone HTML page; sound and rhythm (tempo, beat variables, markers, beat editor); parts rendered in parallel and a render farm without a server |
 | 1.9.0 | Transparency, HDR10 / HLG, output size, interpolation, loudness, title and credit, montage, contact sheets; animated parameters and post-processing; Output window; editor with passes; settings of one shader, batches, queue order, dropped media; render report; advanced watch folder and benchmark comparison; EGL headless rendering; Dutch, Japanese and Chinese |
 | 1.8.0 | Animated `iMouse` and `iDate`, simulated keyboard, buffers with their own size, `mainVR` 360° videos, Shadertoy volume files, `warmup` |
