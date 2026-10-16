@@ -6,6 +6,7 @@
 #include "gl.h"
 #include "locate.h"
 #include "montage.h"
+#include "parts.h"
 #include "rhythm.h"
 #include "params.h"
 #include "expr.h"
@@ -2436,6 +2437,233 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                 }
             }
             check("selftest.fmt_rhythm_beatsync", problem);
+        }
+    }
+    // Calcul reparti (phase 21) : parties rendues en parallele par plusieurs contextes OpenGL, panne et partie lente, ferme sur un dossier partage
+    {
+        const std::wstring sep(1, platform::pathSeparator());
+        auto put = [&](const std::wstring& name, const std::string& body) {
+            const std::wstring path = outDir + sep + name;
+            if (FILE* f = platform::openFile(path, "wb")) {
+                fwrite(body.data(), 1, body.size(), f);
+                fclose(f);
+            }
+            return path;
+        };
+        auto check = [&](const char* key, const std::wstring& problem) {
+            total++;
+            report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX(key) + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+            if (!problem.empty()) fails++;
+        };
+        auto bad = [&](const std::string& what) { return TXF("selftest.fmt_bad", W(what).c_str()); };
+        auto allFrames = [&](const std::wstring& video) {  // toutes les images decodees (le meme resultat = la meme video)
+            const std::wstring raw = outDir + sep + L"p21.raw";
+            platform::removeFile(raw);
+            runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -i \"" + video + L"\" -f rawvideo -pix_fmt rgb24 \"" + raw + L"\"", nullptr);
+            std::string bytes;
+            readFile(raw, bytes);
+            platform::removeFile(raw);
+            return bytes;
+        };
+        const std::wstring heavy = put(L"p21_heavy.glsl",
+                                       "void mainImage(out vec4 o, in vec2 p){ vec2 u = p / iResolution.xy; float a = 0.0; for (int i = 0; i < 300; i++) a += sin(u.x * float(i) + iTime) * 0.004;"
+                                       " o = vec4(u, clamp(0.5 + a + 0.2 * sin(float(iFrame) * 0.3), 0.0, 1.0), 1.0); }\n");
+        auto settingsFor = [&](const wchar_t* name) {
+            Settings st = base("h264", "mp4", 8);
+            st.duration = 4;  // 40 images, quatre parties d'une seconde
+            st.chunk = 1;
+            st.audio = L"";
+            st.name = name;
+            return st;
+        };
+        const bool h264 = formatAvailable(ffmpeg, "h264", "mp4");
+        std::string serialFrames;
+        std::wstring e;
+        if (h264) {  // reference : les memes parties, rendues l'une apres l'autre
+            Settings st = settingsFor(L"p21_serial");
+            Hooks H;
+            H.log = [](const std::wstring&) {};
+            if (convertFile(heavy, exeDir, st, H, e) == Result::Ok) serialFrames = allFrames(outputFile(heavy, st, false));
+        }
+        if (h264) {  // trois contextes : la video est celle du rendu en serie
+            std::wstring problem;
+            Settings st = settingsFor(L"p21_parallel");
+            st.parallel = 3;
+            std::string logText;
+            Hooks H;
+            H.log = [&](const std::wstring& l) { logText += U8(l) + "\n"; };
+            if (serialFrames.empty()) problem = bad("no reference");
+            else if (convertFile(heavy, exeDir, st, H, e) != Result::Ok) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else if (allFrames(outputFile(heavy, st, false)) != serialFrames) problem = bad("parallel video differs from the serial one");
+            else if (platform::multiContext() && logText.find(U8(TXF("log.parts_start", 3, 4LL, 10LL))) == std::string::npos) problem = bad("contexts not used");
+            else if (!platform::multiContext() && logText.find(U8(TX("log.parallel_single_context"))) == std::string::npos) problem = bad("no message about the single context");
+            else if (platform::dirExists(outputFile(heavy, st, false).substr(0, outputFile(heavy, st, false).find_last_of(L'.')) + L".parts")) problem = bad("parts folder left");
+            check("selftest.fmt_parallel", problem);
+        }
+        if (h264 && platform::multiContext()) {  // un contexte tombe en panne : il est retire avec un message, le travail continue sur les autres
+            std::wstring problem;
+            Settings st = settingsFor(L"p21_fail");
+            st.parallel = 3;
+            std::string logText;
+            std::atomic<int> hits{0};
+            Hooks H;
+            H.log = [&](const std::wstring& l) { logText += U8(l) + "\n"; };
+            H.injectFailure = [&](int worker, long long) { return worker == 1 && hits++ == 0; };
+            if (convertFile(heavy, exeDir, st, H, e) != Result::Ok) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else if (allFrames(outputFile(heavy, st, false)) != serialFrames) problem = bad("video differs after a context failure");
+            else if (logText.find(U8(TXF("log.parts_retired", 2, TX("log.parts_injected").c_str()))) == std::string::npos) problem = bad("no message about the removed context");
+            check("selftest.fmt_parallel_fail", problem);
+        }
+        if (h264 && platform::multiContext()) {  // une partie lente est rendue aussi par un contexte libre : la plus rapide gagne, la video est la meme
+            std::wstring problem;
+            Settings st = settingsFor(L"p21_slow");
+            st.parallel = 2;
+            std::string logText;
+            std::atomic<int> hits{0};
+            Hooks H;
+            H.log = [&](const std::wstring& l) { logText += U8(l) + "\n"; };
+            H.speculateAfter = 0.3;
+            H.injectDelay = [&](int, long long chunk) { return chunk == 1 && hits++ == 0 ? 6000 : 0; };  // le premier rendu de la partie 2 dure six secondes de plus
+            const auto t0 = std::chrono::steady_clock::now();
+            const bool ok = convertFile(heavy, exeDir, st, H, e) == Result::Ok;
+            const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            if (!ok) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else if (allFrames(outputFile(heavy, st, false)) != serialFrames) problem = bad("video differs after redistributing a part");
+            else if (logText.find(U8(TXF("log.parts_redistributed", 2LL))) == std::string::npos) problem = bad("part not redistributed");
+            else if (secs > 5.0) problem = bad("the slow part was waited for: " + std::to_string(secs) + " s");
+            check("selftest.fmt_parallel_slow", problem);
+        }
+        {  // ferme : fichiers de verrou, verrou perime repris, parties finies jamais refaites, coherence, etat (sans GPU : une partie est un petit fichier)
+            std::wstring problem;
+            const std::wstring farm = outDir + sep + L"p21_farm_unit";
+            removeTree(farm);
+            PartsPlan plan;
+            plan.nChunks = 4;
+            plan.chunkFrames = 10;
+            plan.totalFrames = 40;
+            plan.farmDir = farm;
+            plan.partsDir = farm + L"/parts";
+            plan.ext = L".mkv";
+            plan.workers = 1;
+            plan.lockTimeout = 1.0;
+            plan.jobInfo = {{"signature", "abc"}, {"version", "1.0.0"}, {"ffmpeg", "ffmpeg version X"}, {"encoder", "libx264"}, {"format", "mkv"}};
+            platform::makeDir(farm);
+            platform::makeDir(farm + L"/parts");
+            platform::makeDir(farm + L"/locks");
+            put(L"p21_farm_unit/parts/00000.mkv", "deja la");                      // partie terminee avant : jamais refaite
+            platform::createExclusive(farm + L"/locks/00001.lock", "machine=eteinte-1\n");  // un ordinateur qui s'est eteint avec son verrou
+            std::vector<long long> rendered;
+            std::mutex rm;
+            const RenderPartFn fake = [&](int, long long chunk, long long, long long, const std::wstring& tmp, const Hooks&, std::wstring&) -> Result {
+                platform::sleepMs(30);
+                writeFileAtomic(tmp, "partie " + std::to_string(chunk));
+                std::lock_guard<std::mutex> l(rm);
+                rendered.push_back(chunk);
+                return Result::Ok;
+            };
+            Hooks H;
+            std::string logText;
+            H.log = [&](const std::wstring& l) { logText += U8(l) + "\n"; };
+            PartsStats ps;
+            const auto t0 = std::chrono::steady_clock::now();
+            std::wstring pe;
+            const Result r = runParts(plan, H, fake, pe, ps);
+            const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            std::sort(rendered.begin(), rendered.end());
+            if (r != Result::Ok) problem = bad("farm run: " + U8(pe));
+            else if (rendered != std::vector<long long>{1, 2, 3}) problem = bad("rendered parts " + std::to_string(rendered.size()));
+            else if (secs < 0.9) problem = bad("the stale lock was taken over too early");
+            else if (ps.resumed != 1 || !ps.assembler || logText.find(U8(TXF("log.farm_takeover", 1LL, 1)).substr(0, 12)) == std::string::npos) problem = bad("recovery");
+            else {
+                std::vector<std::wstring> lines;
+                std::vector<platform::DirEntry> locks;
+                platform::listDir(farm + L"/locks", locks);
+                if (!locks.empty()) problem = bad("locks left");
+                else if (!farmStatus(farm, plan.lockTimeout, lines) || lines.size() < 3 || lines[2] != TXF("farm.status_counts", 4, 0, 0)) problem = bad("status");
+                else {
+                    farmAssembled(plan, ps, L"video.mp4", [](const std::wstring&) {});
+                    PartsStats again;
+                    PartsPlan other = plan;
+                    other.jobInfo = {{"signature", "zzz"}, {"version", "1.0.0"}, {"ffmpeg", "ffmpeg version X"}, {"encoder", "libx264"}, {"format", "mkv"}};
+                    std::wstring e1, e2, e3, e4;
+                    PartsPlan v = plan, f = plan, c = plan;
+                    v.jobInfo[1].second = "2.0.0";
+                    f.jobInfo[2].second = "ffmpeg version Y";
+                    c.jobInfo[3].second = "h264_nvenc";
+                    PartsStats s1, s2, s3, s4;
+                    const Result r1 = runParts(other, H, fake, e1, s1), r2 = runParts(v, H, fake, e2, s2), r3 = runParts(f, H, fake, e3, s3), r4 = runParts(c, H, fake, e4, s4);
+                    // le travail est deja assemble : la coherence se controle avant tout, un autre travail ne passe pas
+                    if (r1 != Result::Failed || e1.find(L"zzz") == std::wstring::npos) problem = bad("another job accepted: " + U8(e1));
+                    else if (r2 != Result::Failed || e2.find(L"2.0.0") == std::wstring::npos) problem = bad("another version accepted");
+                    else if (r3 != Result::Failed || e3.find(L"ffmpeg version Y") == std::wstring::npos) problem = bad("another ffmpeg accepted");
+                    else if (r4 != Result::Failed || e4.find(L"h264_nvenc") == std::wstring::npos) problem = bad("another encoder accepted");
+                    else if (runParts(plan, H, fake, pe, again) != Result::Ok || !again.alreadyAssembled) problem = bad("an assembled job is started again");
+                    else {
+                        std::string rep;
+                        if (!readFile(farm + L"/farm-report.json", rep) || rep.find("\"parts\": 4") == std::string::npos) problem = bad("farm report");
+                    }
+                }
+            }
+            check("selftest.fmt_farm_unit", problem);
+        }
+        if (h264) {  // ferme : deux processus du programme rendent la meme video sur un meme dossier, le resultat est celui d'un rendu en serie
+            std::wstring problem;
+            const std::wstring farm = outDir + sep + L"p21_farm";
+            removeTree(farm);
+            const std::wstring exe = exeDir + platform::exeFileName(L"ShaderToMP4");
+            put(L"p21_farm.glsl", "void mainImage(out vec4 o, in vec2 p){ vec2 u = p / iResolution.xy; float a = 0.0; for (int i = 0; i < 900; i++) a += sin(u.x * float(i) + iTime) * 0.002;"
+                                  " o = vec4(u, clamp(0.5 + a + 0.2 * sin(float(iFrame) * 0.3), 0.0, 1.0), 1.0); }\n");
+            const std::wstring shader = outDir + sep + L"p21_farm.glsl";
+            auto args = [&](const wchar_t* name, bool useFarm) {
+                std::vector<std::wstring> a = {exe, L"--render", shader, L"--width=96", L"--height=96", L"--fps=10", L"--duration=12", L"--chunk=1.5", L"--codec=h264", L"--container=mp4",
+                                               L"--crf=18", L"--preset=ultrafast", L"--audio=", L"--title=", L"--credit=", L"--exists=overwrite", L"--markers=off", L"--embed=0",
+                                               L"--outdir=" + outDir, std::wstring(L"--name=") + name};
+                if (useFarm) {
+                    a.push_back(L"--farm=" + farm);
+                    a.push_back(L"--farmtimeout=20");
+                }
+                return a;
+            };
+            auto serialProc = platform::Process::start(args(L"p21_farm_serial", false), false, true);
+            std::string sink;
+            char buf[4096];
+            size_t got;
+            int rcSerial = -1;
+            if (serialProc) {
+                while ((got = serialProc->readOutput(buf, sizeof(buf))) > 0) sink.append(buf, got);
+                rcSerial = serialProc->wait();
+            }
+            auto one = platform::Process::start(args(L"p21_farm_out", true), false, true);
+            auto two = platform::Process::start(args(L"p21_farm_out", true), false, true);
+            int rc1 = -1, rc2 = -1;
+            std::string out1, out2;
+            std::thread t2([&] {
+                if (!two) return;
+                char b[4096];
+                size_t g;
+                while ((g = two->readOutput(b, sizeof(b))) > 0) out2.append(b, g);
+                rc2 = two->wait();
+            });
+            if (one) {
+                while ((got = one->readOutput(buf, sizeof(buf))) > 0) out1.append(buf, got);
+                rc1 = one->wait();
+            }
+            t2.join();
+            Settings key = base("h264", "mp4", 8);
+            key.outdir = outDir;
+            key.name = L"p21_farm_out";
+            Settings keySerial = key;
+            keySerial.name = L"p21_farm_serial";
+            std::string rep;
+            readFile(farm + L"/farm-report.json", rep);
+            int machines = 0;
+            for (size_t q = rep.find("\"machine\""); q != std::string::npos; q = rep.find("\"machine\"", q + 1)) machines++;
+            if (!serialProc || !one || !two || rcSerial != 0 || rc1 != 0 || rc2 != 0) problem = bad("child processes " + std::to_string(rcSerial) + "," + std::to_string(rc1) + "," + std::to_string(rc2));
+            else if (!fileExists(outputFile(shader, key, false)) || allFrames(outputFile(shader, key, false)) != allFrames(outputFile(shader, keySerial, false))) problem = bad("farm video differs from the serial one");
+            else if (machines < 1 || rep.find("\"parts\": 8") == std::string::npos) problem = bad("farm report " + std::to_string(machines));
+            else if (!fileExists(farm + L"/assembled.txt")) problem = bad("no assembled.txt");
+            check("selftest.fmt_farm", problem);
+            report += L"        " + TXF("selftest.fmt_farm_machines", machines) + L"\r\n";
         }
     }
     // Canaux dynamiques et cubemap par fichiers : audio (spectre), video (images au bon temps), six faces de couleurs distinctes

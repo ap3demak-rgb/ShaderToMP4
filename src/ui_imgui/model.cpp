@@ -173,6 +173,8 @@ void Model::fromSettings(const Settings& real) {
     copyTo(f.tile, sizeof(f.tile), U8(o.tile));
     copyTo(f.dpi, sizeof(f.dpi), U8(o.dpi));
     copyTo(f.bpm, sizeof(f.bpm), U8(o.bpm));
+    copyTo(f.parallel, sizeof(f.parallel), U8(o.parallel));
+    copyTo(f.farm, sizeof(f.farm), U8(o.farm));
     copyTo(f.beatsPerBar, sizeof(f.beatsPerBar), U8(o.beatsPerBar));
     f.markers = o.markers;
     f.beatSync = o.beatSync;
@@ -271,6 +273,8 @@ bool Model::toSettings(Settings& s, std::wstring& err) const {
     o.tile = W(f.tile);
     o.dpi = W(f.dpi);
     o.bpm = W(f.bpm);
+    o.parallel = W(f.parallel);
+    o.farm = W(f.farm);
     o.beatsPerBar = W(f.beatsPerBar);
     o.markers = f.markers;
     o.beatSync = f.beatSync;

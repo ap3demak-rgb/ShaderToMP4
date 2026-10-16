@@ -709,6 +709,14 @@ void drawOutput(App& a) {
     ImGui::SetNextItemWidth(width);
     ImGui::InputText("##shutter", f.shutter, sizeof(f.shutter));
     note("ui.output.hint_engine");
+    section("ui.output.sec_distributed");
+    row("ui.output.parallel");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##parallel", f.parallel, sizeof(f.parallel));
+    row("ui.output.farm");
+    ImGui::SetNextItemWidth(width);
+    ImGui::InputText("##farm", f.farm, sizeof(f.farm));
+    note("ui.output.hint_distributed");
 
     section("ui.output.sec_time");
     row("ui.output.loopmode");

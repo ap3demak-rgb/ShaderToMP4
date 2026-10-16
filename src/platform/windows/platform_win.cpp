@@ -72,6 +72,34 @@ bool moveFile(const std::wstring& from, const std::wstring& to, bool overwrite) 
     return MoveFileExW(from.c_str(), to.c_str(), overwrite ? MOVEFILE_REPLACE_EXISTING : 0) != 0;
 }
 
+bool createExclusive(const std::wstring& path, const std::string& data) {
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    DWORD written = 0;
+    const BOOL ok = data.empty() || WriteFile(h, data.data(), (DWORD)data.size(), &written, nullptr);
+    CloseHandle(h);
+    if (!ok) DeleteFileW(path.c_str());
+    return ok != 0;
+}
+
+bool fileModTime(const std::wstring& path, long long& unixSeconds) {
+    WIN32_FILE_ATTRIBUTE_DATA d;
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &d)) return false;
+    ULARGE_INTEGER u;
+    u.LowPart = d.ftLastWriteTime.dwLowDateTime;
+    u.HighPart = d.ftLastWriteTime.dwHighDateTime;
+    unixSeconds = (long long)(u.QuadPart / 10000000ULL) - 11644473600LL;
+    return true;
+}
+
+std::wstring hostName() {
+    wchar_t b[MAX_COMPUTERNAME_LENGTH + 2] = {0};
+    DWORD n = MAX_COMPUTERNAME_LENGTH + 1;
+    return GetComputerNameW(b, &n) ? std::wstring(b, n) : std::wstring(L"pc");
+}
+
+long processId() { return (long)GetCurrentProcessId(); }
+
 bool freeSpace(const std::wstring& path, uint64_t& bytes) {
     ULARGE_INTEGER freeBytes{};
     if (!GetDiskFreeSpaceExW(path.c_str(), &freeBytes, nullptr, nullptr)) return false;
@@ -384,6 +412,7 @@ void destroyGLContext(void*& ctx) {
     ctx = nullptr;
 }
 
+bool multiContext() { return true; }
 bool prepareOffThreadContexts() { return true; }
 void releaseOffThreadContexts() {}
 

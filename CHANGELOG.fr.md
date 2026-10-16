@@ -6,7 +6,7 @@
 
 Format : une section par version, la plus récente en premier. La section d'une version étiquetée est reprise dans les notes de version.
 
-## Non publié
+## 2.0.0 — 2026-10-16
 
 ### Ajouts
 
@@ -33,6 +33,8 @@ Format : une section par version, la plus récente en premier. La section d'une 
 - Son et rythme : le fichier son est analysé (tempo, temps, mesures, attaques par bande, énergie lissée, sections) et gardé dans `<son>.beats.json` ; tout shader lit `iBeat`, `iBeatCount`, `iBPM`, `iBass`, `iMid`, `iTreble`, `iEnergy` et `iOnset` sans les déclarer, échantillonnés à l'instant exact de chaque image ; les paramètres les suivent par une expression (`// uniform float k = iBass*0.5+0.2 attack=0.02 release=0.3`, `--param=`, avec `threshold`) ; `bpm` impose le tempo, `beatsperbar` règle les mesures ; `--beats[=list|clear]`.
 - Repères (`markers=chapters|file|all`) : les sections en chapitres de la vidéo, chaque temps, mesure et section dans `.markers.txt` et `.markers.csv` ; montage dont les coupes tombent sur les temps, les mesures ou les sections de la musique (`beatsync`).
 - Éditeur de temps (**Son et rythme…** sur la page Publication de la fenêtre Sortie, et dans la carte des réglages sous Linux et macOS) : la forme d'onde avec les temps, mesures et sections détectés, un clic supprime ou ajoute un temps ; sept nouveaux cas d'auto-test (piste de clics à 120 BPM).
+- Parties rendues en même temps (`parallel=N`) : N contextes OpenGL rendent ensemble les parties d'une vidéo, mêmes images que le rendu des parties l'une après l'autre ; un contexte qui tombe en panne est retiré avec un message et son travail passe aux autres ; une partie lente est aussi confiée à un contexte libre (le premier arrivé gagne) ; en série, avec un message, pour les shaders à passes à historique et sous Linux et macOS. `--benchmark --parallel` mesure le gain (faible sur le PC d'essai).
+- Ferme de rendu sans serveur (`farm=dossier`, `--farm=`) : plusieurs ordinateurs rendent les parties d'une vidéo sur un dossier partagé, chaque partie réservée par un fichier de verrou à création atomique, verrous d'ordinateurs éteints repris après `farmtimeout`, parties terminées jamais refaites, assemblage par le premier ordinateur qui voit toutes les parties ; un autre travail, une autre version, un autre ffmpeg ou encodeur est refusé avec un message précis ; `--farm-status dossier` et `farm-report.json`. Aucune connexion réseau n'est ouverte.
 
 ## 1.9.0 — 2026-10-12
 

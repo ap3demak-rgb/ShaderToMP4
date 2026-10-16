@@ -32,6 +32,8 @@ struct OutputFields {
     int animPreview = 0;
     // Son et rythme : tempo force (vide = detecte), temps par mesure, marqueurs (0 aucun, 1 chapitres, 2 fichiers, 3 les deux), montage sur la musique (0 aucun, 1 temps, 2 mesures, 3 sections)
     std::wstring bpm, beatsPerBar;
+    // Calcul reparti : contextes en parallele (1 = en serie), dossier partage de la ferme (vide = aucune)
+    std::wstring parallel, farm;
     int markers = 0, beatSync = 0;
     bool precheck = false;       // controle qualite avant le rendu
     int stillFormat = 0;         // 0 PNG, 1 TIFF

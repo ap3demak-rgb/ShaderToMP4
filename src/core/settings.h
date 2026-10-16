@@ -83,6 +83,10 @@ struct Settings {
     int beatsPerBar = 4;           // temps par mesure (2 a 12) pour les mesures et les sections
     std::string markers = "off";   // off | chapters (sections en chapitres du fichier) | file (fichiers de reperes) | all : marqueurs tires du rythme du son
     std::string beatSync = "off";  // montage : off | beat | bar | section : coupes posees sur les temps, les mesures ou les debuts de section
+    // Calcul reparti : contextes de rendu en parallele sur ce poste, dossier partage d'une ferme sans serveur, delai avant qu'un verrou soit repris
+    int parallel = 1;              // parties rendues en meme temps par autant de contextes OpenGL (1 = en serie) ; demande le rendu par parties (chunk)
+    std::wstring farm;             // dossier partage de la ferme : plusieurs ordinateurs rendent les parties d'une meme video ; "" = aucune
+    double farmTimeout = 120;      // secondes sans signe de vie apres lesquelles le verrou d'une partie est repris (machine eteinte)
     int samples = 1;               // image fixe (PNG) : moyenne de N echantillons independants du meme instant (iFrame different), 1..100000
 };
 
