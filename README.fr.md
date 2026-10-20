@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-2.1.0-FF5A96?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-2.1.1-FF5A96?style=flat-square">
   <img alt="Plateforme" src="https://img.shields.io/badge/plateforme-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-0078D4?style=flat-square">
   <img alt="Portable" src="https://img.shields.io/badge/portable-installeur%20facultatif-3DDC97?style=flat-square">
   <img alt="Langues" src="https://img.shields.io/badge/langues-6-7C6CFF?style=flat-square">
@@ -372,7 +372,7 @@ Tout ceci s'écrit en commentaires `// clé=valeur` dans le shader, dans `config
 **Taille, cadence et son.**
 - `scale=1920x1080` ou `scale=2` / `scale=0.5x` (facteur) : rend à la taille de la fenêtre, écrit à une autre ; `scalefilter=lanczos` (défaut), `bicubic`, `bilinear`, `area` ou `neighbor` (plus proche voisin, pour le pixel art). Les dimensions sont arrondies au nombre pair.
 - `interp=60` : rend à `fps` (par ex. 30) et laisse `minterpolate` de ffmpeg écrire 60 images par seconde. Le rendu natif est toujours meilleur (un shader peut rendre exactement les images en plus) ; c'est pour les shaders trop lents. Ça marche en 8 bits, pas avec l'alpha, et entre les parties d'un long rendu la première image de chaque partie n'a pas d'image précédente à interpoler.
-- `loudnorm=-16` : normalisation EBU R128 à ce niveau (LUFS), pour le fichier `audio` et pour la passe Sound. Le son est d'abord mesuré (la partie qui se retrouve dans la vidéo), puis un gain **constant** l'amène à la cible : le volume ne monte ni ne descend en cours de route, et l'écart entre les passages doux et forts de la musique est conservé. Si les crêtes dépassaient -1,5 dBTP, un limiteur de crête rattrape jusqu'à 3 dB ; au-delà le gain est réduit et la cible n'est pas atteinte (le journal indique le volume mesuré et le gain). Un son silencieux ou illisible retombe sur le filtre `loudnorm` de ffmpeg en une passe, dont le gain change pendant la lecture.
+- `loudnorm=-16` : normalisation EBU R128 à ce niveau (LUFS), pour le fichier `audio` et pour la passe Sound. Le son est d'abord mesuré (la partie qui se retrouve dans la vidéo), puis un gain **constant** l'amène à la cible : le volume ne monte ni ne descend en cours de route, et l'écart entre les passages doux et forts de la musique est conservé. Si les crêtes dépassaient -1,5 dBTP, un limiteur de crête rattrape jusqu'à 3 dB ; au-delà le gain est réduit et la cible n'est pas atteinte (le journal indique le volume mesuré et le gain). Si le son ne peut pas être mesuré (silencieux ou illisible), aucune normalisation n'est appliquée et le journal le dit.
 
 **Texte sur la vidéo** (`title=Mon titre`, `credit=Shader de Nom`, `titledur=3`). Le titre est écrit au milieu et le crédit en bas à gauche pendant les `titledur` premières secondes, en fondu à l'entrée et à la sortie, avec le filtre `drawtext` de ffmpeg et une police du système (Segoe UI sous Windows, DejaVu, Liberation ou Noto sous Linux, Helvetica ou Arial sous macOS) ; le rendu s'arrête avec un message si ce ffmpeg n'a pas `drawtext` ou si aucune police n'est trouvée. Le rendu par parties garde le bon minutage. Quand vous importez un `.json` de Shadertoy, le journal donne la ligne à ajouter pour créditer l'auteur.
 
@@ -417,7 +417,7 @@ Tirées de [CHANGELOG.fr.md](CHANGELOG.fr.md), qui donne le détail ; la liste e
 
 | Version | Principaux ajouts |
 |---|---|
-| Non publié | OpenEXR multicouche écrit par le programme (couleur HDR, profondeur, normale, id, alpha, mouvement estimé), alpha droit ou prémultiplié, TIFF flottant, DPX, carte de profondeur 16 bits ; mode effet : le shader appliqué à des vidéos, images, séquences et dossiers (taille, cadence, durée, son, sous-titres et chapitres suivent la source), lecture à l'envers, 25 transitions entre deux sources avec `iProgress`, clés chroma / luminance / différence |
+| 2.1.1 | Normalisation du son à gain constant (le volume ne monte plus ni ne descend) ; OpenEXR multicouche écrit par le programme (couleur HDR, profondeur, normale, id, alpha, mouvement estimé), alpha droit ou prémultiplié, TIFF flottant, DPX, carte de profondeur 16 bits ; mode effet : le shader appliqué à des vidéos, images, séquences et dossiers (taille, cadence, durée, son, sous-titres et chapitres suivent la source), lecture à l'envers, 25 transitions entre deux sources avec `iProgress`, clés chroma / luminance / différence |
 | 2.1.0 | Installeur Windows (NSIS, par utilisateur, ffmpeg inclus, facultatif) |
 | 2.0.0 | Contrôle qualité (flashs, NaN, scintillement, aliasing, précision), comparaison de shaders et images de référence, estimation du temps de rendu avec alerte ; boucles sans couture (fondu, aller-retour), courbe de temps et vrai ralenti, recherche de la période, contrôle de la couture, vignette intelligente, image fixe moyennée ; affiches par tuiles jusqu'à 65536 pixels, carte du coût GPU et temps GPU par passe, VR côte à côte / anaglyphe / fulldome, faces de cubemap ; destinations de publication, poids cible, cache des maîtres, vidéo reproductible, page HTML autonome ; son et rythme (tempo, variables de temps, repères, éditeur de temps) ; parties rendues en parallèle et ferme de rendu sans serveur |
 | 1.9.0 | Transparence, HDR10 / HLG, taille de sortie, interpolation, volume sonore, titre et crédit, montage, planches-contact ; paramètres animés et post-traitement ; fenêtre Sortie ; éditeur avec passes ; réglages d'un seul shader, lots, ordre de la file, médias déposés ; rapport de rendu ; dossier surveillé avancé et comparaison du benchmark ; rendu sans fenêtre par EGL ; néerlandais, japonais et chinois |
@@ -505,7 +505,6 @@ Sous Windows et Linux, il est téléchargé à la demande à côté du programme
 Non. Le programme est portable : réglages (`config.ini`, `window.ini`), langues et `ffmpeg` vivent dans son propre dossier. Le programme lui-même n'écrit ni dans le registre, ni dans ton profil utilisateur, ni dans un dossier système (les pilotes graphiques peuvent garder leurs propres caches).
 
 ## Compiler
-Get-ChildItem -Recurse -File | Unblock-File
 
 ### Windows
 

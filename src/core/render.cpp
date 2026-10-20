@@ -1189,14 +1189,17 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     // descend avec ses passages doux et forts.
     LoudnormMeasure loud;
     if (s.loudnorm != 0 && hasAudio) {
+        std::string rawMeasure;
         measureLoudnorm(L"\"" + ffmpeg + L"\" -hide_banner -nostats -nostdin" + audioArgs + L" -vn -map 0:a:0 -af \"" + audioPre + wfmt(L"atrim=end=%.6f,", totalSec) +
                             loudnormMeasureFilter(s) + L"\" -f null -",
-                        loud);
+                        loud, &rawMeasure);
         if (loud.ok) {
             bool limited = false;
             H.log(L"  " + TXF("log.loudnorm_measured", loud.inputI, loudnormGainDb(s, loud, limited)));
         } else {
             H.log(L"  " + TX("log.loudnorm_unmeasured"));
+            const std::string tail = rawMeasure.size() > 600 ? rawMeasure.substr(rawMeasure.size() - 600) : rawMeasure;
+            H.log(L"  ffmpeg: " + W(tail));
         }
     }
     std::wstring audioFilter = audioPre;

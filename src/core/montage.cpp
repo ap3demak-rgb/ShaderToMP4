@@ -404,12 +404,15 @@ Result convertMontage(const std::wstring& montagePath, const std::wstring& exeDi
             for (const auto& f : files) mcmd += L" -i \"" + f + L"\"";
             mcmd += audioIn + L" -filter_complex \"" + (agraph.empty() ? std::wstring() : agraph.substr(1) + L";") + chain + wfmt(L"atrim=end=%.4f,", total) +
                     loudnormMeasureFilter(s) + L"[aout]\" -map \"[aout]\" -f null -";
-            measureLoudnorm(mcmd, loud);
+            std::string rawMeasure;
+            measureLoudnorm(mcmd, loud, &rawMeasure);
             if (loud.ok) {
                 bool limited = false;
                 H.log(L"  " + TXF("log.loudnorm_measured", loud.inputI, loudnormGainDb(s, loud, limited)));
             } else {
                 H.log(L"  " + TX("log.loudnorm_unmeasured"));
+                const std::string tail = rawMeasure.size() > 600 ? rawMeasure.substr(rawMeasure.size() - 600) : rawMeasure;
+                H.log(L"  ffmpeg: " + W(tail));
             }
         }
         std::wstring af = loudnormFilter(s, &loud);

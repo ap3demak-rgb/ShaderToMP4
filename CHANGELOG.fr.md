@@ -6,7 +6,7 @@
 
 Format : une section par version, la plus récente en premier. La section d'une version étiquetée est reprise dans les notes de version.
 
-## Non publié
+## 2.1.1 — 2026-10-20
 
 ### Ajouté
 

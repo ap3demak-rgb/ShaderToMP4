@@ -77,7 +77,7 @@
   "log.interp_video_only": "interp= só se aplica a ficheiros de vídeo: ignorado.",
   "log.loudnorm": "Normalização do som: alvo %g LUFS.",
   "log.loudnorm_measured": "Som medido em %.1f LUFS: ganho constante de %+.1f dB (o volume não sobe nem desce).",
-  "log.loudnorm_unmeasured": "Não foi possível medir o som (silencioso ou ilegível): normalização numa só passagem, o volume pode variar.",
+  "log.loudnorm_unmeasured": "Não foi possível medir o som (silencioso ou ilegível): nenhuma normalização é aplicada, o volume fica como está.",
   "log.montage_clip": "Clipe %d / %d da montagem: %ls (%g s)",
   "log.montage_clip_reused": "Clipe %d / %d da montagem: %ls (já renderizado com as mesmas definições, reutilizado)",
   "log.montage_start": "Montagem: %d clipe(s), %d transição(ões).",

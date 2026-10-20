@@ -19,7 +19,7 @@ ColorSpec colorSpecFor(const Settings& s);
 //  - mise a l'echelle `scale` avec le filtre `scalefilter` (de w x h, taille du rendu apres supersampling, vers ow x oh) ;
 //  - interpolation d'images `interp` (minterpolate, 8 bits) ;
 //  - normalisation du son `loudnorm` : mesure du son (EBU R128) puis gain FIXE (le volume ne monte ni ne descend en cours de route) ; sans mesure
-//    exploitable, repli sur le filtre loudnorm de ffmpeg en une passe (gain variable).
+//    exploitable, aucune normalisation (jamais le filtre loudnorm en une passe, dont le gain varie).
 std::wstring outScaleFilter(const Settings& s, int w, int h, int ow, int oh);
 std::wstring interpFilter(const Settings& s);
 
@@ -34,12 +34,13 @@ std::wstring loudnormMeasureFilter(const Settings& s);
 // Lit la mesure dans la sortie de ffmpeg (bloc JSON de loudnorm) ; m.ok vrai si elle est exploitable.
 bool parseLoudnormMeasure(const std::string& text, LoudnormMeasure& m);
 // Lance la commande de mesure (voir loudnormMeasureFilter) et lit son resultat.
-bool measureLoudnorm(const std::wstring& cmd, LoudnormMeasure& m);
+// raw : sortie complete de ffmpeg (pour le journal en cas d'echec).
+bool measureLoudnorm(const std::wstring& cmd, LoudnormMeasure& m, std::string* raw = nullptr);
 // Gain fixe (dB) qui amene la mesure a la cible `loudnorm`. La crete vraie reste sous -1,5 dBTP : si le gain voulu la depasse, un limiteur de crete
 // rattrape au plus 3 dB, au-dela le gain est reduit (le volume cible n'est alors pas atteint). limited : le limiteur est utilise.
 double loudnormGainDb(const Settings& s, const LoudnormMeasure& m, bool& limited);
 // Filtre de normalisation, termine par une virgule (vide si `loudnorm` est 0). Avec une mesure exploitable : gain fixe (+ limiteur de crete si
-// besoin) ; sinon le filtre loudnorm de ffmpeg en une passe.
+// besoin) ; sans mesure, vide.
 std::wstring loudnormFilter(const Settings& s, const LoudnormMeasure* m = nullptr);
 
 // Encodeurs materiels connus : "nvenc", "amf", "qsv" (Windows, Linux), "vaapi" (Linux), "videotoolbox" (macOS).

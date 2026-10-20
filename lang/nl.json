@@ -77,7 +77,7 @@
   "log.interp_video_only": "interp= geldt alleen voor videobestanden: genegeerd.",
   "log.loudnorm": "Geluidsnormalisatie: doel %g LUFS.",
   "log.loudnorm_measured": "Geluid gemeten op %.1f LUFS: constante versterking van %+.1f dB (het volume stijgt of daalt niet).",
-  "log.loudnorm_unmeasured": "Het geluid kon niet worden gemeten (stil of onleesbaar): normalisatie in één doorgang, het volume kan variëren.",
+  "log.loudnorm_unmeasured": "Het geluid kon niet worden gemeten (stil of onleesbaar): er wordt niet genormaliseerd, het volume blijft ongewijzigd.",
   "log.montage_clip": "Montageclip %d / %d: %ls (%g s)",
   "log.montage_clip_reused": "Montageclip %d / %d: %ls (al met dezelfde instellingen gerenderd, hergebruikt)",
   "log.montage_start": "Montage: %d clip(s), %d overgang(en).",

@@ -67,9 +67,10 @@ bool parseLoudnormMeasure(const std::string& text, LoudnormMeasure& m) {
     return true;
 }
 
-bool measureLoudnorm(const std::wstring& cmd, LoudnormMeasure& m) {
+bool measureLoudnorm(const std::wstring& cmd, LoudnormMeasure& m, std::string* raw) {
     std::string all;
     runProcess(cmd, [&](const std::wstring& l) { all += U8(l) + "\n"; });
+    if (raw) *raw = all;
     return parseLoudnormMeasure(all, m);
 }
 
@@ -93,7 +94,7 @@ std::wstring loudnormFilter(const Settings& s, const LoudnormMeasure* m) {
         if (limited) f += wfmt(L"alimiter=limit=%.4f:level=disabled,", std::pow(10.0, kLoudnormTP / 20.0));
         return f;
     }
-    return wfmt(L"loudnorm=I=%g:TP=%g:LRA=11,", s.loudnorm, kLoudnormTP);
+    return L"";  // pas de mesure : aucune normalisation (le filtre loudnorm en une passe ferait monter et descendre le volume)
 }
 
 // Parametres statiques HDR10 du flux (volume d'affichage BT.2020 et luminances declarees) pour x265 / SVT-AV1.

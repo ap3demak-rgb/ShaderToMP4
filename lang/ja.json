@@ -77,7 +77,7 @@
   "log.interp_video_only": "interp= は動画ファイルにのみ適用されます。無視しました。",
   "log.loudnorm": "音量の正規化: 目標 %g LUFS。",
   "log.loudnorm_measured": "音声を %.1f LUFS と測定: 一定のゲイン %+.1f dB（音量は上下しません）。",
-  "log.loudnorm_unmeasured": "音声を測定できませんでした（無音または読み取り不可）。1パスで正規化するため、音量が変化することがあります。",
+  "log.loudnorm_unmeasured": "音声を測定できませんでした（無音または読み取り不可）。正規化は行わず、音量はそのままです。",
   "log.montage_clip": "モンタージュのクリップ %d / %d: %ls（%g 秒）",
   "log.montage_clip_reused": "モンタージュのクリップ %d / %d: %ls（同じ設定でレンダリング済みのため再利用）",
   "log.montage_start": "モンタージュ: クリップ %d 個、トランジション %d 個。",
