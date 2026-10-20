@@ -21,6 +21,10 @@ Format : une section par version, la plus récente en premier. La section d'une 
 - Vecteurs de mouvement estimés entre deux images consécutives (correspondance de blocs, présentés comme une estimation) ; bornes de profondeur `depthrange` déclarées dans le fichier ; carte de profondeur 16 bits `--depthmap`.
 - Alpha droit ou prémultiplié (`alphamode`) pour l'EXR, le PNG 16 bits, le TIFF et le DPX ; séquences TIFF flottantes 32 bits (`tifffloat=1`) ; séquences DPX (`container=dpx`, 10 bits, BT.709 et cadence dans l'en-tête) ; page « Compositing (EXR) » de la fenêtre Sortie et section de la carte des réglages ; huit nouveaux cas d'autotest.
 
+### Corrigé
+
+- Normalisation du son (`loudnorm`) : le volume de la musique ne monte plus ni ne descend pendant la vidéo. Le filtre `loudnorm` de ffmpeg en une passe changeait son gain au fil du temps ; le son est maintenant mesuré d'abord, puis un gain constant est appliqué (rendus simples et montages). Un limiteur de crête n'intervient que si les crêtes dépassaient -1,5 dBTP. Nouveau cas d'auto-test.
+
 ## 2.1.0 — 2026-10-16
 
 ### Ajouté

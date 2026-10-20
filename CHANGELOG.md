@@ -21,6 +21,10 @@ Format: one section per version, newest first. The section of a tagged version i
 - Estimated motion vectors between consecutive frames (block matching, labelled as an estimate); depth bounds `depthrange` declared in the file; 16-bit depth map `--depthmap`.
 - Straight or premultiplied alpha (`alphamode`) for EXR, 16-bit PNG, TIFF and DPX; floating-point 32-bit TIFF sequences (`tifffloat=1`); DPX sequences (`container=dpx`, 10 bits, BT.709 and frame rate in the header); “Compositing (EXR)” page of the Output window and section of the settings card; eight new self-test cases.
 
+### Fixed
+
+- Sound normalization (`loudnorm`): the volume of the music no longer rises and falls during the video. The one-pass `loudnorm` filter of ffmpeg changed its gain over time; the sound is now measured first and one constant gain is applied (single renders and montages). A peak limiter is used only if the peaks would exceed -1.5 dBTP. New self-test case.
+
 ## 2.1.0 — 2026-10-16
 
 ### Added

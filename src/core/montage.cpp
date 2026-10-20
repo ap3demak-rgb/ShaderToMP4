@@ -374,32 +374,49 @@ Result convertMontage(const std::wstring& montagePath, const std::wstring& exeDi
     std::wstring audioMap;
     if (globalAudio || anyAudio) {
         std::wstring chain;
+        std::wstring agraph;  // la partie son du graphe (sans la normalisation ni les fondus), reprise telle quelle pour mesurer le volume
         if (globalAudio) {
             chain = wfmt(L"[%d:a]", (int)n);  // la bande-son du reglage « audio » couvre tout le montage
         } else {
             std::wstring ac;
             for (size_t i = 0; i < n; i++) {  // un clip sans son recoit du silence de sa duree
                 const std::wstring lab = wfmt(L"[a%d]", (int)i);
-                if (audio[i]) graph += wfmt(L";[%d:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo", (int)i) + lab;
-                else graph += wfmt(L";anullsrc=r=48000:cl=stereo:d=%.4f,aformat=sample_fmts=fltp", durations[i]) + lab;
+                if (audio[i]) agraph += wfmt(L";[%d:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo", (int)i) + lab;
+                else agraph += wfmt(L";anullsrc=r=48000:cl=stereo:d=%.4f,aformat=sample_fmts=fltp", durations[i]) + lab;
             }
             std::wstring acur = L"[a0]";
             for (size_t i = 1; i < n; i++) {
                 const MontageClip& c = def.clips[i];
                 const std::wstring label = wfmt(L"[ac%d]", (int)i);
                 const double d = std::min(c.transitionDuration, std::min(durations[i], durations[i - 1]) * 0.5);
-                if (c.transition == "cut" || d <= 0.01) graph += L";" + acur + wfmt(L"[a%d]concat=n=2:v=0:a=1", (int)i) + label;
-                else graph += L";" + acur + wfmt(L"[a%d]acrossfade=d=%.4f:c1=tri:c2=tri", (int)i, d) + label;
+                if (c.transition == "cut" || d <= 0.01) agraph += L";" + acur + wfmt(L"[a%d]concat=n=2:v=0:a=1", (int)i) + label;
+                else agraph += L";" + acur + wfmt(L"[a%d]acrossfade=d=%.4f:c1=tri:c2=tri", (int)i, d) + label;
                 acur = label;
             }
             chain = acur;
         }
-        std::wstring af = loudnormFilter(s);
+        if (globalAudio) audioIn = wfmt(L" -ss %g", s.start) + L" -i \"" + s.audio + L"\"";
+        // Normalisation du son : une premiere passe mesure le son du montage, puis un gain FIXE l'amene a la cible (le filtre loudnorm de ffmpeg en
+        // une passe change son gain pendant la lecture : le volume monte et descend avec les passages doux et forts de la musique).
+        LoudnormMeasure loud;
+        if (s.loudnorm != 0) {
+            std::wstring mcmd = L"\"" + ffmpeg + L"\" -hide_banner -nostats -nostdin";
+            for (const auto& f : files) mcmd += L" -i \"" + f + L"\"";
+            mcmd += audioIn + L" -filter_complex \"" + (agraph.empty() ? std::wstring() : agraph.substr(1) + L";") + chain + wfmt(L"atrim=end=%.4f,", total) +
+                    loudnormMeasureFilter(s) + L"[aout]\" -map \"[aout]\" -f null -";
+            measureLoudnorm(mcmd, loud);
+            if (loud.ok) {
+                bool limited = false;
+                H.log(L"  " + TXF("log.loudnorm_measured", loud.inputI, loudnormGainDb(s, loud, limited)));
+            } else {
+                H.log(L"  " + TX("log.loudnorm_unmeasured"));
+            }
+        }
+        std::wstring af = loudnormFilter(s, &loud);
         if (fi > 0) af += wfmt(L"afade=t=in:st=0:d=%g,", fi);
         if (fo > 0) af += wfmt(L"afade=t=out:st=%.4f:d=%g,", total - fo, fo);
-        graph += L";" + chain + af + L"apad[aout]";
+        graph += agraph + L";" + chain + af + L"apad[aout]";
         audioMap = L" -map \"[aout]\"" + audioCodecArgs(s.container) + L" -shortest";
-        if (globalAudio) audioIn = wfmt(L" -ss %g", s.start) + L" -i \"" + s.audio + L"\"";
     }
     const ColorSpec cs = colorSpecFor(s);
     std::wstring title = montagePath.substr(montagePath.find_last_of(L"\\/") == std::wstring::npos ? 0 : montagePath.find_last_of(L"\\/") + 1);

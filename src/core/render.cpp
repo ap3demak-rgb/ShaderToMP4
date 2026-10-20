@@ -1169,27 +1169,43 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         }
     }
     const bool reverseAudio = s.reverse && s.rt.active && s.rt.audioFromSource && s.audio == s.rt.path;
-    std::wstring audioFilter;
-    if (reverseAudio) audioFilter += L"areverse,";
+    std::wstring audioPre;  // filtres appliques avant la normalisation
+    if (reverseAudio) audioPre += L"areverse,";
     if (followSpeed != 1.0) {  // atempo accepte 0.5 a 2 : on enchaine
         double f = followSpeed;
         while (f > 2.0) {
-            audioFilter += L"atempo=2.0,";
+            audioPre += L"atempo=2.0,";
             f /= 2.0;
         }
         while (f < 0.5) {
-            audioFilter += L"atempo=0.5,";
+            audioPre += L"atempo=0.5,";
             f /= 0.5;
         }
-        audioFilter += wfmt(L"atempo=%.6f,", f);
+        audioPre += wfmt(L"atempo=%.6f,", f);
     }
-    audioFilter += loudnormFilter(s);  // normalisation du son (LUFS), puis fondus
+    const std::wstring audioArgs = (audioSeek ? wfmt(L" -ss %g", s.start) : std::wstring()) + (reverseAudio ? wfmt(L" -t %g", totalSec) : std::wstring()) + L" -i \"" + audioFile + L"\"";
+    // Normalisation du son : une premiere passe mesure le son qui sera reellement dans la video (meme debut, memes filtres, meme duree), puis un
+    // gain FIXE l'amene a la cible. Le filtre loudnorm de ffmpeg en une passe change son gain pendant la lecture : le volume de la musique monte et
+    // descend avec ses passages doux et forts.
+    LoudnormMeasure loud;
+    if (s.loudnorm != 0 && hasAudio) {
+        measureLoudnorm(L"\"" + ffmpeg + L"\" -hide_banner -nostats -nostdin" + audioArgs + L" -vn -map 0:a:0 -af \"" + audioPre + wfmt(L"atrim=end=%.6f,", totalSec) +
+                            loudnormMeasureFilter(s) + L"\" -f null -",
+                        loud);
+        if (loud.ok) {
+            bool limited = false;
+            H.log(L"  " + TXF("log.loudnorm_measured", loud.inputI, loudnormGainDb(s, loud, limited)));
+        } else {
+            H.log(L"  " + TX("log.loudnorm_unmeasured"));
+        }
+    }
+    std::wstring audioFilter = audioPre;
+    audioFilter += loudnormFilter(s, &loud);  // normalisation du son (LUFS), puis fondus
     if (fi > 0) audioFilter += wfmt(L"afade=t=in:st=0:d=%g,", fi);
     if (fo > 0) audioFilter += wfmt(L"afade=t=out:st=%g:d=%g,", totalSec - fo, fo);
     // son plus court que la video : complete par du silence ; la duree exacte est fixee par -t (et non -shortest : il laissait parfois depasser le son, ou
     // arretait la lecture des images avant la derniere)
     audioFilter += L"apad";
-    const std::wstring audioArgs = (audioSeek ? wfmt(L" -ss %g", s.start) : std::wstring()) + (reverseAudio ? wfmt(L" -t %g", totalSec) : std::wstring()) + L" -i \"" + audioFile + L"\"";
     bool subsDropped = false;
     const std::wstring extraMaps = hasAudio ? sourceExtraMaps(s, subsDropped) : std::wstring();  // sous-titres et chapitres de la source
     if (subsDropped) H.log(L"  " + TXF("log.source_subs_dropped", W(s.container).c_str()));

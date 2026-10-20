@@ -751,6 +751,39 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             }
             check("selftest.fmt_loudnorm", problem);
         }
+        // normalisation du son : le gain est fixe. Une musique douce puis forte (12 dB d'ecart) garde cet ecart apres normalisation (le filtre loudnorm
+        // en une passe le reduisait : le volume montait et descendait)
+        if (formatAvailable(ffmpeg, "h264", "mp4")) {
+            const std::wstring music = outDir + sep + L"music_dyn.wav";
+            runProcess(L"\"" + ffmpeg + L"\" -hide_banner -loglevel error -nostdin -y -f lavfi -i sine=frequency=440:duration=10 -af \"volume='if(lt(t,5),0.1,0.4)':eval=frame\" -ar 44100 -ac 1 \"" +
+                           music + L"\"",
+                       nullptr);
+            Settings st = base("h264", "mp4", 8);
+            st.fps = 5;
+            st.duration = 10;
+            st.audio = music;
+            st.loudnorm = -16;
+            std::wstring e, problem;
+            std::string logText;
+            if (!fileExists(music)) problem = bad("no music");
+            else if (!renderOne(renderShader, st, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                auto rms = [&](double from) {  // niveau efficace (dB) de 3 s du son de la video
+                    std::string summary;
+                    runProcess(L"\"" + ffmpeg + L"\" -hide_banner -nostats -nostdin " + wfmt(L"-ss %g -t 3 ", from) + L"-i \"" + outputFile(renderShader, st, false) +
+                                   L"\" -vn -af astats=metadata=0 -f null -",
+                               [&](const std::wstring& l) { summary += U8(l) + "\n"; });
+                    const size_t p = summary.find("RMS level dB:");
+                    double v = 0;
+                    return p != std::string::npos && sscanf(summary.c_str() + p + 13, "%lf", &v) == 1 ? v : -1000.0;
+                };
+                const double soft = rms(1), loud = rms(6);
+                const double expected = 20.0 * std::log10(4.0);  // 12 dB entre les deux moities
+                if (soft < -900 || loud < -900) problem = bad("no level");
+                else if (std::fabs((loud - soft) - expected) > 1.5) problem = bad("gain not constant: " + std::to_string(loud - soft) + " dB instead of " + std::to_string(expected));
+            }
+            check("selftest.fmt_loudnorm_constant", problem);
+        }
         // apercu avec transparence : le damier gris se voit ou l'alpha est presque nul (a gauche), la couleur ou il est presque plein (a droite)
         {
             Settings st;

@@ -6,6 +6,7 @@
 #include "i18n.h"
 #include "process.h"
 #include "util.h"
+#include <cmath>
 
 ColorSpec colorSpec(const std::string& c) {
     if (c == "bt709full")
@@ -36,9 +37,63 @@ std::wstring interpFilter(const Settings& s) {
     return wfmt(L"format=yuv420p,minterpolate=fps=%g:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,", s.interp);
 }
 
-std::wstring loudnormFilter(const Settings& s) {
+namespace {
+constexpr double kLoudnormTP = -1.5;       // crete vraie maximale (dBTP)
+constexpr double kLoudnormMaxLimited = 3;  // dB de crete que le limiteur peut rattraper
+}  // namespace
+
+std::wstring loudnormMeasureFilter(const Settings& s) {
+    return wfmt(L"loudnorm=I=%g:TP=%g:LRA=11:print_format=json", s.loudnorm, kLoudnormTP);
+}
+
+bool parseLoudnormMeasure(const std::string& text, LoudnormMeasure& m) {
+    m = LoudnormMeasure();
+    // lignes du bloc JSON : "input_i" : "-27.78",
+    auto value = [&](const char* key, double& v) {
+        const size_t k = text.rfind(std::string("\"") + key + "\"");
+        if (k == std::string::npos) return false;
+        const size_t q = text.find('"', text.find(':', k) + 1);
+        if (q == std::string::npos) return false;
+        char* end = nullptr;
+        v = strtod(text.c_str() + q + 1, &end);
+        return end != text.c_str() + q + 1 && std::isfinite(v);  // "-inf" : son silencieux
+    };
+    double i = 0, tp = 0;
+    if (!value("input_i", i) || !value("input_tp", tp)) return false;
+    if (i <= -69.0) return false;  // sous le seuil de mesure : rien a normaliser
+    m.inputI = i;
+    m.inputTP = tp;
+    m.ok = true;
+    return true;
+}
+
+bool measureLoudnorm(const std::wstring& cmd, LoudnormMeasure& m) {
+    std::string all;
+    runProcess(cmd, [&](const std::wstring& l) { all += U8(l) + "\n"; });
+    return parseLoudnormMeasure(all, m);
+}
+
+double loudnormGainDb(const Settings& s, const LoudnormMeasure& m, bool& limited) {
+    double gain = s.loudnorm - m.inputI;
+    limited = false;
+    const double room = kLoudnormTP - m.inputTP;  // gain possible sans depasser la crete vraie
+    if (gain > room) {
+        limited = true;
+        gain = std::min(gain, room + kLoudnormMaxLimited);
+    }
+    return gain;
+}
+
+std::wstring loudnormFilter(const Settings& s, const LoudnormMeasure* m) {
     if (s.loudnorm == 0) return L"";
-    return wfmt(L"loudnorm=I=%g:TP=-1.5:LRA=11,", s.loudnorm);
+    if (m && m->ok) {
+        bool limited = false;
+        const double gain = loudnormGainDb(s, *m, limited);
+        std::wstring f = wfmt(L"volume=%.3fdB,", gain);
+        if (limited) f += wfmt(L"alimiter=limit=%.4f:level=disabled,", std::pow(10.0, kLoudnormTP / 20.0));
+        return f;
+    }
+    return wfmt(L"loudnorm=I=%g:TP=%g:LRA=11,", s.loudnorm, kLoudnormTP);
 }
 
 // Parametres statiques HDR10 du flux (volume d'affichage BT.2020 et luminances declarees) pour x265 / SVT-AV1.
