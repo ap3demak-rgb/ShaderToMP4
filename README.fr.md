@@ -505,6 +505,7 @@ Sous Windows et Linux, il est téléchargé à la demande à côté du programme
 Non. Le programme est portable : réglages (`config.ini`, `window.ini`), langues et `ffmpeg` vivent dans son propre dossier. Le programme lui-même n'écrit ni dans le registre, ni dans ton profil utilisateur, ni dans un dossier système (les pilotes graphiques peuvent garder leurs propres caches).
 
 ## Compiler
+Get-ChildItem -Recurse -File | Unblock-File
 
 ### Windows
 
