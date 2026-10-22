@@ -3717,6 +3717,42 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_param_load") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
         if (!problem.empty()) fails++;
     }
+    // Courbes d'Hermite des parametres : pentes imposees (`t:v@pente`) et pentes lissees, exactes sur une droite et sur le lissage de base
+    {
+        total++;
+        std::wstring problem, err;
+        auto load = [&](const std::string& decl, const std::string& spec, ParamSet& ps) {
+            Settings st;
+            st.paramSpecs.push_back(spec);
+            return ps.load("// uniform " + decl + "\nvoid mainImage(out vec4 o, in vec2 p){ o = vec4(1.0); }\n", st, L"", err);
+        };
+        auto at = [&](ParamSet& ps, double t) {
+            double v[4];
+            ps.valueAt("v", t, v);
+            return v[0];
+        };
+        ParamSet flat, line, autoSlope, vec, bad, same;
+        if (!load("float v = 1 [0..10]", "v=hermite 0:0@0 ; 2:4@0", flat) || !load("float v = 1 [0..10]", "v=hermite 0:0@2 ; 2:4@2", line) ||
+            !load("float v = 1 [0..10]", "v=hermite 0:0 ; 1:1 ; 2:2", autoSlope) || !load("vec2 v = 0,0 [0..10]", "v=hermite 0:0,0@0,2 ; 2:4,4@0,2", vec) ||
+            !load("float v = 1 [0..10]", "v=smooth 0:0 ; 2:4", same))
+            problem = err.empty() ? TX("selftest.render_failed") : err;
+        else if (std::fabs(at(flat, 1.0) - 2.0) > 1e-9 || std::fabs(at(flat, 0.5) - at(same, 0.5)) > 1e-9 || std::fabs(at(flat, 1.7) - at(same, 1.7)) > 1e-9)
+            problem = TXF("selftest.fmt_bad", W("hermite with zero slopes must equal smooth").c_str());
+        else if (std::fabs(at(line, 0.5) - 1.0) > 1e-9 || std::fabs(at(line, 1.5) - 3.0) > 1e-9)
+            problem = TXF("selftest.fmt_bad", W("hermite with the slope of a line must give the line").c_str());
+        else if (std::fabs(at(autoSlope, 0.3) - 0.3) > 1e-9 || std::fabs(at(autoSlope, 1.6) - 1.6) > 1e-9)
+            problem = TXF("selftest.fmt_bad", W("smoothed slopes of collinear keys must give the line").c_str());
+        else {
+            double v[4];
+            vec.valueAt("v", 1.0, v);
+            if (std::fabs(v[0] - 2.0) > 1e-9 || std::fabs(v[1] - 2.0) > 1e-9) problem = TXF("selftest.fmt_bad", W("hermite on a vector").c_str());
+            else if (load("float v = 1", "v=hermite 0:0@1,2 ; 2:4", bad) || load("float v = 1", "v=hermite 0:0@x ; 2:4", bad) || load("vec2 v = 0,0", "v=hermite 0:0,0@1 ; 2:1,1", bad))
+                problem = TXF("selftest.fmt_bad", W("invalid slopes accepted").c_str());
+            else if (flat.signature() == line.signature()) problem = TXF("selftest.fmt_bad", W("the slopes must be part of the signature").c_str());
+        }
+        report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_param_hermite") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+        if (!problem.empty()) fails++;
+    }
     // LUT 3D : l'interpolation tetraedrique du GPU est comparee a une version CPU sur les 4096 pixels d'un degrade
     {
         total++;

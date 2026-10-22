@@ -414,7 +414,8 @@ void orbitScene(double dx, double dy, double zoom) {
     const double t = g.player && g.player->running() ? g.player->time() : g.previewTime;
     const auto changes = px->orbitCamera(s, t, dx, dy, zoom);
     if (changes.empty()) return;
-    for (const auto& kv : changes) applySetting(g.base, kv.first, kv.second);  // le point de vue est copie dans les reglages (config.ini a la fermeture)
+    for (const auto& kv : changes) applySetting(g.base, kv.first, kv.second);
+    toolsChanged();  // le point de vue est copie dans les reglages (config.ini a la fermeture)
     std::string text;
     for (const char* k : {"camerapos", "cameratarget"})
         if (g.base.pro.count(k)) text += (text.empty() ? "" : "  ") + std::string(k) + "=" + g.base.pro[k];

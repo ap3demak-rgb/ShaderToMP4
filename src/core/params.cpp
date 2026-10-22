@@ -414,10 +414,10 @@ bool ParamSet::load(const std::string& code, const Settings& s, const std::wstri
             continue;
         }
         Interp interp = Interp::Linear;
-        for (const char* w : {"linear", "smooth", "constant", "step"}) {
+        for (const char* w : {"linear", "smooth", "constant", "step", "hermite"}) {
             const size_t n = strlen(w);
             if (lower(spec).compare(0, n, w) == 0 && (spec.size() == n || isspace((unsigned char)spec[n]))) {
-                interp = std::string(w) == "smooth" ? Interp::Smooth : std::string(w) == "linear" ? Interp::Linear : Interp::Constant;
+                interp = std::string(w) == "smooth" ? Interp::Smooth : std::string(w) == "linear" ? Interp::Linear : std::string(w) == "hermite" ? Interp::Hermite : Interp::Constant;
                 spec = trim(spec.substr(n));
                 break;
             }
@@ -443,8 +443,31 @@ bool ParamSet::load(const std::string& code, const Settings& s, const std::wstri
             char* end = nullptr;
             const std::string ts = trim(part.substr(0, colon));
             k.t = strtod(ts.c_str(), &end);
-            if (ts.empty() || *end != 0 || !std::isfinite(k.t) || (!keys.empty() && k.t < keys.back().t) ||
-                !parseValue(p->info.type, p->info.n, part.substr(colon + 1), k.v))
+            std::string valueText = part.substr(colon + 1);
+            const size_t at = valueText.find('@');  // pente imposee : « 2:3.0@1.5 » (une pente par composante : « 1:0.5,0.5,0.5@0,0,1 »)
+            if (at != std::string::npos) {
+                const std::string slopeText = valueText.substr(at + 1);
+                valueText = valueText.substr(0, at);
+                k.hasSlope = true;
+                size_t q = 0;
+                int count = 0;
+                while (q <= slopeText.size() && count < 4) {
+                    size_t c = slopeText.find(',', q);
+                    if (c == std::string::npos) c = slopeText.size();
+                    const std::string one = trim(slopeText.substr(q, c - q));
+                    char* e2 = nullptr;
+                    const double m = strtod(one.c_str(), &e2);
+                    if (one.empty() || *e2 != 0 || !std::isfinite(m)) {
+                        bad = true;
+                        break;
+                    }
+                    k.m[count++] = m;
+                    q = c + 1;
+                }
+                if (count != p->info.n) bad = true;
+            }
+            if (bad || ts.empty() || *end != 0 || !std::isfinite(k.t) || (!keys.empty() && k.t < keys.back().t) ||
+                !parseValue(p->info.type, p->info.n, valueText, k.v))
                 bad = true;
             else {
                 clampValue(p->info, k.v);
@@ -596,6 +619,21 @@ void ParamSet::evaluate(const Param& p, double t, double out[4]) const {
         while (k + 2 < p.keys.size() && p.keys[k + 1].t <= t) k++;
         const Key &a = p.keys[k], &b = p.keys[k + 1];
         double f = b.t > a.t ? (t - a.t) / (b.t - a.t) : 1.0;
+        if (p.interp == Interp::Hermite && b.t > a.t) {  // cubique d'Hermite : pentes imposees, sinon lissees (Catmull-Rom, secante aux extremites)
+            auto slope = [&](size_t i, int c) {
+                const Key& k = p.keys[i];
+                if (k.hasSlope) return k.m[c];
+                if (p.keys.size() < 2) return 0.0;
+                const Key& lo = p.keys[i > 0 ? i - 1 : i];
+                const Key& hi = p.keys[i + 1 < p.keys.size() ? i + 1 : i];
+                return hi.t > lo.t ? (hi.v[c] - lo.v[c]) / (hi.t - lo.t) : 0.0;
+            };
+            const double dt = b.t - a.t, f2 = f * f, f3 = f2 * f;
+            const double h00 = 2 * f3 - 3 * f2 + 1, h10 = f3 - 2 * f2 + f, h01 = -2 * f3 + 3 * f2, h11 = f3 - f2;
+            for (int i = 0; i < 4; i++) out[i] = h00 * a.v[i] + h10 * dt * slope(k, i) + h01 * b.v[i] + h11 * dt * slope(k + 1, i);
+            clampValue(in, out);
+            return;
+        }
         if (p.interp == Interp::Constant) f = 0;
         else if (p.interp == Interp::Smooth) f = f * f * (3 - 2 * f);
         for (int i = 0; i < 4; i++) out[i] = a.v[i] + (b.v[i] - a.v[i]) * f;
@@ -661,6 +699,11 @@ std::string ParamSet::signature() const {
                 snprintf(b, sizeof(b), ",%.9g", k.v[i]);
                 s += b;
             }
+            if (k.hasSlope)
+                for (int i = 0; i < 4; i++) {
+                    snprintf(b, sizeof(b), "~%.9g", k.m[i]);
+                    s += b;
+                }
         }
     }
     if (rhythm_.loaded()) s += rhythm_.signature();

@@ -13,6 +13,7 @@
 #include "core/publish.h"
 #include "core/rhythm.h"
 #include "core/timemap.h"
+#include "core/proext.h"
 #include "core/util.h"
 #include "ui_controls.h"
 #include "ui_render.h"
@@ -26,7 +27,7 @@ namespace {
 enum {
     ID_OD_CLOSE = 900, ID_OD_ALPHA, ID_OD_HDR, ID_OD_PEAK, ID_OD_FALL, ID_OD_WHITE, ID_OD_SCALE, ID_OD_FILTER, ID_OD_INTERP, ID_OD_LOUD,
     ID_OD_TITLE, ID_OD_CREDIT, ID_OD_TITLEDUR, ID_OD_NEXT, ID_OD_NAME, ID_OD_EXISTS, ID_OD_META, ID_OD_ENDACT, ID_OD_CHUNK, ID_OD_PBO, ID_OD_SHUTTER, ID_OD_VARIANTS,
-    ID_OD_LOOPMODE, ID_OD_LOOPFADE, ID_OD_TIMEMAP, ID_OD_SPEED, ID_OD_SAMPLES, ID_OD_TILE, ID_OD_DPI, ID_OD_FINDLOOP, ID_OD_TIME, ID_OD_CURVE, ID_OD_AUDIOF, ID_OD_STILLF, ID_OD_PRECHECK, ID_OD_PUBLISH, ID_OD_TARGET, ID_OD_TSIZE, ID_OD_CROP, ID_OD_MASTER, ID_OD_CACHEMAX, ID_OD_EMBED, ID_OD_ACREDIT, ID_OD_ANIMP, ID_OD_PURGE,
+    ID_OD_LOOPMODE, ID_OD_LOOPFADE, ID_OD_TIMEMAP, ID_OD_TIMEEDIT, ID_OD_SPEED, ID_OD_SAMPLES, ID_OD_TILE, ID_OD_DPI, ID_OD_FINDLOOP, ID_OD_TIME, ID_OD_CURVE, ID_OD_AUDIOF, ID_OD_STILLF, ID_OD_PRECHECK, ID_OD_PUBLISH, ID_OD_TARGET, ID_OD_TSIZE, ID_OD_CROP, ID_OD_MASTER, ID_OD_CACHEMAX, ID_OD_EMBED, ID_OD_ACREDIT, ID_OD_ANIMP, ID_OD_PURGE,
     ID_OD_RHYTHM, ID_OD_BPM, ID_OD_BARS, ID_OD_MARKERS, ID_OD_BSYNC, ID_OD_WAVE, ID_OD_ZOOM, ID_OD_POS, ID_OD_ANALYSE, ID_OD_INFO, ID_OD_PARALLEL, ID_OD_FARM,
     ID_OD_SOURCEBTN, ID_OD_SOURCE, ID_OD_SOURCE2, ID_OD_SMATCH, ID_OD_SAUDIO, ID_OD_REVERSE, ID_OD_SFPS, ID_OD_TDUR, ID_OD_TOFF,
     ID_OD_COMPOBTN, ID_OD_AOV, ID_OD_EXRCOMP, ID_OD_EXRPREC, ID_OD_ALPHAMODE, ID_OD_DEPTHRANGE, ID_OD_TIFFF, ID_OD_VBLUR
@@ -188,6 +189,7 @@ bool applyAndClose(int next) {
     }
     g.base = s;
     saveSettings();
+    toolsChanged();
     updateEstimate();
     updateForced();
     if (g.player && g.player->running()) startPlayer();  // l'apercu en lecture reprend les nouveaux reglages (transparence, HDR)
@@ -508,6 +510,10 @@ LRESULT CALLBACK dlgProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 const uint64_t freed = cachePurge(g.exeDir);
                 MessageBoxW(D.wnd, TXF("log.cache_purged", (double)freed / 1e6).c_str(), TX("ui.output.publish_title").c_str(), MB_ICONINFORMATION);
             }
+            else if (LOWORD(wp) == ID_OD_TIMEEDIT) {
+                std::string result;
+                if (proExt() && proExt()->tools.editTimeMap && proExt()->tools.editTimeMap(D.wnd, U8(txt(D.timemap)), std::max(0.1, g.base.duration), result)) SetWindowTextW(D.timemap, W(result).c_str());
+            }
             else if (LOWORD(wp) == ID_OD_TIME) applyAndClose(2);
             else if (D.page == 2 && (HIWORD(wp) == EN_CHANGE || HIWORD(wp) == CBN_SELCHANGE) && D.curve) InvalidateRect(D.curve, nullptr, FALSE);
             else if (LOWORD(wp) == ID_OD_FINDLOOP) applyAndClose(-2);
@@ -644,7 +650,9 @@ int runPage(HWND parent, int page) {
         label(TX("ui.output.loopfade"), rx, 40, 130);
         D.loopFade = edit(ID_OD_LOOPFADE, f.loopFade, rf, 40, 118);
         label(TX("ui.output.timemap"), lx, 72, 130);
-        D.timemap = edit(ID_OD_TIMEMAP, f.timemap, fx, 72, 428);
+        const bool timeTool = proExt() && proExt()->tools.editTimeMap;  // editeur graphique de la courbe de temps (edition Pro)
+        D.timemap = edit(ID_OD_TIMEMAP, f.timemap, fx, 72, timeTool ? 380 : 428);
+        if (timeTool) button("ui.output.timemap_edit", ID_OD_TIMEEDIT, IC_CURVE, ui::BtnStyle::Secondary, fx + 388, 69, 40, GetModuleHandleW(nullptr));
         label(TX("ui.output.speed"), lx, 104, 130);
         D.speed = edit(ID_OD_SPEED, f.speed, fx, 104, 150);
         label(TX("ui.output.audiofollow"), rx, 104, 130);

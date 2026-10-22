@@ -171,7 +171,13 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         {FVIRTKEY, VK_F6, ID_PAUSE},
         {FVIRTKEY, VK_ESCAPE, ID_CANCEL},
     };
-    HACCEL haccel = CreateAcceleratorTableW(acc, (int)(sizeof(acc) / sizeof(acc[0])));
+    std::vector<ACCEL> accAll(acc, acc + sizeof(acc) / sizeof(acc[0]));
+    if (const ProExt* px = proExt(); px && px->tools.undoRedo) {  // annuler / retablir (edition Pro)
+        accAll.push_back({FVIRTKEY | FCONTROL, 'Z', ID_UNDO});
+        accAll.push_back({FVIRTKEY | FCONTROL, 'Y', ID_REDO});
+        accAll.push_back({FVIRTKEY | FCONTROL | FSHIFT, 'Z', ID_REDO});
+    }
+    HACCEL haccel = CreateAcceleratorTableW(accAll.data(), (int)accAll.size());
 
     // Cartes graphiques détectées (affichées s'il y en a plusieurs)
     {
@@ -202,6 +208,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         if (!ffmpegPresent(g.exeDir)) promptDownload();
     }
 
+    toolsChanged();  // etat de depart de l'annulation (edition Pro)
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0) > 0) {
         const bool inMain = GetAncestor(m.hwnd, GA_ROOT) == wnd;  // l'éditeur et les autres fenêtres ont leurs propres touches

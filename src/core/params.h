@@ -60,8 +60,10 @@ private:
     struct Key {
         double t = 0;
         double v[4] = {0, 0, 0, 0};
+        bool hasSlope = false;            // pente imposee (`t:v@pente`, mode hermite) ; sinon pente lissee calculee entre les voisines
+        double m[4] = {0, 0, 0, 0};       // pente de chaque composante, en valeur par seconde
     };
-    enum class Interp { Linear, Smooth, Constant };
+    enum class Interp { Linear, Smooth, Constant, Hermite };
     struct Param {
         ParamInfo info;
         std::vector<Key> keys;

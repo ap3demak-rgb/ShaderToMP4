@@ -36,6 +36,7 @@ IC_MONITOR  RCDATA "icons/monitor.svg"
 IC_INFO     RCDATA "icons/info.svg"
 IC_GLOBE    RCDATA "icons/globe.svg"
 IC_EDIT     RCDATA "icons/edit.svg"
+IC_CURVE    RCDATA "icons/curve.svg"
 
 // Fichiers de langue (anglais et francais) embarques : un dossier lang/ a cote de l exe peut les completer
 IDR_LANG_EN RCDATA "../lang/en.json"

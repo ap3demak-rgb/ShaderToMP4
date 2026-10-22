@@ -50,7 +50,23 @@ public:
     virtual bool reconfigure(const Settings& s) { (void)s; return false; }
 };
 
+// Outils d'edition de l'interface Windows (edition Pro) : annuler / retablir, editeurs de courbes, de temps et de montage. Le programme public ne fait
+// qu'appeler ces fonctions quand elles existent (boutons et raccourcis absents de l'edition libre) ; la verification de la licence est faite par elles.
+struct ProTools {
+    // Un champ des reglages a change (le GUI regroupe les changements : appel 400 ms apres le dernier) : memoriser l'etat pour annuler.
+    std::function<void()> settingsChanged;
+    // Ctrl+Z (redo faux) ou Ctrl+Y / Ctrl+Maj+Z (redo vrai) dans la fenetre principale ; vrai si traite.
+    std::function<bool(bool redo)> undoRedo;
+    // Fenetre des parametres : editeur de la courbe d'images cles d'un parametre du shader (ecrit sa ligne `// key nom=...`) ; vrai si le shader a change.
+    std::function<bool(HWND parent, const std::wstring& shaderPath, const std::string& param)> editCurve;
+    // Fenetre Sortie : editeur de la courbe de temps ; current = texte actuel (`0:0;4:2`), duration = duree de la video ; vrai + result si applique.
+    std::function<bool(HWND parent, const std::string& current, double duration, std::string& result)> editTimeMap;
+    // Fichier .montage : editeur graphique ; vrai si traite (faux : l'editeur de texte est utilise).
+    std::function<bool(HWND parent, const std::wstring& montagePath)> editMontage;
+};
+
 struct ProExt {
+    ProTools tools;
     // Cree la scene d'un rendu. Renvoie nullptr sans erreur si le shader n'en demande pas ; nullptr avec err renseigne si la demande est invalide.
     std::function<std::unique_ptr<ProScene>(const SceneRequest&, std::wstring& err)> makeScene;
     // Apercu interactif : les reglages (shader compris) demandent-ils une scene 3D ?

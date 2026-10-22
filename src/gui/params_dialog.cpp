@@ -7,6 +7,7 @@
 #include "app.h"
 #include "core/i18n.h"
 #include "core/params.h"
+#include "core/proext.h"
 #include "core/postfx.h"
 #include "core/util.h"
 #include "ui_controls.h"
@@ -39,7 +40,7 @@ struct Dlg {
     bool fxOn[8] = {};
     double fxAmt[8] = {};
     std::vector<ParamInfo> infos;
-    std::wstring file, error, shaderName;
+    std::wstring file, error, shaderName, shaderPath;
     bool hasShader = false;
     bool ready = false;  // la fenêtre est construite : les changements de champ viennent de l'utilisateur
     int nextId = ID_PD_SLIDER;
@@ -92,7 +93,10 @@ void postChanged() {  // effets ou LUT modifies : reglages enregistres, apercu e
     scheduleRestart();
 }
 
-void saveParam(const ParamInfo& p) { saveParamValue(D.file, p.name, formatParamValue(p, p.value)); }
+void saveParam(const ParamInfo& p) {
+    saveParamValue(D.file, p.name, formatParamValue(p, p.value));
+    toolsChanged();
+}
 
 // --- Construction des lignes -----------------------------------------------------------------------------------------------
 int viewWidthDp() {
@@ -101,14 +105,19 @@ int viewWidthDp() {
     return MulDiv(rc.right, 96, (int)D.dpi);
 }
 
+// Bouton de courbe d'un parametre (edition Pro : editeur de la courbe d'images cles) : parametres numeriques et couleurs
+bool curveButtonAvailable() { return proExt() && proExt()->tools.editCurve; }
+bool curveButtonFor(const ParamInfo& p) { return curveButtonAvailable() && p.type != "bool" && p.audio.empty(); }
+RECT curveButtonRect(const Row& r, int viewW) { return {viewW - S(20 + 28), S(r.y + 5) - D.scrollY, viewW - S(20), S(r.y + 31) - D.scrollY}; }
+
 void positionChildren() {
     const int vw = viewWidthDp();
-    const int sx = 206, sw = std::max(60, vw - sx - 20 - 90);
+    const int sx = 206, sw = std::max(60, vw - sx - 20 - 90 - (curveButtonAvailable() ? 34 : 0));
     for (Row& r : D.rows) {
         const int n = (int)r.sliders.size();
         // un parametre anime ou lie au son : sa note (« animé par images clés ») prend la place de la valeur, le curseur est raccourci
         const bool locked = r.kind == Row::Param && (D.infos[(size_t)r.idx].animated || !D.infos[(size_t)r.idx].audio.empty());
-        const int rowW = locked ? std::max(60, vw - sx - 20 - 190) : sw;
+        const int rowW = locked ? std::max(60, vw - sx - 20 - 190 - (curveButtonAvailable() ? 34 : 0)) : sw;
         for (int i = 0; i < n; i++) {
             const int w = (rowW - (n - 1) * 6) / n;
             MoveWindow(r.sliders[(size_t)i], S(sx + i * (w + 6)), S(r.y + 4) - D.scrollY, S(w), S(28), TRUE);
@@ -216,6 +225,7 @@ void reloadShader() {
     D.hasShader = true;
     D.shaderName = path.substr(path.find_last_of(L"\\/") == std::wstring::npos ? 0 : path.find_last_of(L"\\/") + 1);
     D.file = paramsFile(g.exeDir, path);
+    D.shaderPath = path;
     std::wstring err;
     if (!loadShaderParams(g.exeDir, path, D.infos, err)) D.error = err;
 }
@@ -273,13 +283,21 @@ void paintView() {
                     f.strokeRound(sw, F(6), ui::rgb(FIELD_BORDER), 1.0f);
                     f.text(W(formatParamValue(p, p.value)), ui::rectf(F(280), (float)yy, w - F(20), (float)yy + F(36)), F(13), false, ui::rgb(MUTED));
                 }
+                const float edge = w - F(20 + (curveButtonFor(p) ? 34 : 0));  // le bouton de courbe prend la place de la fin de ligne
+                if (curveButtonFor(p)) {
+                    const RECT cb = curveButtonRect(r, (int)w);
+                    const D2D1_RECT_F q = ui::rectf(cb);
+                    f.fillRound(q, F(6), ui::rgb(p.animated ? 0x2A2F48 : FIELD));
+                    f.strokeRound(q, F(6), ui::rgb(p.animated ? ACCENT : FIELD_BORDER), 1.0f);
+                    f.icon(IC_CURVE, ui::rectf((float)cb.left + F(4), (float)cb.top + F(3), (float)cb.right - F(4), (float)cb.bottom - F(3)), true, ui::rgb(p.animated ? ACCENT : MUTED));
+                }
                 if (locked) {
-                    f.text(TX(p.animated ? "ui.params.animated" : "ui.params.audio"), ui::rectf(w - F(20 + 180), (float)yy, w - F(20), (float)yy + F(36)), F(12), false,
+                    f.text(TX(p.animated ? "ui.params.animated" : "ui.params.audio"), ui::rectf(edge - F(180), (float)yy, edge, (float)yy + F(36)), F(12), false,
                            ui::rgb(FAINT), ui::Right);
                 } else if (p.type == "float") {
-                    f.text(fmt(p.value[0]), ui::rectf(valX, (float)yy, w - F(20), (float)yy + F(36)), F(13), false, ui::rgb(MUTED), ui::Right);
+                    f.text(fmt(p.value[0]), ui::rectf(valX - (edge < w - F(20) ? F(34) : 0), (float)yy, edge, (float)yy + F(36)), F(13), false, ui::rgb(MUTED), ui::Right);
                 } else if (p.type == "int") {
-                    f.text(std::to_wstring((long long)std::llround(p.value[0])), ui::rectf(valX, (float)yy, w - F(20), (float)yy + F(36)), F(13), false, ui::rgb(MUTED), ui::Right);
+                    f.text(std::to_wstring((long long)std::llround(p.value[0])), ui::rectf(valX - (edge < w - F(20) ? F(34) : 0), (float)yy, edge, (float)yy + F(36)), F(13), false, ui::rgb(MUTED), ui::Right);
                 }
                 break;
             }
@@ -418,6 +436,20 @@ LRESULT CALLBACK viewProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     if (PtInRect(&c, pt)) { toggleBool(r); return 0; }
                 } else if (r.kind == Row::Param) {
                     ParamInfo& p = D.infos[(size_t)r.idx];
+                    if (curveButtonFor(p)) {  // editeur de courbe (edition Pro)
+                        RECT dvw;
+                        GetClientRect(D.view, &dvw);
+                        const RECT cb = curveButtonRect(r, (int)dvw.right);
+                        if (PtInRect(&cb, pt)) {
+                            const std::string name = p.name;
+                            if (proExt()->tools.editCurve(D.wnd, D.shaderPath, name)) {
+                                reloadShader();
+                                buildRows();
+                                postChanged();
+                            }
+                            return 0;
+                        }
+                    }
                     if (p.animated || !p.audio.empty()) continue;
                     if (p.type == "bool") {
                         RECT c = checkRect(r, 206);

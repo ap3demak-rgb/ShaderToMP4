@@ -1173,5 +1173,7 @@
   "error.scene_tiled": "Une scène 3D ne se rend pas par tuiles : réduisez l'image fixe ou retirez le réglage tile",
   "status.orbit": "Caméra 3D : %ls (retenue dans les réglages)",
   "status.orbit_locked": "Le shader fixe sa propre caméra (lignes // camera) : retirez-les pour choisir la caméra à la souris",
-  "status.preview_ready_scene": "Aperçu prêt. Scène 3D : glissez dans l'aperçu pour orbiter la caméra, molette pour zoomer"
+  "status.preview_ready_scene": "Aperçu prêt. Scène 3D : glissez dans l'aperçu pour orbiter la caméra, molette pour zoomer",
+  "selftest.fmt_param_hermite": "courbes d'Hermite des paramètres : pentes imposées, pentes lissées, exactes sur une droite et sur le lissage de base, pentes invalides refusées",
+  "ui.output.timemap_edit": "…"
 }

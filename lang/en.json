@@ -1173,5 +1173,7 @@
   "error.scene_tiled": "A 3D scene cannot be rendered in tiles: use a smaller still image or remove the tile setting",
   "status.orbit": "3D camera: %ls (kept in the settings)",
   "status.orbit_locked": "The shader sets its own camera (// camera lines): remove them to choose the camera with the mouse",
-  "status.preview_ready_scene": "Preview ready. 3D scene: drag in the preview to orbit the camera, wheel to zoom"
+  "status.preview_ready_scene": "Preview ready. 3D scene: drag in the preview to orbit the camera, wheel to zoom",
+  "selftest.fmt_param_hermite": "Hermite parameter curves: imposed slopes, smoothed slopes, exact on a line and on the smooth mode, invalid slopes refused",
+  "ui.output.timemap_edit": "…"
 }

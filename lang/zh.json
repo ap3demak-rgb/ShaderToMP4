@@ -1173,5 +1173,6 @@
   "error.scene_tiled": "3D 场景不能分块渲染：请缩小静态图像，或去掉 tile 设置",
   "status.orbit": "3D 相机：%ls（已保存到设置中）",
   "status.orbit_locked": "着色器自行设定了相机（// camera 行）：删除这些行后才能用鼠标选择相机",
-  "status.preview_ready_scene": "预览完成。3D 场景：在预览中拖动可环绕相机，滚轮缩放"
+  "status.preview_ready_scene": "预览完成。3D 场景：在预览中拖动可环绕相机，滚轮缩放",
+  "ui.output.timemap_edit": "…"
 }

@@ -1173,5 +1173,6 @@
   "error.scene_tiled": "Una scena 3D non si può renderizzare a tessere: riduci l'immagine fissa o rimuovi l'impostazione tile",
   "status.orbit": "Camera 3D: %ls (salvata nelle impostazioni)",
   "status.orbit_locked": "Lo shader imposta una propria camera (righe // camera): rimuovile per scegliere la camera con il mouse",
-  "status.preview_ready_scene": "Anteprima pronta. Scena 3D: trascina nell'anteprima per orbitare la camera, rotellina per lo zoom"
+  "status.preview_ready_scene": "Anteprima pronta. Scena 3D: trascina nell'anteprima per orbitare la camera, rotellina per lo zoom",
+  "ui.output.timemap_edit": "…"
 }

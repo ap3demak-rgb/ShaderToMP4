@@ -1173,5 +1173,6 @@
   "error.scene_tiled": "Eine 3D-Szene lässt sich nicht in Kacheln rendern: verkleinern Sie das Standbild oder entfernen Sie die Kachel-Einstellung",
   "status.orbit": "3D-Kamera: %ls (in den Einstellungen übernommen)",
   "status.orbit_locked": "Der Shader legt seine eigene Kamera fest (Zeilen // camera): Entfernen Sie sie, um die Kamera mit der Maus zu wählen",
-  "status.preview_ready_scene": "Vorschau fertig. 3D-Szene: In der Vorschau ziehen, um die Kamera zu umkreisen, Mausrad zum Zoomen"
+  "status.preview_ready_scene": "Vorschau fertig. 3D-Szene: In der Vorschau ziehen, um die Kamera zu umkreisen, Mausrad zum Zoomen",
+  "ui.output.timemap_edit": "…"
 }

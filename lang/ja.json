@@ -1173,5 +1173,6 @@
   "error.scene_tiled": "3D シーンはタイル分割でレンダリングできません。静止画を小さくするか、tile の設定を外してください",
   "status.orbit": "3D カメラ: %ls（設定に保持されます）",
   "status.orbit_locked": "シェーダーが独自のカメラを指定しています（// camera の行）。マウスでカメラを選ぶにはそれらを削除してください",
-  "status.preview_ready_scene": "プレビュー完了。3D シーン: プレビュー上でドラッグするとカメラが周回し、ホイールでズームします"
+  "status.preview_ready_scene": "プレビュー完了。3D シーン: プレビュー上でドラッグするとカメラが周回し、ホイールでズームします",
+  "ui.output.timemap_edit": "…"
 }

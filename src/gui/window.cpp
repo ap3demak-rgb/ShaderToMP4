@@ -4,6 +4,8 @@
 #include "app.h"
 #include "core/ffmpeg_download.h"
 #include "core/prolicense.h"
+#include "core/proext.h"
+#include "core/montage.h"
 #include "core/i18n.h"
 #include "core/util.h"
 #include "accessible.h"
@@ -774,6 +776,10 @@ void setDropHot(bool hot) {
     SetTimer(g.wnd, 9, 15, nullptr);
 }
 
+void toolsChanged() {
+    if (g.wnd && proExt() && proExt()->tools.settingsChanged) SetTimer(g.wnd, 11, 400, nullptr);
+}
+
 LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_CREATE: {
@@ -796,6 +802,11 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_PAINT: paintMain(hw); return 0;
         case WM_TIMER:
+            if (wp == 11) {  // outils d'edition Pro : les changements de champs sont regroupes, puis memorises pour l'annulation
+                KillTimer(hw, 11);
+                if (const ProExt* px = proExt(); px && px->tools.settingsChanged) px->tools.settingsChanged();
+                return 0;
+            }
             if (wp == 9) {  // fondu de l'illumination du depot
                 static ULONGLONG last = 0;
                 ULONGLONG now = GetTickCount64();
@@ -896,6 +907,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_HSCROLL:
+            if (proExt() && proExt()->tools.settingsChanged) SetTimer(hw, 11, 400, nullptr);
             if ((HWND)lp == g.trkCrf) { updateCrfLabel(); updateEstimate(); }
             if ((HWND)lp == g.trkPrev) {
                 updatePrevLabel();
@@ -1023,6 +1035,11 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_COMMAND: {
             const int id = LOWORD(wp);
+            if (id != ID_UNDO && id != ID_REDO && proExt() && proExt()->tools.settingsChanged) SetTimer(hw, 11, 400, nullptr);  // annulation : etat memorise apres le dernier changement
+            if (id == ID_UNDO || id == ID_REDO) {
+                if (const ProExt* px = proExt(); px && px->tools.undoRedo) px->tools.undoRedo(id == ID_REDO);
+                return 0;
+            }
             if (HIWORD(wp) == EN_CHANGE || HIWORD(wp) == CBN_SELCHANGE || HIWORD(wp) == CBN_EDITCHANGE) updateEstimate();
             if (id == ID_RES && HIWORD(wp) == CBN_SELCHANGE) {
                 int i = (int)SendMessageW(g.cmbRes, CB_GETCURSEL, 0, 0);
@@ -1084,7 +1101,16 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                 case ID_PARAMS: showParams(hw); break;
                 case ID_OUTPUT: showOutput(hw); break;
                 case ID_FILESCOPE: toggleFileScope(); break;
-                case ID_EDITOR: showEditor(hw); break;
+                case ID_EDITOR: {
+                    const ProExt* px = proExt();
+                    if (px && px->tools.editMontage && !g.paths.empty()) {  // fichier .montage : editeur graphique de l'edition Pro quand il existe
+                        int sel = (int)SendMessageW(g.list, LVM_GETNEXTITEM, (WPARAM)-1, LVNI_SELECTED);
+                        if (sel < 0 || sel >= (int)g.paths.size()) sel = 0;
+                        if (isMontageFile(g.paths[(size_t)sel]) && px->tools.editMontage(hw, g.paths[(size_t)sel])) break;
+                    }
+                    showEditor(hw);
+                    break;
+                }
                 case ID_FINDLOOP: startJobs(true, 4); break;
                 case ID_LANG: {  // langue suivante (en -> fr -> ...), appliquée tout de suite
                     std::vector<std::string> langs = i18n::available();

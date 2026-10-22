@@ -1173,5 +1173,6 @@
   "error.scene_tiled": "Een 3D-scène kan niet in tegels worden gerenderd: verklein de stilstaande afbeelding of verwijder de tegelinstelling",
   "status.orbit": "3D-camera: %ls (bewaard in de instellingen)",
   "status.orbit_locked": "De shader bepaalt zijn eigen camera (regels // camera): verwijder ze om de camera met de muis te kiezen",
-  "status.preview_ready_scene": "Voorbeeld klaar. 3D-scène: sleep in het voorbeeld om de camera te laten draaien, scrollwiel om te zoomen"
+  "status.preview_ready_scene": "Voorbeeld klaar. 3D-scène: sleep in het voorbeeld om de camera te laten draaien, scrollwiel om te zoomen",
+  "ui.output.timemap_edit": "…"
 }
