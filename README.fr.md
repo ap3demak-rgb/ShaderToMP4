@@ -27,7 +27,9 @@
 
 **ShaderToMP4** convertit un shader [Shadertoy](https://www.shadertoy.com) (onglet *Image*, avec ses passes Buffer A–D, Common, Cubemap A et Sound) en vidéo, **image par image**, avec un temps exact (`iTime = image / fps`). Pas de capture d'écran, donc pas de saccades, pas de perte, quelle que soit la puissance de ta carte graphique : un shader qui tourne à 5 images par seconde en direct donne une vidéo parfaitement fluide.
 
-Un seul programme portable pour **Windows, Linux et macOS** (rien à installer ; un **installeur** facultatif pour Windows), avec une interface sombre moderne en français et en anglais.
+Un seul programme portable pour **Windows** (rien à installer ; un **installeur** facultatif), avec une interface sombre moderne en français et en anglais.
+
+> **Linux et macOS sont gelés** (décision du 2026-10-22). La version **2.1.1** est la dernière publiée avec des archives Linux (x86-64, ARM64) et macOS ; elles restent disponibles sur la page des [Releases](https://github.com/ap3demak-rgb/ShaderToMP4/releases) et **restent sous GPL-3.0-or-later**. Leur code reste dans ce dépôt (`src/ui_imgui/`, `src/platform/posix/`, `scripts/*.sh`, `CMakeLists.txt`), marqué *figé* : pas de correctif, pas de nouveau test, pas d'intégration continue pour eux, et les nouvelles fonctions visent Windows seulement.
 
 ---
 
@@ -76,7 +78,7 @@ Un seul programme portable pour **Windows, Linux et macOS** (rien à installer ;
   <sub>La fenêtre « À propos » (<code>F1</code>) : version, copyright, licence, contact et site web. Le bouton globe change la langue instantanément.</sub>
 </p>
 
-### Sous Linux et macOS
+### Sous Linux et macOS (gelé : version 2.1.1 et antérieures)
 
 Windows garde son interface native Direct2D. Linux et macOS utilisent une seconde interface au même aspect (cartes sombres, accent en dégradé, mêmes icônes SVG), fondée sur GLFW et Dear ImGui et dessinée en OpenGL ; les deux interfaces partagent le même moteur de rendu, les mêmes réglages et les mêmes traductions.
 
@@ -100,9 +102,9 @@ Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : 
    | Système | Archive | Lancer |
    |---|---|---|
    | Windows 10 / 11, 64 bits | `ShaderToMP4-<version>-win64.zip` | `ShaderToMP4.exe` |
-   | Linux x86-64 | `ShaderToMP4-<version>-linux-x86_64.tar.gz` | `./ShaderToMP4` |
-   | Linux ARM64 | `ShaderToMP4-<version>-linux-aarch64.tar.gz` | `./ShaderToMP4` |
-   | macOS 10.13+, Apple Silicon et Intel | `ShaderToMP4-<version>-macos-universal.zip` | `ShaderToMP4.app` |
+   | Linux x86-64 (gelé, jusqu'à la 2.1.1) | `ShaderToMP4-<version>-linux-x86_64.tar.gz` | `./ShaderToMP4` |
+   | Linux ARM64 (gelé, jusqu'à la 2.1.1) | `ShaderToMP4-<version>-linux-aarch64.tar.gz` | `./ShaderToMP4` |
+   | macOS 10.13+, Apple Silicon et Intel (gelé, jusqu'à la 2.1.1) | `ShaderToMP4-<version>-macos-universal.zip` | `ShaderToMP4.app` |
 
    **Installeur Windows (facultatif).** `ShaderToMP4-<version>-win64-setup.exe` fait comme l'archive, avec des raccourcis du menu Démarrer et du bureau, une entrée dans *Applications et fonctionnalités* pour désinstaller, et `ffmpeg.exe` déjà dedans (version 9.0.2, build GPL, rien à télécharger). Il installe pour votre compte seulement, sans droits d'administrateur, par défaut dans `%LOCALAPPDATA%\Programs\ShaderToMP4` (Program Files est refusé : le programme range ses réglages à côté de lui et doit pouvoir y écrire). Il n'écrit que : les fichiers du programme, `HKCU\Software\ShaderToMP4` (dossier et version), l'entrée de désinstallation, le raccourci du menu Démarrer et, si vous les cochez, un raccourci du bureau et « Ouvrir avec » pour `.glsl` et `.montage` (`HKCU\Software\Classes`, vos programmes par défaut ne changent pas). Installer une version plus récente par-dessus garde vos réglages et préréglages ; une version plus ancienne est refusée ; un `ffmpeg.exe` que vous y avez mis vous-même n'est jamais remplacé ni supprimé. La désinstallation garde vos réglages sauf si vous cochez la case (`/DELETE_SETTINGS` en mode silencieux) ; vos shaders et vos vidéos ne sont jamais touchés. En silencieux : `setup.exe /S /D=C:\dossier` (aussi `/LANG=1036`, `/DESKTOP`, `/ASSOC`), `Uninstall.exe /S`. L'installeur **n'est pas signé** : Windows SmartScreen peut avertir d'un éditeur inconnu ; comparez la somme SHA-256 du fichier avec `SHA256SUMS.txt` de la version. Le programme lui-même ne change pas et reste portable : l'archive zip reste la référence. Essayé sur ce PC seulement (Windows 10 : installation silencieuse, mise à jour, refus d'une version plus ancienne, programme en cours, composants facultatifs, désinstallation avec et sans les réglages, aucune trace) ; les autres versions de Windows et les autres comptes n'ont pas été essayés, et les pages de l'installeur n'ont été regardées qu'en anglais et en français.
 
@@ -417,7 +419,7 @@ Tirées de [CHANGELOG.fr.md](CHANGELOG.fr.md), qui donne le détail ; la liste e
 
 | Version | Principaux ajouts |
 |---|---|
-| Non publié | Infrastructure de l'édition Pro (rien de verrouillé dans l'édition libre) : `ShaderToMP4.license` signé et vérifié hors ligne, filigrane d'essai sur les sorties Pro sans licence, « Acheter Pro » (5, 10 ou 15 € par PayPal) et état de la licence dans « À propos », `--license-info` |
+| Non publié | Linux et macOS gelés (la 2.1.1 est la dernière version avec eux), intégration continue Windows seulement ; infrastructure de l'édition Pro (rien de verrouillé dans l'édition libre) : `ShaderToMP4.license` signé et vérifié hors ligne, filigrane d'essai sur les sorties Pro sans licence, « Acheter Pro » (5, 10 ou 15 € par PayPal) et état de la licence dans « À propos », `--license-info` |
 | 2.1.1 | Normalisation du son à gain constant (le volume ne monte plus ni ne descend) ; OpenEXR multicouche écrit par le programme (couleur HDR, profondeur, normale, id, alpha, mouvement estimé), alpha droit ou prémultiplié, TIFF flottant, DPX, carte de profondeur 16 bits ; mode effet : le shader appliqué à des vidéos, images, séquences et dossiers (taille, cadence, durée, son, sous-titres et chapitres suivent la source), lecture à l'envers, 25 transitions entre deux sources avec `iProgress`, clés chroma / luminance / différence |
 | 2.1.0 | Installeur Windows (NSIS, par utilisateur, ffmpeg inclus, facultatif) |
 | 2.0.0 | Contrôle qualité (flashs, NaN, scintillement, aliasing, précision), comparaison de shaders et images de référence, estimation du temps de rendu avec alerte ; boucles sans couture (fondu, aller-retour), courbe de temps et vrai ralenti, recherche de la période, contrôle de la couture, vignette intelligente, image fixe moyennée ; affiches par tuiles jusqu'à 65536 pixels, carte du coût GPU et temps GPU par passe, VR côte à côte / anaglyphe / fulldome, faces de cubemap ; destinations de publication, poids cible, cache des maîtres, vidéo reproductible, page HTML autonome ; son et rythme (tempo, variables de temps, repères, éditeur de temps) ; parties rendues en parallèle et ferme de rendu sans serveur |
@@ -529,7 +531,9 @@ Avec les Build Tools de Visual Studio (le chemin de `vcvars64.bat` est écrit da
 
 Cela compile les ressources (manifeste, icône, icônes SVG, fichiers de langue, informations de version) puis tous les fichiers de `src` vers `bin\ShaderToMP4.exe`, lié statiquement (aucun runtime à installer), et copie les fichiers de licence et `lang/` à côté. CMake fonctionne aussi (`cmake -S . -B build-cmake` puis `cmake --build build-cmake --config Release`), et `scripts\package-windows.ps1` fabrique le zip portable.
 
-### Linux et macOS
+### Linux et macOS (gelé)
+
+Ces systèmes ne sont plus suivis (voir l'avis en haut) : la compilation ci-dessous est celle de la version 2.1.1 et n'est plus testée.
 
 Il faut CMake 3.20+, un compilateur C++17 et, sous Linux, les paquets de développement X11 / Wayland (sous Debian et Ubuntu : `sudo apt install cmake ninja-build xorg-dev libgl1-mesa-dev libxkbcommon-dev libwayland-dev wayland-protocols`).
 

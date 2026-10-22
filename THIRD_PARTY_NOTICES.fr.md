@@ -14,7 +14,7 @@ Dernière revue : ShaderToMP4 2.1.0 (l'installeur Windows livre ffmpeg 9.0.2 et 
 
 **Windows** : aucune bibliothèque. Le lecteur JSON (traductions), la couche de dessin Direct2D, les fonctions de processus, de HTTP et de fichiers sont du code original du projet (`src/`). Seuls l'environnement d'exécution C++ et le Windows SDK servent à la compilation (voir la section 3).
 
-**Linux et macOS** : trois bibliothèques sont téléchargées à la configuration (versions figées, voir `CMakeLists.txt` et `src/ui_imgui/CMakeLists.txt`) et compilées dans l'exécutable, et une police est embarquée. Leurs licences sont permissives et compatibles avec la GPL-3.0 ; leurs mentions de copyright restent dans leurs propres fichiers sources.
+**Linux et macOS** (gelés depuis le 2026-10-22 : ces composants ne sont que dans les archives jusqu'à la version 2.1.1, jamais dans le programme Windows, et ne sont plus mis à jour ; `scripts/check-repo.ps1` vérifie que la fabrication Windows ne les référence pas) : trois bibliothèques sont téléchargées à la configuration (versions figées, voir `CMakeLists.txt` et `src/ui_imgui/CMakeLists.txt`) et compilées dans l'exécutable, et une police est embarquée. Leurs licences sont permissives et compatibles avec la GPL-3.0 ; leurs mentions de copyright restent dans leurs propres fichiers sources.
 
 | Composant | Rôle | Licence | Compatibilité GPL-3.0 |
 |---|---|---|---|

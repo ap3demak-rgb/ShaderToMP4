@@ -14,7 +14,7 @@
 
 <p align="center">
   <img alt="Version" src="https://img.shields.io/badge/version-2.1.1-FF5A96?style=flat-square">
-  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-0078D4?style=flat-square">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20(Linux%20and%20macOS%20frozen)-0078D4?style=flat-square">
   <img alt="Portable" src="https://img.shields.io/badge/portable-installer%20optional-3DDC97?style=flat-square">
   <img alt="Languages" src="https://img.shields.io/badge/languages-6-7C6CFF?style=flat-square">
   <img alt="C++" src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white">
@@ -27,7 +27,9 @@
 
 **ShaderToMP4** converts a [Shadertoy](https://www.shadertoy.com) shader (*Image* tab, with its Buffer A–D, Common, Cubemap A and Sound passes) into a video, **frame by frame**, with exact timing (`iTime = frame / fps`). No screen capture, so no stutter and no loss, whatever the power of your graphics card: a shader that runs at 5 frames per second in real time still gives a perfectly smooth video.
 
-One portable program for **Windows, Linux and macOS** (nothing to install; an optional **installer** for Windows), with a modern dark interface in English and French.
+One portable program for **Windows** (nothing to install; an optional **installer**), with a modern dark interface in English and French.
+
+> **Linux and macOS are frozen** (decision of 2026-10-22). Version **2.1.1** is the last one published with Linux (x86-64, ARM64) and macOS archives; they stay available on the [Releases](https://github.com/ap3demak-rgb/ShaderToMP4/releases) page and **remain under the GPL-3.0-or-later**. Their code stays in this repository (`src/ui_imgui/`, `src/platform/posix/`, `scripts/*.sh`, `CMakeLists.txt`), marked *frozen*: no fixes, no new tests, no continuous integration for them, and new features target Windows only.
 
 ---
 
@@ -76,7 +78,7 @@ One portable program for **Windows, Linux and macOS** (nothing to install; an op
   <sub>The “About” window (<code>F1</code>): version, copyright, license, contact and website. The globe button switches the language instantly.</sub>
 </p>
 
-### On Linux and macOS
+### On Linux and macOS (frozen: version 2.1.1 and earlier)
 
 Windows keeps its native Direct2D interface. Linux and macOS use a second interface with the same look (dark cards, gradient accent, the same SVG icons), built on GLFW and Dear ImGui and drawn with OpenGL; both interfaces share the same rendering engine, settings and translations.
 
@@ -100,9 +102,9 @@ The [`examples`](examples) folder contains four shaders ready to convert: plasma
    | System | Archive | Run |
    |---|---|---|
    | Windows 10 / 11, 64-bit | `ShaderToMP4-<version>-win64.zip` | `ShaderToMP4.exe` |
-   | Linux x86-64 | `ShaderToMP4-<version>-linux-x86_64.tar.gz` | `./ShaderToMP4` |
-   | Linux ARM64 | `ShaderToMP4-<version>-linux-aarch64.tar.gz` | `./ShaderToMP4` |
-   | macOS 10.13+, Apple Silicon and Intel | `ShaderToMP4-<version>-macos-universal.zip` | `ShaderToMP4.app` |
+   | Linux x86-64 (frozen, up to 2.1.1) | `ShaderToMP4-<version>-linux-x86_64.tar.gz` | `./ShaderToMP4` |
+   | Linux ARM64 (frozen, up to 2.1.1) | `ShaderToMP4-<version>-linux-aarch64.tar.gz` | `./ShaderToMP4` |
+   | macOS 10.13+, Apple Silicon and Intel (frozen, up to 2.1.1) | `ShaderToMP4-<version>-macos-universal.zip` | `ShaderToMP4.app` |
 
    **Windows installer (optional).** `ShaderToMP4-<version>-win64-setup.exe` does the same as the archive with Start menu and desktop shortcuts, an entry in *Apps & features* to uninstall, and `ffmpeg.exe` already inside (version 9.0.2, GPL build, nothing to download). It installs for your account only, without administrator rights, by default in `%LOCALAPPDATA%\Programs\ShaderToMP4` (Program Files is refused: the program keeps its settings next to itself and must be able to write there). It writes only: the program files, `HKCU\Software\ShaderToMP4` (folder and version), the uninstall entry, the Start menu shortcut and, if you tick them, a desktop shortcut and “Open with” for `.glsl` and `.montage` (`HKCU\Software\Classes`, your default programs are not changed). Installing a newer version over it keeps your settings and presets; an older version is refused; an `ffmpeg.exe` you put there yourself is never replaced or removed. Uninstalling keeps your settings unless you tick the box (`/DELETE_SETTINGS` when silent); your shaders and videos are never touched. Silent use: `setup.exe /S /D=C:\folder` (also `/LANG=1033`, `/DESKTOP`, `/ASSOC`), `Uninstall.exe /S`. The installer is **not code-signed**: Windows SmartScreen may warn about an unknown publisher; compare the SHA-256 of the file with `SHA256SUMS.txt` of the release. The program itself is unchanged and stays portable: the zip archive remains the reference. Tried on this PC only (Windows 10: silent install, update, refusal of an older version, running program, optional components, uninstall with and without settings, no trace left); other Windows versions and other accounts were not tried, and the pages of the installer were looked at in English and French only.
 
@@ -417,7 +419,7 @@ Taken from [CHANGELOG.md](CHANGELOG.md), which has the details; the list is chec
 
 | Version | Main additions |
 |---|---|
-| Unreleased | Pro edition infrastructure (nothing locked in the free edition): signed `ShaderToMP4.license` checked offline, trial watermark on Pro outputs without a license, “Buy Pro” (5, 10 or 15 € by PayPal) and license status in “About”, `--license-info` |
+| Unreleased | Linux and macOS frozen (2.1.1 is the last version with them), Windows only continuous integration; Pro edition infrastructure (nothing locked in the free edition): signed `ShaderToMP4.license` checked offline, trial watermark on Pro outputs without a license, “Buy Pro” (5, 10 or 15 € by PayPal) and license status in “About”, `--license-info` |
 | 2.1.1 | Sound normalization with a constant gain (the volume no longer rises and falls); Multilayer OpenEXR written by the program (HDR colour, depth, normal, id, alpha, estimated motion), straight or premultiplied alpha, floating-point TIFF, DPX, 16-bit depth map; effect mode: the shader applied to videos, images, sequences and folders (size, rate, duration, sound, subtitles and chapters follow the source), playing backwards, 25 transitions between two sources with `iProgress`, chroma / luma / difference keys |
 | 2.1.0 | Windows installer (NSIS, per user, ffmpeg included, optional) |
 | 2.0.0 | Quality check (flashes, NaN, flicker, aliasing, precision), shader comparison and reference frames, render time estimate with alert; seamless loops (crossfade, ping-pong), time curve and real slow motion, loop period search, seam check, smart thumbnail, averaged still image; posters by tiles up to 65536 pixels, GPU cost map and GPU time per pass, side-by-side / anaglyph / fulldome VR, cubemap faces; publication targets, target file size, master cache, reproducible video, standalone HTML page; sound and rhythm (tempo, beat variables, markers, beat editor); parts rendered in parallel and a render farm without a server |
@@ -529,9 +531,9 @@ With the Visual Studio Build Tools (the path of `vcvars64.bat` is written in `sc
 
 This compiles the resources (manifest, icon, SVG icons, language files, version information) then every file of `src` into `bin\ShaderToMP4.exe`, statically linked (no runtime to install), and copies the license files and `lang/` next to it. CMake works too (`cmake -S . -B build-cmake` then `cmake --build build-cmake --config Release`), and `scripts\package-windows.ps1` makes the portable zip.
 
-### Linux and macOS
+### Linux and macOS (frozen)
 
-You need CMake 3.20+, a C++17 compiler, and on Linux the X11 / Wayland development packages (on Debian and Ubuntu: `sudo apt install cmake ninja-build xorg-dev libgl1-mesa-dev libxkbcommon-dev libwayland-dev wayland-protocols`).
+These systems are no longer followed (see the notice at the top): the build below is the one of version 2.1.1 and is not tested any more. You need CMake 3.20+, a C++17 compiler, and on Linux the X11 / Wayland development packages (on Debian and Ubuntu: `sudo apt install cmake ninja-build xorg-dev libgl1-mesa-dev libxkbcommon-dev libwayland-dev wayland-protocols`).
 
 ```
 ./scripts/build.sh          # configures, downloads GLFW, Dear ImGui and NanoSVG (pinned versions) and builds bin/ShaderToMP4

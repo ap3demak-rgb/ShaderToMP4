@@ -89,6 +89,33 @@ foreach ($f in $tracked) {
   foreach ($n in $secretNames) { if ($text.Contains($n)) { Fail "reference au generateur ou a la cle secrete dans $f : $n" } }
 }
 
+# --- Windows seulement : Linux et macOS sont geles (ROADMAP, phase 24c) --------------------------------
+# Le programme Windows livre n'embarque ni le code gele (interface ImGui, couche POSIX) ni leurs bibliotheques (GLFW, Dear ImGui, NanoSVG, police Inter),
+# et l'integration continue n'a plus de tache Linux ni macOS.
+Section "Windows seulement"
+$frozen = 'imgui|glfw|nanosvg|ui_imgui|platform[\/]posix|assets[\/]fonts|Inter-'
+foreach ($f in "scripts/build.bat", "scripts/package-windows.ps1", "scripts/package-installer.ps1", "installer/ShaderToMP4.nsi", "res/app.rc") {
+  if (-not (Test-Path $f)) { continue }
+  $m = [regex]::Match([System.IO.File]::ReadAllText((Resolve-Path $f), $enc), $frozen, "IgnoreCase")
+  if ($m.Success) { Fail "composant gele dans la fabrication Windows ($f) : '$($m.Value)'" }
+}
+if (Test-Path CMakeLists.txt) {
+  $cm = [System.IO.File]::ReadAllText((Resolve-Path CMakeLists.txt), $enc)
+  $win = [regex]::Match($cm, '(?s)if\(WIN32\)(.*?)\nelse\(\)').Groups[1].Value
+  $m = [regex]::Match($win, $frozen, "IgnoreCase")
+  if ($m.Success) { Fail "composant gele dans la branche Windows de CMakeLists.txt : '$($m.Value)'" }
+}
+foreach ($f in $tracked) {
+  if ($f -notmatch '^src/(core|gui|platform/windows)/|^src/platform/shared\.cpp$|^src/main\.cpp$') { continue }
+  if (-not (Test-Path $f)) { continue }
+  $m = [regex]::Match([System.IO.File]::ReadAllText((Resolve-Path $f), $enc), '#\s*include\s*[<"](imgui|GLFW|glfw|nanosvg)', "IgnoreCase")
+  if ($m.Success) { Fail "le code Windows inclut une bibliotheque gelee : $f ($($m.Value))" }
+}
+foreach ($wf in Get-ChildItem .github/workflows -Filter *.yml -ErrorAction SilentlyContinue) {
+  $y = [System.IO.File]::ReadAllText($wf.FullName, $enc)
+  if ($y -match '(?m)^  (linux|macos):' -or $y -match 'macos-latest|ubuntu-22\.04') { Fail "tache Linux ou macOS dans $($wf.Name) : ces systemes sont geles" }
+}
+
 # --- 3. Internationalisation ---------------------------------------------------------------------
 Section "Internationalisation"
 $en = [System.IO.File]::ReadAllText((Resolve-Path "lang/en.json"), $enc) | ConvertFrom-Json

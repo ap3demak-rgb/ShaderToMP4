@@ -8,6 +8,10 @@ Format : une section par version, la plus récente en premier. La section d'une 
 
 ## Non publié
 
+### Modifié
+
+- **Linux et macOS sont gelés** (2026-10-22). La version 2.1.1 est la dernière publiée avec des archives Linux (x86-64, ARM64) et macOS, qui restent disponibles sous GPL-3.0-or-later. Leur code reste dans le dépôt, marqué figé : pas de correctif, pas de nouveau test, pas d'intégration continue ; les nouvelles fonctions visent Windows seulement. L'intégration continue ne compile, ne teste et n'empaquette plus que Windows, et la publication porte l'archive et l'installeur Windows.
+
 ### Ajouté
 
 - Infrastructure de l'édition Pro (rien n'est verrouillé dans l'édition libre) : fichier de licence signé `ShaderToMP4.license` à côté du programme, vérifié hors ligne (Ed25519, écrit pour le programme, comparé aux vecteurs de la RFC 8032) ; filigrane d'essai sur la couleur d'une sortie qui utilise une fonction Pro sans licence valide (jamais sur les passes de données), aucun sinon ; état de la licence dans « À propos », bouton et fenêtre « Acheter Pro » (5 €, 10 € ou 15 € par PayPal, ouverts sur clic seulement) qui disparaissent avec une licence valide ; `--license-info` ; contrat d'utilisation `EULA.fr.md` ; quatre cas d'auto-test.

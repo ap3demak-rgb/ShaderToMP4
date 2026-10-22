@@ -8,6 +8,10 @@ Format: one section per version, newest first. The section of a tagged version i
 
 ## Unreleased
 
+### Changed
+
+- **Linux and macOS are frozen** (2026-10-22). Version 2.1.1 is the last one published with Linux (x86-64, ARM64) and macOS archives, which stay available under the GPL-3.0-or-later. Their code stays in the repository, marked frozen: no fixes, no new tests, no continuous integration; new features target Windows only. The continuous integration now builds, tests and packages Windows only, and the release carries the Windows archive and installer.
+
 ### Added
 
 - Pro edition infrastructure (nothing is locked in the free edition): signed license file `ShaderToMP4.license` next to the program, checked offline (Ed25519, written for the program, tested against the RFC 8032 vectors); trial watermark on the colour of an output that uses a Pro feature without a valid license (never on data passes), none otherwise; license status in “About”, “Buy Pro” button and window (5 €, 10 € or 15 € through PayPal, opened on click only) that disappear with a valid license; `--license-info`; user agreement `EULA.md`; four self-test cases.

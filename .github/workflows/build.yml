@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Patrick JAILLET
 #
-# Compile et teste sur Windows, Linux (x86-64 et ARM64) et macOS ; fabrique les archives portables.
+# Compile, teste et empaquette Windows seulement (Linux et macOS sont gelés depuis le 2026-10-22 : plus de tâche pour eux ;
+# leur code reste dans le dépôt, la dernière version publiée avec eux est la 2.1.1).
 # Un tag « v* » publie en plus une version GitHub avec les archives et leurs sommes SHA-256.
 name: build
 
@@ -76,137 +77,9 @@ jobs:
             dist/*.zip
             dist/*-setup.exe
 
-  linux:
-    strategy:
-      matrix:
-        include:
-          - runner: ubuntu-22.04
-            arch: x86_64
-          - runner: ubuntu-22.04-arm
-            arch: aarch64
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build xorg-dev libgl1-mesa-dev libgl1-mesa-dri xvfb libxkbcommon-dev libwayland-dev wayland-protocols libegl1 libegl-mesa0
-      - name: Build
-        run: ./scripts/build.sh -G Ninja
-      - name: Self-test (Mesa software rendering)
-        run: xvfb-run -a -s "-screen 0 1280x800x24" ./scripts/test.sh
-      - name: Restore the previous benchmark
-        uses: actions/cache@v4
-        with:
-          path: bench-prev
-          key: benchmark-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
-          restore-keys: benchmark-${{ runner.os }}-${{ runner.arch }}-
-      - name: End-to-end (ffmpeg download, chunked and single renders, portability)
-        run: |
-          export HOME="$(mktemp -d)"
-          bin/ShaderToMP4 --get-ffmpeg --quiet
-          mkdir -p e2e
-          for spec in "chunked 2 1" "single 1 0"; do
-            set -- $spec
-            {
-              echo "// width=320"
-              echo "// height=180"
-              echo "// fps=30"
-              echo "// duration=$2"
-              echo "// chunk=$3"
-              cat examples/plasma.glsl
-            } > "e2e/$1.glsl"
-          done
-          xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --render e2e/chunked.glsl e2e/single.glsl
-          for f in chunked single; do bin/ffmpeg -hide_banner -i "e2e/$f.mp4" 2>&1 | grep -E "Duration|Video:"; done
-          test ! -d e2e/chunked.parts
-          # every output format (H.264/H.265/VP9/AV1/ProRes/DNxHR, WebM, GIF, WebP, PNG/TIFF/EXR, 10-bit) rendered and re-read with ffmpeg
-          xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --selftest --quiet
-          cat tests/report.txt
-          ! grep -E '^(SKIP|FAIL)' tests/report.txt
-          # command line: JSON progress and exit codes
-          xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --render --progress=json --container=gif --width=64 --height=64 --fps=10 --duration=0.5 --outdir=e2e/cli tests/circle.glsl | tee e2e/cli.jsonl
-          grep -q '"event":"end","ok":1,"failed":0' e2e/cli.jsonl
-          test -f e2e/cli/circle.gif
-          code=0; bin/ShaderToMP4 --render --bogus=1 tests/circle.glsl || code=$?
-          test "$code" -eq 2
-          # watched folder: a shader dropped there is rendered, then the program stops (--watch-count)
-          mkdir -p e2e/watch && cp tests/circle.glsl e2e/watch/
-          xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --render --watch=e2e/watch --watch-count=1 --container=gif --width=64 --height=64 --fps=10 --duration=0.5
-          test -f e2e/watch/circle.gif
-          # watched folder, advanced: sub-folder profile.ini, shader moved to done/, render report, log file
-          mkdir -p e2e/watch2/sub && cp tests/circle.glsl e2e/watch2/sub/
-          printf 'container=gif\nwidth=64\nheight=64\nfps=10\nduration=0.5\n' > e2e/watch2/sub/profile.ini
-          xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --render --watch=e2e/watch2 --watch-count=1 --watch-move --report=json --log=e2e/watch2.log
-          test -f e2e/watch2/sub/circle.gif
-          test -f e2e/watch2/sub/circle.report.json
-          grep -q '"status": "ok"' e2e/watch2/sub/circle.report.json
-          test -f e2e/watch2/sub/done/circle.glsl
-          test -s e2e/watch2.log
-          xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --diagnostic | tee e2e/diagnostic.txt
-          grep -q "ffmpeg: ffmpeg version" e2e/diagnostic.txt
-          # benchmark: compared with the previous run of the same runner (cache); a drop of more than 50 % fails the job
-          mkdir -p bench-prev
-          compare=""
-          if [ -f bench-prev/benchmark.json ]; then compare="--compare=bench-prev/benchmark.json --max-drop=50"; fi
-          code=0
-          xvfb-run -a -s "-screen 0 1280x800x24" bin/ShaderToMP4 --benchmark --seconds=1 --quick --json $compare > e2e/benchmark.json || code=$?
-          cat e2e/benchmark.json
-          grep -q '"results"' e2e/benchmark.json
-          test "$code" -eq 0
-          cp e2e/benchmark.json bench-prev/benchmark.json
-          # portability: nothing may be created in the home folder (the graphics driver cache is tolerated)
-          leftovers="$(find "$HOME" -mindepth 1 -not -path "$HOME/.cache*" | head)"
-          test -z "$leftovers" || { echo "Files written outside the application folder:"; echo "$leftovers"; exit 1; }
-      - name: Headless rendering (EGL, no display server)
-        run: |
-          export HOME="$(mktemp -d)"
-          unset DISPLAY WAYLAND_DISPLAY
-          bin/ShaderToMP4 --selftest --quiet
-          cat tests/report.txt
-          ! grep -E '^(SKIP|FAIL)' tests/report.txt
-          mkdir -p e2e/egl
-          bin/ShaderToMP4 --render --container=gif --width=64 --height=64 --fps=10 --duration=0.5 --outdir=e2e/egl tests/circle.glsl
-          test -f e2e/egl/circle.gif
-      - name: Window screenshots
-        run: |
-          mkdir -p shots
-          xvfb-run -a -s "-screen 0 1280x960x24" bin/ShaderToMP4 --screenshot shots/linux-main-en.png examples/*.glsl
-          xvfb-run -a -s "-screen 0 1280x960x24" bin/ShaderToMP4 --screenshot-about shots/linux-about-en.png
-          LC_ALL=fr_FR.UTF-8 xvfb-run -a -s "-screen 0 1280x960x24" bin/ShaderToMP4 --screenshot shots/linux-main-fr.png examples/*.glsl
-          LC_ALL=fr_FR.UTF-8 xvfb-run -a -s "-screen 0 1280x960x24" bin/ShaderToMP4 --screenshot-about shots/linux-about-fr.png
-      - name: Package
-        run: ./scripts/package-linux.sh ${{ matrix.arch }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: package-linux-${{ matrix.arch }}
-          path: dist/*.tar.gz
-      - uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-linux-${{ matrix.arch }}
-          path: shots/*.png
-
-  macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build (universal arm64 + x86_64)
-        run: ./scripts/build.sh -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
-      - name: Smoke test
-        # Hosted macOS runners have no GPU (no OpenGL 3.3 pixel format): rendering is checked on Linux and Windows only.
-        run: |
-          lipo -info bin/ShaderToMP4
-          bin/ShaderToMP4 --version
-      - name: Package
-        run: ./scripts/package-macos.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: package-macos
-          path: dist/*.zip
-
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, linux, macos]
+    needs: [windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -222,7 +95,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd dist
-          sha256sum *.zip *.tar.gz *-setup.exe > SHA256SUMS.txt
+          sha256sum *.zip *-setup.exe > SHA256SUMS.txt
           cd ..
           # guards: the tag must be the program version, and both changelogs must have a section for it
           version="${GITHUB_REF_NAME#v}"
@@ -237,5 +110,5 @@ jobs:
           for f in CHANGELOG.md CHANGELOG.fr.md; do
             awk -v v="$version" '/^## /{p=index($0,"## " v)==1; next} p' "$f" >> notes.md || true
           done
-          gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/*.tar.gz dist/*-setup.exe dist/SHA256SUMS.txt \
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/*-setup.exe dist/SHA256SUMS.txt \
             --title "ShaderToMP4 ${GITHUB_REF_NAME#v}" --notes-file notes.md
