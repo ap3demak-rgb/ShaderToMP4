@@ -1167,5 +1167,8 @@
   "selftest.lic_crypto": "licence : Ed25519 et SHA-512 comparés aux vecteurs de test des RFC 8032 et FIPS 180",
   "selftest.lic_files": "fichiers de licence : valide, expirée, falsifiée, tronquée, autre version majeure, autre édition, aucun fichier",
   "selftest.lic_watermark": "filigrane : présent avec une fonction Pro sans licence valide, absent avec une licence valide ou sans fonction Pro, données inchangées",
-  "selftest.lic_ui": "interface de licence : bouton d'achat et mentions d'essai visibles sans licence, absents avec une licence valide ; liens d'achat à 5, 10 et 15 euros"
+  "selftest.lic_ui": "interface de licence : bouton d'achat et mentions d'essai visibles sans licence, absents avec une licence valide ; liens d'achat à 5, 10 et 15 euros",
+  "error.compute_unavailable": "Les passes de calcul demandent OpenGL 4.3, que ce pilote graphique n'offre pas",
+  "error.scene_vr": "Une scène 3D ne se combine pas avec un rendu 360 (VR)",
+  "error.scene_tiled": "Une scène 3D ne se rend pas par tuiles : réduisez l'image fixe ou retirez le réglage tile"
 }

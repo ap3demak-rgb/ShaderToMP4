@@ -1167,5 +1167,8 @@
   "selftest.lic_crypto": "Lizenz: Ed25519 und SHA-512 gegen die Testvektoren von RFC 8032 und FIPS 180 geprüft",
   "selftest.lic_files": "Lizenzdateien: gültig, abgelaufen, verfälscht, abgeschnitten, andere Hauptversion, andere Edition, keine Datei",
   "selftest.lic_watermark": "Wasserzeichen: vorhanden mit Pro-Funktion ohne gültige Lizenz, fehlt mit gültiger Lizenz oder ohne Pro-Funktion, Daten unverändert",
-  "selftest.lic_ui": "Lizenzoberfläche: Kaufen-Schaltfläche und Testhinweise ohne Lizenz sichtbar, mit gültiger Lizenz verborgen; Kauflinks für 5, 10 und 15 Euro"
+  "selftest.lic_ui": "Lizenzoberfläche: Kaufen-Schaltfläche und Testhinweise ohne Lizenz sichtbar, mit gültiger Lizenz verborgen; Kauflinks für 5, 10 und 15 Euro",
+  "error.compute_unavailable": "Compute-Passes benötigen OpenGL 4.3, das dieser Grafiktreiber nicht bietet",
+  "error.scene_vr": "Eine 3D-Szene lässt sich nicht mit einem 360-Grad-Rendering (VR) kombinieren",
+  "error.scene_tiled": "Eine 3D-Szene lässt sich nicht in Kacheln rendern: verkleinern Sie das Standbild oder entfernen Sie die Kachel-Einstellung"
 }

@@ -1167,5 +1167,8 @@
   "selftest.lic_crypto": "license: Ed25519 and SHA-512 checked against the RFC 8032 and FIPS 180 test vectors",
   "selftest.lic_files": "license files: valid, expired, altered, truncated, other major version, wrong edition, no file",
   "selftest.lic_watermark": "watermark: present with a Pro feature and no valid license, absent with a valid license or without a Pro feature, data unchanged",
-  "selftest.lic_ui": "license interface: purchase button and trial texts shown without a license, hidden with a valid one; purchase links for 5, 10 and 15 euros"
+  "selftest.lic_ui": "license interface: purchase button and trial texts shown without a license, hidden with a valid one; purchase links for 5, 10 and 15 euros",
+  "error.compute_unavailable": "Compute passes need OpenGL 4.3, which this graphics driver does not offer",
+  "error.scene_vr": "A 3D scene cannot be combined with a 360 (VR) render",
+  "error.scene_tiled": "A 3D scene cannot be rendered in tiles: use a smaller still image or remove the tile setting"
 }

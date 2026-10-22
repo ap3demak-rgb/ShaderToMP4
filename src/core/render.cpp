@@ -22,6 +22,7 @@
 #include "overlay.h"
 #include "params.h"
 #include "postfx.h"
+#include "proext.h"
 #include "prolicense.h"
 #include "watermark.h"
 #include "previewconv.h"
@@ -323,12 +324,6 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     ensureLicense(exeDir);
     proBegin();
     for (const std::string& f : H.proTestFeatures) proCheck(f.c_str());
-    const bool wmOn = watermarkRequired();
-    if (wmOn && !partMode) {
-        std::string names;
-        for (const std::string& f : proUsed()) names += (names.empty() ? "" : ", ") + f;
-        H.log(L"  " + TXF("log.watermark", W(names).c_str()));
-    }
     const bool deep = s.depth >= 10;
     const size_t bpc = deep ? 2 : 1;  // octets par composante lue sur le GPU
     const int B = std::min(64, std::max(1, s.blur));  // sous-images par image (flou de mouvement)
@@ -608,9 +603,50 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     }
     std::string chTypes[4];
     channelTypes(s, chTypes);
-    GLuint prog = buildProgram(bp.withCommon(code), err, false, chTypes, false, false, vrMode, params.declarations(), s.alpha);
+    // Scene 3D (edition Pro) : un maillage dessine par un etage sommets devant le meme fragment shader ; sans extension ou sans demande, rien ne change
+    std::unique_ptr<ProScene> scene;
+    SceneProgram sceneProg;
+    if (const ProExt* px = proExt(); px && px->makeScene) {
+        SceneRequest rq;
+        rq.shaderPath = shaderPath;
+        rq.exeDir = exeDir;
+        rq.settings = &s;
+        rq.code = &code;
+        rq.width = eyeW;
+        rq.height = eyeH;
+        rq.preview = preview;
+        rq.hooks = &H;
+        std::wstring sceneErr;
+        scene = px->makeScene(rq, sceneErr);
+        if (!scene && !sceneErr.empty()) {
+            err = sceneErr;
+            return Result::Failed;
+        }
+        if (scene && (vrMode > 0 || tiled)) {  // le maillage n'est pas decoupable en tuiles et n'a pas de mode 360
+            err = TX(vrMode > 0 ? "error.scene_vr" : "error.scene_tiled");
+            return Result::Failed;
+        }
+        if (scene) {
+            sceneProg.version = scene->version();
+            sceneProg.vertex = scene->vertexSource();
+        }
+    }
+    const bool wmOn = watermarkRequired();  // fonctions Pro utilisees (scene comprise) sans licence valide : filigrane sur la couleur
+    if (wmOn && !partMode) {
+        std::string names;
+        for (const std::string& f : proUsed()) names += (names.empty() ? "" : ", ") + f;
+        H.log(L"  " + TXF("log.watermark", W(names).c_str()));
+    }
+    std::string proSig;  // reglages Pro et scene : entrent dans les signatures des parties reprenables
+    for (const auto& kv : s.pro) proSig += "|" + kv.first + "=" + kv.second;
+    if (scene) proSig += "|scene:" + scene->signature();
+    if (wmOn) proSig += "|wm";
+    GLuint prog = buildProgram(bp.withCommon(code), err, false, chTypes, false, false, vrMode, params.declarations(), s.alpha, scene ? &sceneProg : nullptr);
     if (!prog) {  // erreurs « fichier:ligne: message », cliquables dans le journal
-        err = locateGlslErrors(err, shaderPath, 1 + (int)std::count(code.begin(), code.end(), '\n'), bp.commonPath());
+        if (scene && sceneProg.vertexFailed)
+            err = locateGlslErrors(err, scene->vertexPath().empty() ? shaderPath : scene->vertexPath(), scene->vertexLines());
+        else
+            err = locateGlslErrors(err, shaderPath, 1 + (int)std::count(code.begin(), code.end(), '\n'), bp.commonPath());
         return Result::Failed;
     }
 
@@ -697,6 +733,10 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     }
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);  // la creation des tampons a change la cible
     glViewport(0, 0, RW, RH);
+    if (scene && !scene->prepare(prog, RW, RH, err)) {
+        cleanupGL();
+        return Result::Failed;
+    }
     Watermark wm;
     int wmOffX = 0, wmOffY = 0;  // origine de la tuile dans l'image complete (image fixe par tuiles)
     if (wmOn && !wm.build(FW, FH, H_, SS, err)) {
@@ -714,6 +754,16 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     GLint uDate = ogl::GetUniformLocation(prog, "iDate");
     GLint uSR = ogl::GetUniformLocation(prog, "iSampleRate");
     GLint uWeight = ogl::GetUniformLocation(prog, "st_weight");
+    float curWeight = 1.0f;  // poids de fondu et mode d'alpha reglés dans le programme : la scene 3D les relit pour composer son image
+    bool curPremul = false;
+    auto setWeight = [&](float w) {
+        curWeight = w;
+        ogl::Uniform1f(uWeight, w);
+    };
+    auto setPremul = [&](int on) {
+        curPremul = on != 0;
+        ogl::Uniform1i(ogl::GetUniformLocation(prog, "st_premul"), on);
+    };
     ogl::Uniform3f(uRes, (float)eyeW, (float)eyeH, 1.0f);  // stereo : iResolution = taille d'un oeil
     ogl::Uniform1i(ogl::GetUniformLocation(prog, "st_face"), std::max(0, H.cubeFace));
     const GLint uEye = ogl::GetUniformLocation(prog, "st_eye");
@@ -734,7 +784,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     bp.fixChannelSizes(chans);
     bindChannels(chans, prog);
     ogl::Uniform1f(uSR, 44100.0f);
-    ogl::Uniform1f(uWeight, 1.0f);
+    setWeight(1.0f);
     const DateInput dateIn = dateInputFrom(s.date);  // date fixe ou reelle au depart, qui avance avec iTime
     auto setDate = [&](GLint loc, double t) {
         float d[4];
@@ -824,6 +874,8 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             glColorMask(GL_FALSE, GL_TRUE, GL_TRUE, GL_FALSE);
             glDrawArrays(GL_TRIANGLES, 0, 3);
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        } else if (scene) {
+            scene->draw(t, curWeight, curPremul);
         } else {
             glDrawArrays(GL_TRIANGLES, 0, 3);
         }
@@ -868,8 +920,8 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         glClear(GL_COLOR_BUFFER_BIT);
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE, GL_ONE);
-        ogl::Uniform1f(uWeight, weight / SMP);
-        ogl::Uniform1i(ogl::GetUniformLocation(prog, "st_premul"), s.alpha ? 1 : 0);
+        setWeight(weight / SMP);
+        setPremul(s.alpha ? 1 : 0);
         const auto t0 = std::chrono::steady_clock::now();
         auto tLog = t0;
         int done = 0;
@@ -886,8 +938,8 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             }
         }
         glDisable(GL_BLEND);
-        ogl::Uniform1i(ogl::GetUniformLocation(prog, "st_premul"), 0);
-        ogl::Uniform1f(uWeight, 1.0f);
+        setPremul(0);
+        setWeight(1.0f);
         if (done < SMP) H.log(L"  " + TXF("log.samples_partial", done, SMP));
         else H.log(L"  " + TXF("log.samples_done", SMP));
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, imgFbo);
@@ -928,7 +980,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         }
         if (draws.size() == 1) {
             ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, imgFbo);
-            ogl::Uniform1f(uWeight, weight * draws[0].w);
+            setWeight(weight * draws[0].w);
             drawAt(draws[0].t, n);
         } else {
             ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, accFbo);
@@ -936,14 +988,14 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             glClear(GL_COLOR_BUFFER_BIT);
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE);
-            ogl::Uniform1i(ogl::GetUniformLocation(prog, "st_premul"), s.alpha ? 1 : 0);  // alpha : somme de couleurs prémultipliées
+            setPremul(s.alpha ? 1 : 0);  // alpha : somme de couleurs prémultipliées
             for (const Draw& d : draws) {
-                ogl::Uniform1f(uWeight, weight * d.w);
+                setWeight(weight * d.w);
                 drawAt(d.t, n);
             }
             glDisable(GL_BLEND);
-            ogl::Uniform1i(ogl::GetUniformLocation(prog, "st_premul"), 0);
-            ogl::Uniform1f(uWeight, 1.0f);
+            setPremul(0);
+            setWeight(1.0f);
             ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, imgFbo);
             ogl::UseProgram(present);
             ogl::Uniform1f(ogl::GetUniformLocation(present, "st_scale"), 1.0f);
@@ -983,7 +1035,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         platform::makeDir(tilesDir);
         std::string sigSrc = code + params.signature() + "|poster|" + std::to_string(W_) + "x" + std::to_string(H_) + "|" + std::to_string(SS) + "|" + std::to_string(TW) + "x" + std::to_string(TH) +
                              "|" + std::to_string(deep) + std::to_string(s.alpha) + "|" + std::to_string(SMP) + "|" + std::to_string(s.start) + "|" + std::to_string(s.dpi) + "|" +
-                             std::to_string(vrMode) + std::to_string(s.vrIpd) + "|" + std::to_string(H.cubeFace) + "|" + s.date + "|" + formatMouseKeys(s.mouseKeys) + "|" + std::to_string(s.warmup) + (wmOn ? "|wm" : "");
+                             std::to_string(vrMode) + std::to_string(s.vrIpd) + "|" + std::to_string(H.cubeFace) + "|" + s.date + "|" + formatMouseKeys(s.mouseKeys) + "|" + std::to_string(s.warmup) + proSig;
         for (int i = 0; i < 4; i++) sigSrc += "|" + U8(s.channel[i]) + s.chFilter[i] + s.chWrap[i] + std::to_string(s.chVflip[i]);
         const std::string sig = fnvHex(sigSrc);
         std::string oldSig;
@@ -1704,7 +1756,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         char nums[256];
         snprintf(nums, sizeof(nums), "|%d|%d|%d|%.9g|%.9g|%lld|%d|%.9g|%.9g|%.9g|%d|%d|%d|%.9g|%d", W_, H_, SS, s.fps, s.start, (long long)N, B, s.shutter, fi, fo, (int)deep, (int)s.alpha,
                  vrMode, s.vrIpd, s.warmup);
-        std::string sg = code + "|fr|" + bp.allCode() + params.signature() + nums + "|" + tm.canonical() + "|loop:" + s.loopMode + "," + std::to_string(loopFade) + "|" + APP_VER_STR + (wmOn ? "|wm" : "");
+        std::string sg = code + "|fr|" + bp.allCode() + params.signature() + nums + "|" + tm.canonical() + "|loop:" + s.loopMode + "," + std::to_string(loopFade) + "|" + APP_VER_STR + proSig;
         std::string lutBytes;
         if (!s.lut.empty()) {
             const bool absolute = s.lut.size() > 1 && (s.lut[1] == L':' || s.lut[0] == L'/' || s.lut[0] == L'\\');
@@ -1956,7 +2008,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                                      s.start, s.crf, W(s.preset).c_str(), W(s.codec).c_str(), W(enc).c_str(), s.bitrate,
                                      s.blur, W(s.color).c_str(), s.shutter, s.fadein, s.fadeout, s.ss,
                                      W(s.container).c_str(), N, chunkFrames, s.depth);
-            sigSrc = code + U8(tail) + "|vr" + std::to_string(vrMode) + (vrMode >= 2 && vrMode <= 4 ? "|" + std::to_string(s.vrIpd) : "") + params.signature() + (wmOn ? "|wm" : "");
+            sigSrc = code + U8(tail) + "|vr" + std::to_string(vrMode) + (vrMode >= 2 && vrMode <= 4 ? "|" + std::to_string(s.vrIpd) : "") + params.signature() + proSig;
             {  // post-traitement : passe .post, effets et contenu du fichier LUT
                 std::string lutBytes;
                 if (!s.lut.empty()) {

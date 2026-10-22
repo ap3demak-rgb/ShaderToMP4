@@ -445,8 +445,12 @@ bool createGLContext(void*& ctx, std::wstring& err) {
     typedef HGLRC(WINAPI * PFN_CCA)(HDC, HGLRC, const int*);
     PFN_CCA cca = (PFN_CCA)(void*)wglGetProcAddress("wglCreateContextAttribsARB");
     if (!cca) { err = TX("error.gl_version"); return false; }
-    const int attr[] = {0x2091, 3, 0x2092, 3, 0x9126, 0x1, 0};  // 3.3 core
-    HGLRC rc = cca(c->dc, nullptr, attr);
+    // 4.3 core d'abord (passes de calcul de l'edition Pro : le moteur ne les utilise que si le contexte les offre), sinon 3.3 core ; un shader #version 330 se
+    // compile pareil dans les deux
+    const int attr43[] = {0x2091, 4, 0x2092, 3, 0x9126, 0x1, 0};
+    const int attr33[] = {0x2091, 3, 0x2092, 3, 0x9126, 0x1, 0};
+    HGLRC rc = cca(c->dc, nullptr, attr43);
+    if (!rc) rc = cca(c->dc, nullptr, attr33);
     wglMakeCurrent(nullptr, nullptr);
     wglDeleteContext(tmp);
     c->rc = nullptr;

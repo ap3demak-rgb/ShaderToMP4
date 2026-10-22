@@ -128,7 +128,12 @@ struct Settings {
     SourceRuntime rt;               // calcule, pas un reglage
     std::set<std::string> pinned;   // cles donnees explicitement sur la ligne de commande (width, height, fps, duration, audio) : la source ne les remplace pas ; jamais ecrit dans config.ini
     int samples = 1;               // image fixe (PNG) : moyenne de N echantillons independants du meme instant (iFrame different), 1..100000
+    std::map<std::string, std::string> pro;  // reglages des fonctions Pro (cles declarees par registerProSettingKey, voir proext.h) : cle en minuscules -> valeur
 };
+
+// Declare un reglage d'une extension (edition Pro) : il est lu dans config.ini, dans les commentaires `// cle=valeur` des shaders et sur la ligne de commande,
+// range dans Settings::pro et reecrit dans config.ini. keepSpaces : la valeur garde ses espaces (chemin), sinon seul le premier mot est lu.
+void registerProSettingKey(const std::string& key, bool keepSpaces);
 
 bool sameSettings(const Settings& a, const Settings& b);
 void parseLines(Settings& s, const std::string& text, bool onlySlashComments);  // ini (false) ou commentaires // (true)

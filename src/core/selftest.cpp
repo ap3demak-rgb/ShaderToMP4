@@ -11,6 +11,7 @@
 #include "dpx.h"
 #include "ed25519.h"
 #include "prolicense.h"
+#include "proext.h"
 #include "exr.h"
 #include "exrtools.h"
 #include "tifffloat.h"
@@ -4282,6 +4283,7 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
                 if (en.name == L"circle.glsl") pick = en.name;
             runFormatTests(exeDir, dir, dir + pick, report, total, fails);
         }
+        if (const ProExt* px = proExt(); px && px->selfTest) px->selfTest(exeDir, dir, report, total, fails);  // cas de l'edition Pro, s'il y en a
         destroyGLContext(gl);
     }
     {  // chaque langue disponible se charge et ses textes a marques de format s'affichent

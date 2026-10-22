@@ -25,7 +25,7 @@ bool sameSettings(const Settings& a, const Settings& b) {
            sameChannels(a, b) && formatMouseKeys(a.mouseKeys) == formatMouseKeys(b.mouseKeys) && formatKeyPresses(a.keys) == formatKeyPresses(b.keys) && a.date == b.date && a.variants == b.variants && a.gpu == b.gpu && a.endaction == b.endaction && a.depth == b.depth && a.name == b.name && a.exists == b.exists &&
            a.encoder == b.encoder && a.pbo == b.pbo && a.chunk == b.chunk && a.warmup == b.warmup && a.vr == b.vr && a.vrIpd == b.vrIpd && a.paramSpecs == b.paramSpecs && a.post == b.post && a.lut == b.lut && a.alpha == b.alpha && a.hdr == b.hdr && a.hdrPeak == b.hdrPeak &&
            a.hdrFall == b.hdrFall && a.hdrWhite == b.hdrWhite && a.interp == b.interp && a.scale == b.scale && a.scaleFilter == b.scaleFilter &&
-           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report && a.samples == b.samples && a.precheck == b.precheck && a.target == b.target && a.targetSizeMB == b.targetSizeMB && a.crop == b.crop && a.masterCache == b.masterCache && a.cacheMaxGB == b.cacheMaxGB && a.embed == b.embed && a.source == b.source && a.source2 == b.source2 && a.sourceMatch == b.sourceMatch && a.sourceAudio == b.sourceAudio && a.reverse == b.reverse && a.sourceFps == b.sourceFps && a.transitionDur == b.transitionDur && a.transitionOffset == b.transitionOffset && a.parallel == b.parallel && a.farm == b.farm && a.farmTimeout == b.farmTimeout && a.bpm == b.bpm && a.beatsPerBar == b.beatsPerBar && a.markers == b.markers && a.beatSync == b.beatSync && a.animPreview == b.animPreview && a.autoCredit == b.autoCredit && a.stillFormat == b.stillFormat && a.tile == b.tile && a.dpi == b.dpi && a.aovSpecs == b.aovSpecs && a.exrCompression == b.exrCompression && a.exrPrecision == b.exrPrecision && a.alphaMode == b.alphaMode && a.depthRange == b.depthRange && a.tiffFloat == b.tiffFloat && a.vectorBlur == b.vectorBlur;
+           a.loudnorm == b.loudnorm && a.title == b.title && a.credit == b.credit && a.titleDur == b.titleDur && a.metadata == b.metadata && a.report == b.report && a.samples == b.samples && a.precheck == b.precheck && a.target == b.target && a.targetSizeMB == b.targetSizeMB && a.crop == b.crop && a.masterCache == b.masterCache && a.cacheMaxGB == b.cacheMaxGB && a.embed == b.embed && a.source == b.source && a.source2 == b.source2 && a.sourceMatch == b.sourceMatch && a.sourceAudio == b.sourceAudio && a.reverse == b.reverse && a.sourceFps == b.sourceFps && a.transitionDur == b.transitionDur && a.transitionOffset == b.transitionOffset && a.parallel == b.parallel && a.farm == b.farm && a.farmTimeout == b.farmTimeout && a.bpm == b.bpm && a.beatsPerBar == b.beatsPerBar && a.markers == b.markers && a.beatSync == b.beatSync && a.animPreview == b.animPreview && a.autoCredit == b.autoCredit && a.stillFormat == b.stillFormat && a.tile == b.tile && a.dpi == b.dpi && a.aovSpecs == b.aovSpecs && a.exrCompression == b.exrCompression && a.exrPrecision == b.exrPrecision && a.alphaMode == b.alphaMode && a.depthRange == b.depthRange && a.tiffFloat == b.tiffFloat && a.vectorBlur == b.vectorBlur && a.pro == b.pro;
 }
 
 // Valeur complete d'une cle qui garde ses espaces (chemin, modele de nom) : le commentaire `      ; texte` que writeIni peut
@@ -39,6 +39,14 @@ static std::string withoutIniComment(const std::string& raw) {
     }
     return trim(raw);
 }
+
+// Reglages des extensions (edition Pro) : cle en minuscules -> la valeur garde ses espaces
+static std::map<std::string, bool>& proKeyRegistry() {
+    static std::map<std::string, bool> keys;
+    return keys;
+}
+
+void registerProSettingKey(const std::string& key, bool keepSpaces) { proKeyRegistry()[lower(key)] = keepSpaces; }
 
 static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn) {
     {  // parametres animes : « // key vitesse=0:1.0 ; 4:3.0 » (nom sensible a la casse) et --param=vitesse=2.5
@@ -71,6 +79,12 @@ static void applyKV(Settings& s, const std::string& kIn, const std::string& vIn)
         }
     }
     std::string k = lower(trim(kIn)), v = trim(vIn);
+    if (const auto it = proKeyRegistry().find(k); it != proKeyRegistry().end()) {  // reglage d'une fonction Pro
+        v = it->second ? withoutIniComment(vIn) : v.substr(0, v.find_first_of(" \t"));
+        if (v.empty() || lower(v) == "off") s.pro.erase(k);
+        else s.pro[k] = v;
+        return;
+    }
     if (k == "outdir" || k == "farm" || k == "source" || k == "source2" || k == "audio" || k == "name" || k == "variant" || k == "mouse" || k == "key" || k == "lut" || k == "title" || k == "credit" || (k.size() == 9 && k.compare(0, 8, "ichannel") == 0)) v = withoutIniComment(vIn);
     if (k == "variant") {  // « nom:cle=valeur|cle=valeur » : une ligne par variante
         if (!v.empty()) s.variants.push_back(v);
@@ -243,6 +257,7 @@ bool isSettingKey(const std::string& key) {
                                         "codec", "depth", "exists", "name", "outdir", "audio", "metadata", "mouse", "key", "date", "endaction", "variant", "gpu"};
     for (const char* k : kKeys)
         if (key == k) return true;
+    if (proKeyRegistry().count(key)) return true;
     // ichannel0 a ichannel3, avec .filter .wrap .vflip
     if (key.size() >= 9 && key.compare(0, 8, "ichannel") == 0 && key[8] >= '0' && key[8] <= '3')
         return key.size() == 9 || key.substr(9) == ".filter" || key.substr(9) == ".wrap" || key.substr(9) == ".vflip";
@@ -286,7 +301,11 @@ std::vector<Override> shaderOverrides(const std::wstring& shaderPath) {
         const std::string key = lower(trim(body.substr(0, eq)));
         if (!isSettingKey(key)) continue;
         std::string val = trim(body.substr(eq + 1));
-        if (key != "outdir" && key != "farm" && key != "source" && key != "source2" && key != "audio" && key != "name" && key != "mouse" && key != "key" && key != "lut" && key != "title" && key != "credit" && key.compare(0, 8, "ichannel") != 0) val = val.substr(0, val.find_first_of(" \t"));
+        const auto pk = proKeyRegistry().find(key);
+        if (pk != proKeyRegistry().end() && pk->second) {
+            // chemin d'une fonction Pro : valeur entiere
+        } else if (pk != proKeyRegistry().end()) val = val.substr(0, val.find_first_of(" \t"));
+        else if (key != "outdir" && key != "farm" && key != "source" && key != "source2" && key != "audio" && key != "name" && key != "mouse" && key != "key" && key != "lut" && key != "title" && key != "credit" && key.compare(0, 8, "ichannel") != 0) val = val.substr(0, val.find_first_of(" \t"));
         if (val.empty()) continue;
         list.push_back({key, val});
     }
@@ -450,5 +469,6 @@ void writeIni(const std::wstring& path, const Settings& s) {
     put("vr", s.vr, "ini.vr");
     put("vripd", num(s.vrIpd), "ini.vripd");
     put("metadata", s.metadata ? "1" : "0", "ini.metadata");
+    for (const auto& kv : s.pro) put(kv.first, kv.second);  // reglages des fonctions Pro : sans commentaire (la valeur garde sa forme exacte)
     fclose(f);
 }

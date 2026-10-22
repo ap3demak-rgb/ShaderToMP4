@@ -45,15 +45,33 @@ namespace ogl {
     F(void, BindBuffer, (GLenum, GLuint))                                            \
     F(void, BufferData, (GLenum, ptrdiff_t, const void*, GLenum))                    \
     F(void*, MapBuffer, (GLenum, GLenum))                                            \
-    F(unsigned char, UnmapBuffer, (GLenum))
+    F(unsigned char, UnmapBuffer, (GLenum))                                          \
+    F(void, BufferSubData, (GLenum, ptrdiff_t, ptrdiff_t, const void*))              \
+    F(void, GetBufferSubData, (GLenum, ptrdiff_t, ptrdiff_t, void*))                 \
+    F(void, BindBufferBase, (GLenum, GLuint, GLuint))                                \
+    F(void, VertexAttribPointer, (GLuint, GLint, GLenum, unsigned char, GLsizei, const void*)) \
+    F(void, EnableVertexAttribArray, (GLuint))                                       \
+    F(void, DisableVertexAttribArray, (GLuint))                                      \
+    F(void, DrawArraysInstanced, (GLenum, GLint, GLsizei, GLsizei))                  \
+    F(void, DrawElementsInstanced, (GLenum, GLsizei, GLenum, const void*, GLsizei))  \
+    F(void, UniformMatrix3fv, (GLint, GLsizei, unsigned char, const GLfloat*))       \
+    F(void, UniformMatrix4fv, (GLint, GLsizei, unsigned char, const GLfloat*))
+
+// Fonctions facultatives (OpenGL 4.3 : passes de calcul) : chargees sans faire echouer le chargement ; computeAvailable() dit si le contexte les offre.
+#define GL_FUNCS_OPT(F)                                                              \
+    F(void, DispatchCompute, (GLuint, GLuint, GLuint))                               \
+    F(void, MemoryBarrier, (GLbitfield))
 
 #define F(r, n, a)                                \
     typedef r(APIENTRY* PFN_##n) a;               \
     extern PFN_##n n;
 GL_FUNCS(F)
+GL_FUNCS_OPT(F)
 #undef F
 
 bool load();  // charge les fonctions ci-dessus (contexte courant requis)
+// Le contexte courant offre OpenGL 4.3 (passes de calcul : GLSL 4.30, tampons de stockage) et ses fonctions sont chargees.
+bool computeAvailable();
 
 // Constantes (prefixees pour ne jamais entrer en conflit avec un gl.h/glext.h)
 constexpr GLenum K_FRAGMENT_SHADER = 0x8B30;
@@ -70,6 +88,22 @@ constexpr GLenum K_RGBA8 = 0x8058;
 constexpr GLenum K_RGBA16 = 0x805B;
 constexpr GLenum K_RGBA16F = 0x881A;
 constexpr GLenum K_RGBA32F = 0x8814;
+constexpr GLenum K_ARRAY_BUFFER = 0x8892;
+constexpr GLenum K_ELEMENT_ARRAY_BUFFER = 0x8893;
+constexpr GLenum K_STATIC_DRAW = 0x88E4;
+constexpr GLenum K_DYNAMIC_DRAW = 0x88E8;
+constexpr GLenum K_SHADER_STORAGE_BUFFER = 0x90D2;
+constexpr GLenum K_COMPUTE_SHADER = 0x91B9;
+constexpr GLenum K_DEPTH_ATTACHMENT = 0x8D00;
+constexpr GLenum K_DEPTH_COMPONENT24 = 0x81A6;
+constexpr GLenum K_DEPTH_COMPONENT32F = 0x8CAC;
+constexpr GLenum K_TEXTURE_CUBE_MAP = 0x8513;
+constexpr GLenum K_TEXTURE_CUBE_MAP_POSITIVE_X = 0x8515;
+constexpr GLenum K_TEXTURE_WRAP_R = 0x8072;
+constexpr GLenum K_CLAMP_TO_EDGE = 0x812F;
+constexpr GLenum K_FRAMEBUFFER_BINDING = 0x8CA6;
+constexpr GLbitfield K_SHADER_STORAGE_BARRIER_BIT = 0x2000;
+constexpr GLbitfield K_BUFFER_UPDATE_BARRIER_BIT = 0x0200;
 }  // namespace ogl
 
 // Le contexte est lie au thread qui l'a cree : a creer et detruire dans le thread de rendu.
@@ -88,9 +122,20 @@ bool createGLContext(GLContext& c, std::wstring& err);  // contexte 3.3 core + c
 // alphaOut : l'image ecrit aussi sa transparence (fragColor.a) au lieu d'un alpha de 1 ; le fondu (st_weight) agit alors sur l'alpha.
 // vrMode : image en realite virtuelle (mainVR) rendue en 360 equirectangulaire : 1 = mono, 2 = stereo haut / bas (oeil gauche en haut,
 // iResolution = taille d'un oeil, uniform st_ipd = ecart des yeux).
+// scene : programme d'une scene 3D (edition Pro) : etage sommets fourni, version GLSL choisie ; le fragment est le meme que celui du mode image.
+// En cas d'echec de compilation de l'etage sommets, vertexFailed passe a vrai (les erreurs se rapportent alors au fichier des sommets).
+struct SceneProgram {
+    std::string version = "330";  // « 330 » ou « 430 » (passes de calcul)
+    std::string vertex;           // vertex shader complet, ligne #version comprise
+    bool vertexFailed = false;
+};
 GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut = false, const std::string* chType = nullptr,
                     bool cubemapOut = false, bool soundOut = false, int vrMode = 0, const std::string& preamble = std::string(),
-                    bool alphaOut = false);
+                    bool alphaOut = false, SceneProgram* scene = nullptr);
+// Compile un programme a partir de deux sources completes (#version comprise) : 0 + err si echec ; *vertexFailed dit si l'etage sommets a echoue.
+GLuint buildProgramFromSources(const std::string& vs, const std::string& fs, std::wstring& err, bool* vertexFailed = nullptr);
+// Programme de calcul (OpenGL 4.3) : source complete avec #version 430 ; 0 + err si echec ou si le contexte n'offre pas les passes de calcul.
+GLuint buildComputeProgram(const std::string& cs, std::wstring& err);
 // Programme plein ecran sans enveloppe Shadertoy (post-traitement) : fs est un fragment shader complet (#version 330 core), la sortie
 // est `out vec4 st_o`. 0 + err si echec.
 GLuint buildFullscreenProgram(const std::string& fs, std::wstring& err);

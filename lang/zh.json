@@ -1167,5 +1167,8 @@
   "selftest.lic_crypto": "许可证：已用 RFC 8032 和 FIPS 180 的测试向量检验 Ed25519 与 SHA-512",
   "selftest.lic_files": "许可证文件：有效、过期、被篡改、被截断、其他主版本、其他版本类型、无文件",
   "selftest.lic_watermark": "水印：使用 Pro 功能且无有效许可证时出现，有有效许可证或未用 Pro 功能时不出现，数据不变",
-  "selftest.lic_ui": "许可证界面：无许可证时显示购买按钮和试用文字，有有效许可证时隐藏；5、10、15 欧元的购买链接"
+  "selftest.lic_ui": "许可证界面：无许可证时显示购买按钮和试用文字，有有效许可证时隐藏；5、10、15 欧元的购买链接",
+  "error.compute_unavailable": "计算通道需要 OpenGL 4.3，此显卡驱动不支持",
+  "error.scene_vr": "3D 场景不能与 360（VR）渲染同时使用",
+  "error.scene_tiled": "3D 场景不能分块渲染：请缩小静态图像，或去掉 tile 设置"
 }

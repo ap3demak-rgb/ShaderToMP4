@@ -8,6 +8,7 @@
 #include "core/ffmpeg_download.h"
 #include "core/i18n.h"
 #include "core/prolicense.h"
+#include "core/proext.h"
 #include "core/selftest.h"
 #include "core/util.h"
 #include "gui/ui_controls.h"
@@ -82,6 +83,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     }
 
     initLicense(g.exeDir);  // fichier de licence a cote du programme, relu a chaque demarrage
+    initProExtensions();    // fonctions de l'edition Pro (aucune dans l'edition libre)
 
     // Ligne de commande
     int argc = 0;

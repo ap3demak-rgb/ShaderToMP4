@@ -9,6 +9,7 @@
 namespace ogl {
 #define F(r, n, a) PFN_##n n = nullptr;
 GL_FUNCS(F)
+GL_FUNCS_OPT(F)
 #undef F
 
 bool load() {
@@ -18,7 +19,18 @@ bool load() {
     if (!n) ok = false;
     GL_FUNCS(F)
 #undef F
+#define F(r, n, a) n = (PFN_##n)platform::glProc("gl" #n);
+    GL_FUNCS_OPT(F)
+#undef F
     return ok;
+}
+
+bool computeAvailable() {
+    if (!DispatchCompute || !MemoryBarrier) return false;
+    GLint major = 0, minor = 0;
+    glGetIntegerv(0x821B /*GL_MAJOR_VERSION*/, &major);
+    glGetIntegerv(0x821C /*GL_MINOR_VERSION*/, &minor);
+    return major > 4 || (major == 4 && minor >= 3);
 }
 }  // namespace ogl
 
@@ -77,13 +89,13 @@ static std::string vrMainSource(int mode, const std::string& finalColor) {
 }
 
 GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut, const std::string* chType, bool cubemapOut, bool soundOut,
-                    int vrMode, const std::string& preamble, bool alphaOut) {
+                    int vrMode, const std::string& preamble, bool alphaOut, SceneProgram* scene) {
     std::string channels;
     for (int i = 0; i < 4; i++) channels += "uniform " + (chType && !chType[i].empty() ? chType[i] : std::string("sampler2D")) + " iChannel" + std::to_string(i) + ";\n";
-    const std::string vs =
-        "#version 330 core\n"
+    const std::string vs = scene ? scene->vertex :
+        std::string("#version 330 core\n"
         "void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);"
-        " gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n";
+        " gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n");
 
     // Couleur ecrite par l'image : opaque (poids = fondu sur la couleur) ou avec transparence. En mode alpha, le fondu agit sur l'alpha ;
     // st_premul = 1 pendant l'accumulation du flou de mouvement (couleurs prémultipliées, somme exacte), 0 sinon (alpha droit).
@@ -91,7 +103,7 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         alphaOut ? "{ float a = clamp(c.a, 0.0, 1.0); st_outColor = st_premul != 0 ? vec4(c.rgb * a, a) * st_weight : vec4(c.rgb, a * st_weight); }"
                  : "st_outColor = vec4(c.rgb * st_weight, 1.0);";
     const std::string fs =
-        "#version 330 core\n"
+        "#version " + (scene ? scene->version : std::string("330")) + " core\n"
         "uniform vec3  iResolution;\n"
         "uniform float iTime;\n"
         "uniform float iTimeDelta;\n"
@@ -131,10 +143,21 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
          : bufferOut ? std::string("\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy); st_outColor = c; }\n")
                    : "\nvoid main(){ vec4 c = vec4(0.0, 0.0, 0.0, 1.0); mainImage(c, gl_FragCoord.xy + st_offset); " + finalColor + " }\n");
 
+    return buildProgramFromSources(vs, fs, err, scene ? &scene->vertexFailed : nullptr);
+}
+
+GLuint buildProgramFromSources(const std::string& vs, const std::string& fs, std::wstring& err, bool* vertexFailed) {
+    if (vertexFailed) *vertexFailed = false;
     GLuint v = compileShader(ogl::K_VERTEX_SHADER, vs, err);
-    if (!v) return 0;
+    if (!v) {
+        if (vertexFailed) *vertexFailed = true;
+        return 0;
+    }
     GLuint f = compileShader(ogl::K_FRAGMENT_SHADER, fs, err);
-    if (!f) return 0;
+    if (!f) {
+        ogl::DeleteShader(v);
+        return 0;
+    }
     GLuint prog = ogl::CreateProgram();
     ogl::AttachShader(prog, v);
     ogl::AttachShader(prog, f);
@@ -147,6 +170,30 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         char log[4096] = {0};
         ogl::GetProgramInfoLog(prog, sizeof(log) - 1, nullptr, log);
         err = TX("error.shader_link") + L"\n" + W(log);
+        ogl::DeleteProgram(prog);
+        return 0;
+    }
+    return prog;
+}
+
+GLuint buildComputeProgram(const std::string& cs, std::wstring& err) {
+    if (!ogl::computeAvailable()) {
+        err = TX("error.compute_unavailable");
+        return 0;
+    }
+    GLuint c = compileShader(ogl::K_COMPUTE_SHADER, cs, err);
+    if (!c) return 0;
+    GLuint prog = ogl::CreateProgram();
+    ogl::AttachShader(prog, c);
+    ogl::LinkProgram(prog);
+    ogl::DeleteShader(c);
+    GLint ok = 0;
+    ogl::GetProgramiv(prog, ogl::K_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[4096] = {0};
+        ogl::GetProgramInfoLog(prog, sizeof(log) - 1, nullptr, log);
+        err = TX("error.shader_link") + L"\n" + W(log);
+        ogl::DeleteProgram(prog);
         return 0;
     }
     return prog;

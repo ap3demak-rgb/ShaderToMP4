@@ -1167,5 +1167,8 @@
   "selftest.lic_crypto": "licentie: Ed25519 en SHA-512 gecontroleerd met de testvectoren van RFC 8032 en FIPS 180",
   "selftest.lic_files": "licentiebestanden: geldig, verlopen, vervalst, afgekapt, andere hoofdversie, andere editie, geen bestand",
   "selftest.lic_watermark": "watermerk: aanwezig met een Pro-functie zonder geldige licentie, afwezig met geldige licentie of zonder Pro-functie, data ongewijzigd",
-  "selftest.lic_ui": "licentie-interface: koopknop en proefteksten zichtbaar zonder licentie, verborgen met een geldige; koopkoppelingen voor 5, 10 en 15 euro"
+  "selftest.lic_ui": "licentie-interface: koopknop en proefteksten zichtbaar zonder licentie, verborgen met een geldige; koopkoppelingen voor 5, 10 en 15 euro",
+  "error.compute_unavailable": "Compute-passes hebben OpenGL 4.3 nodig, dat deze grafische driver niet biedt",
+  "error.scene_vr": "Een 3D-scène kan niet worden gecombineerd met een 360-render (VR)",
+  "error.scene_tiled": "Een 3D-scène kan niet in tegels worden gerenderd: verklein de stilstaande afbeelding of verwijder de tegelinstelling"
 }

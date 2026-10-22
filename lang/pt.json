@@ -1167,5 +1167,8 @@
   "selftest.lic_crypto": "licença: Ed25519 e SHA-512 verificados com os vetores de teste da RFC 8032 e FIPS 180",
   "selftest.lic_files": "ficheiros de licença: válido, expirado, falsificado, truncado, outra versão principal, outra edição, sem ficheiro",
   "selftest.lic_watermark": "marca d'água: presente com função Pro sem licença válida, ausente com licença válida ou sem função Pro, dados inalterados",
-  "selftest.lic_ui": "interface de licença: botão de compra e textos de avaliação visíveis sem licença, ocultos com uma válida; ligações de compra de 5, 10 e 15 euros"
+  "selftest.lic_ui": "interface de licença: botão de compra e textos de avaliação visíveis sem licença, ocultos com uma válida; ligações de compra de 5, 10 e 15 euros",
+  "error.compute_unavailable": "Os passes de cálculo exigem OpenGL 4.3, que este controlador gráfico não oferece",
+  "error.scene_vr": "Uma cena 3D não pode ser combinada com um render de 360 (VR)",
+  "error.scene_tiled": "Uma cena 3D não pode ser renderizada em mosaicos: reduza a imagem fixa ou retire o ajuste tile"
 }
