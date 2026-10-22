@@ -54,7 +54,9 @@ struct Rig {
     PostChain post;            // post-traitement (passe .post, effets, LUT)
     std::unique_ptr<ProScene> scene;  // scene 3D de l'edition Pro (maillage dessine a la place du triangle plein ecran), nullptr sinon
     SceneProgram sceneProg;
+    std::unique_ptr<ProLayers> layers;  // calques de l'edition Pro (lecture en temps reel seulement : les sondes de controle ne les voient pas)
     void release() {
+        layers.reset();
         scene.reset();
         post.release();
         bp.release();
@@ -82,7 +84,7 @@ std::string watchedContent(const std::wstring& shaderPath) {
     return fnvHex(all);
 }
 
-bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, std::wstring& err, int maxSide = 640, bool f32 = false) {
+bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir, const Settings& base, std::wstring& err, int maxSide = 640, bool f32 = false, bool withLayers = false) {
     Hooks quiet;
     quiet.log = [](const std::wstring&) {};
     std::string code;
@@ -190,6 +192,24 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
     if (!r.post.build(s, r.bp, shaderDir, ffmpeg, quiet, err, r.w, r.h, r.params.declarations())) return false;
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, r.fbo);
     glViewport(0, 0, r.w, r.h);
+    if (withLayers && proExt() && proExt()->makeLayers) {
+        LayerRequest lr;
+        lr.shaderPath = shaderPath;
+        lr.exeDir = exeDir;
+        lr.settings = &r.s;
+        lr.width = r.w;
+        lr.height = r.h;
+        lr.outputHeight = s.height;
+        lr.ssFactor = 1;
+        lr.preview = true;
+        lr.hooks = &quiet;
+        std::wstring layerErr;
+        r.layers = proExt()->makeLayers(lr, layerErr);
+        if (!r.layers && !layerErr.empty()) {
+            err = layerErr;
+            return false;
+        }
+    }
     ogl::UseProgram(r.prog);
     if (!loadChannels(s, shaderDir, ffmpeg, r.chans, quiet, err, r.w, r.h, s.start, s.fps)) return false;
     r.bp.fixChannelSizes(r.chans);
@@ -277,6 +297,11 @@ void drawRig(Rig& r, double t) {
         ogl::UseProgram(r.prog);
     }
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, r.fbo);
+    if (r.layers) {  // calques de l'edition Pro
+        glViewport(0, 0, r.w, r.h);
+        r.layers->draw(r.w, r.h, 0, 0, idx, t);
+        ogl::UseProgram(r.prog);
+    }
 }
 
 // Rend l'image au temps t ; send : lire les pixels et les envoyer
@@ -309,7 +334,7 @@ void playerMain(PreviewPlayer::Impl* I, std::wstring shaderPath, std::wstring ex
     auto rebuild = [&] {
         rig.release();
         std::wstring e;
-        built = buildRig(rig, shaderPath, exeDir, base, e);
+        built = buildRig(rig, shaderPath, exeDir, base, e, 640, false, true);
         if (!built) {
             rig.release();
             log(TXF("log.preview_error", e.c_str()));

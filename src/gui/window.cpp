@@ -378,12 +378,22 @@ static LRESULT CALLBACK curtainProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT
     return DefSubclassProc(h, msg, wp, lp);
 }
 
+static bool previewImageRect(HWND h, RECT& img);
+
 // Souris sur l'apercu d'une scene 3D (edition Pro) : glisser fait orbiter la camera autour de la cible ; la molette (voir wndProc) rapproche ou eloigne
 static LRESULT CALLBACK orbitProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
     static bool dragging = false;
     static POINT last{};
     static auto checked = std::chrono::steady_clock::time_point();
     static bool scene = false;
+    if (const ProExt* px = proExt(); px && px->tools.guidesMenu && !g.curtain.on) {  // reperes d'ecran (edition Pro) : clic gauche = point d'interet quand il est demande, clic droit = menu
+        RECT img;
+        if (msg == WM_LBUTTONDOWN && px->tools.guidesClick && previewImageRect(h, img) && px->tools.guidesClick(h, (short)LOWORD(lp), (short)HIWORD(lp), img)) return 0;
+        if (msg == WM_RBUTTONUP) {
+            px->tools.guidesMenu(GetParent(h));
+            return 0;
+        }
+    }
     if (!g.curtain.on) {
         auto now = std::chrono::steady_clock::now();
         if (msg == WM_LBUTTONDOWN || now - checked > std::chrono::milliseconds(500)) {  // le shader selectionne change : relire de temps en temps
@@ -443,7 +453,26 @@ void drawPreview(const DRAWITEMSTRUCT* d) {
         StretchBlt(d->hDC, r.left + (cw - dw) / 2, r.top + (ch - dh) / 2, dw, dh, mem, 0, 0, g.prevW, g.prevH, SRCCOPY);
         SelectObject(mem, old);
         DeleteDC(mem);
+        if (const ProExt* px = proExt(); px && px->tools.drawGuides) {  // reperes d'ecran (edition Pro)
+            const RECT img{(cw - dw) / 2, (ch - dh) / 2, (cw - dw) / 2 + dw, (ch - dh) / 2 + dh};
+            const int saved = SaveDC(d->hDC);
+            SetViewportOrgEx(d->hDC, r.left, r.top, nullptr);
+            px->tools.drawGuides(d->hDC, img, g.base);
+            RestoreDC(d->hDC, saved);
+        }
     }
+}
+
+// Rectangle de l'image de l'apercu dans la zone cliente de l'apercu (comme drawPreview la dessine) ; faux s'il n'y a pas d'image
+static bool previewImageRect(HWND h, RECT& img) {
+    RECT c;
+    GetClientRect(h, &c);
+    if (!(g.prevBmp && g.prevW > 0 && g.prevH > 0)) return false;
+    const int cw = c.right, ch = c.bottom, in = S(4), aw = cw - 2 * in, ah = ch - 2 * in;
+    const double sc = std::min((double)aw / g.prevW, (double)ah / g.prevH);
+    const int dw = std::max(1, (int)(g.prevW * sc)), dh = std::max(1, (int)(g.prevH * sc));
+    img = {(cw - dw) / 2, (ch - dh) / 2, (cw - dw) / 2 + dw, (ch - dh) / 2 + dh};
+    return true;
 }
 
 COLORREF statusColor(int st) {
@@ -1036,6 +1065,10 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_COMMAND: {
             const int id = LOWORD(wp);
             if (id != ID_UNDO && id != ID_REDO && proExt() && proExt()->tools.settingsChanged) SetTimer(hw, 11, 400, nullptr);  // annulation : etat memorise apres le dernier changement
+            if (id == ID_GUIDES) {
+                if (const ProExt* px = proExt(); px && px->tools.guidesMenu) px->tools.guidesMenu(hw);
+                return 0;
+            }
             if (id == ID_UNDO || id == ID_REDO) {
                 if (const ProExt* px = proExt(); px && px->tools.undoRedo) px->tools.undoRedo(id == ID_REDO);
                 return 0;

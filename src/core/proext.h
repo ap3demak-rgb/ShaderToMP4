@@ -76,6 +76,26 @@ struct ProChannelImage {
     std::vector<float> rgba;
 };
 
+// Calques de l'edition Pro (logos, textes animes, sous-titres incrustes, barre de progression) : dessines sur la couleur de l'image, apres le post-traitement,
+// avec le meme sur-echantillonnage que le reste et uniquement en fonction de l'indice d'image (donc identiques dans un rendu d'un seul tenant et par parties).
+struct LayerRequest {
+    std::wstring shaderPath, exeDir;
+    const Settings* settings = nullptr;
+    int width = 0, height = 0;   // taille complete du rendu (apres sur-echantillonnage)
+    int outputHeight = 0;        // hauteur de la sortie finale : fixe la taille des textes
+    int ssFactor = 1;            // pixels rendus par pixel de sortie
+    bool preview = false;
+    const Hooks* hooks = nullptr;
+};
+class ProLayers {
+public:
+    virtual ~ProLayers() {}
+    // Dessine les calques sur la cible liee (viewport tileW x tileH, origine de la tuile (offX, offY) dans l'image complete). frame : indice de l'image de la
+    // video ; t : temps du shader. Laisse le melange coupe, aucun programme actif et l'unite de texture 0 active.
+    virtual void draw(int tileW, int tileH, int offX, int offY, long long frame, double t) = 0;
+    virtual std::string signature() const = 0;  // tout ce qui change l'image : entre dans la signature des parties reprenables
+};
+
 // Outils d'edition de l'interface Windows (edition Pro) : annuler / retablir, editeurs de courbes, de temps et de montage. Le programme public ne fait
 // qu'appeler ces fonctions quand elles existent (boutons et raccourcis absents de l'edition libre) ; la verification de la licence est faite par elles.
 struct ProTools {
@@ -89,6 +109,12 @@ struct ProTools {
     std::function<bool(HWND parent, const std::string& current, double duration, std::string& result)> editTimeMap;
     // Fichier .montage : editeur graphique ; vrai si traite (faux : l'editeur de texte est utilise).
     std::function<bool(HWND parent, const std::wstring& montagePath)> editMontage;
+    // Reperes d'ecran de l'apercu (zones de securite, rapports d'image, tiers, grille, point d'interet) : Ctrl+G ou clic droit sur l'apercu ouvre le menu.
+    std::function<void(HWND parent)> guidesMenu;
+    // Apres le dessin de l'image de l'apercu : image = rectangle qu'elle occupe dans la zone cliente de l'apercu (pixels), hdc de l'apercu.
+    std::function<void(HDC hdc, const RECT& image, const Settings& s)> drawGuides;
+    // Clic gauche sur l'apercu (client : coordonnees dans l'apercu, image : rectangle de l'image) : vrai si l'extension le prend (choix du point d'interet)
+    std::function<bool(HWND preview, int x, int y, const RECT& image)> guidesClick;
 };
 
 struct ProExt {
@@ -112,6 +138,11 @@ struct ProExt {
     // Debruitage : halfA et halfB sont les moyennes (RGBA flottant, w x h, premiere ligne en bas) des nA et nB tirages de chaque moitie ; out recoit l'image debruitee
     // (moyenne de tous les tirages, meme disposition). Appelee dans le thread de rendu.
     std::function<void(const Settings&, int w, int h, int nA, int nB, const std::vector<float>& halfA, const std::vector<float>& halfB, std::vector<float>& out)> denoise;
+    // Calques : nullptr sans erreur s'il n'y en a pas ; nullptr avec err si un reglage est invalide. Contexte OpenGL courant.
+    std::function<std::unique_ptr<ProLayers>(const LayerRequest&, std::wstring& err)> makeLayers;
+    // Video finie (apres le dernier controle du programme) : l'extension peut la completer (carte de debut / de fin, piste de sous-titres, livrables multiples).
+    // Faux + err : le rendu est signale en echec, la video reste.
+    std::function<bool(const Settings& s, const std::wstring& file, const std::wstring& shaderPath, const std::wstring& exeDir, const Hooks& H, std::wstring& err)> finishVideo;
     // Canal d'entree d'une extension : vrai si `spec` (« data:serie ») est a elle ; faux + err si la source est invalide. Rendu en virgule flottante, lu en 1 x N ou W x H.
     std::function<bool(const Settings&, const std::wstring& spec, const std::wstring& shaderDir, ProChannelImage& out, std::wstring& err, bool& handled)> channelImage;
     // Canal image decode (fichier) : l'extension peut le convertir (espace de couleur) ; vrai si elle a change `rgba8` (w x h x 4 octets) en `out` (flottants, premiere ligne en haut).

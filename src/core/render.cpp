@@ -769,6 +769,27 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     }
     Watermark wm;
     int wmOffX = 0, wmOffY = 0;  // origine de la tuile dans l'image complete (image fixe par tuiles)
+    std::unique_ptr<ProLayers> layers;  // logos, textes, sous-titres incrustes (edition Pro)
+    if (proExt() && proExt()->makeLayers) {
+        LayerRequest lr;
+        lr.shaderPath = shaderPath;
+        lr.exeDir = exeDir;
+        lr.settings = &s;
+        lr.width = FW;
+        lr.height = FH;
+        lr.outputHeight = H_;
+        lr.ssFactor = SS;
+        lr.preview = preview;
+        lr.hooks = &H;
+        std::wstring layerErr;
+        layers = proExt()->makeLayers(lr, layerErr);
+        if (!layers && !layerErr.empty()) {
+            err = layerErr;
+            cleanupGL();
+            return Result::Failed;
+        }
+        if (layers) proSig += "|layers:" + layers->signature();
+    }
     if (wmOn && !wm.build(FW, FH, H_, SS, err)) {
         cleanupGL();
         return Result::Failed;
@@ -936,6 +957,12 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             post.apply(fbo, n, t, fade, setPassUniforms, latest);
             ogl::UseProgram(prog);
             if (timing) tickStop(tp, 2);
+        }
+        if (layers) {  // calques de l'edition Pro : sur la couleur, apres le post-traitement
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
+            glViewport(0, 0, RW, RH);
+            layers->draw(RW, RH, wmOffX, wmOffY, n, t);
+            ogl::UseProgram(prog);
         }
         if (wm.active()) {  // filigrane d'essai : dernier trait sur la couleur, apres le post-traitement et le fondu
             ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
@@ -2269,6 +2296,13 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             if (s.container != "mp4" && s.container != "mov") H.log(L"  " + TXF("log.vr_meta_skipped", W(s.container).c_str()));
             else if (injectSphericalMetadata(out, vrMode == 2 ? 1 : vrMode == 3 ? 2 : 0, metaErr)) H.log(L"  " + TX("log.vr_meta_done"));
             else H.log(L"  " + metaErr);
+        }
+        if (videoMode && kind == OutKind::Video && !H.cancelled() && proExt() && proExt()->finishVideo) {  // cartes, sous-titres, livrables multiples (edition Pro)
+            std::wstring finishErr;
+            if (!proExt()->finishVideo(s, out, shaderPath, exeDir, H, finishErr)) {
+                err = finishErr;
+                return Result::Failed;
+            }
         }
         if (videoMode && (kind == OutKind::Video || kind == OutKind::Gif || kind == OutKind::Webp) && (s.loopMode != "none" || s.loop > 0) && !H.cancelled()) {
             LoopCheck lc;  // la derniere image rejoint-elle la premiere aussi bien que deux images voisines se suivent ?

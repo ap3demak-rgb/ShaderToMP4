@@ -177,6 +177,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         accAll.push_back({FVIRTKEY | FCONTROL, 'Y', ID_REDO});
         accAll.push_back({FVIRTKEY | FCONTROL | FSHIFT, 'Z', ID_REDO});
     }
+    if (const ProExt* px = proExt(); px && px->tools.guidesMenu) accAll.push_back({FVIRTKEY | FCONTROL, 'G', ID_GUIDES});  // reperes d'ecran de l'apercu (edition Pro)
     HACCEL haccel = CreateAcceleratorTableW(accAll.data(), (int)accAll.size());
 
     // Cartes graphiques détectées (affichées s'il y en a plusieurs)
