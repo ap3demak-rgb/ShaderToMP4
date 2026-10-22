@@ -965,7 +965,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                         if (t.exists || !createPassFile(t, perr)) problem = bad("create " + t.id);
                         created++;
                     }
-                if (problem.empty() && (tabs.size() != 9 || created != 3 || !passTabs(imageFile)[1].exists)) problem = bad("tabs");
+                if (problem.empty() && (tabs.size() != (proExt() ? 12u : 9u) || created != 3 || !passTabs(imageFile)[1].exists)) problem = bad("tabs");
                 if (problem.empty()) {
                     Settings st = base("h264", "mp4", 8);
                     std::vector<uint8_t> got;

@@ -606,7 +606,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     // Scene 3D (edition Pro) : un maillage dessine par un etage sommets devant le meme fragment shader ; sans extension ou sans demande, rien ne change
     std::unique_ptr<ProScene> scene;
     SceneProgram sceneProg;
-    if (const ProExt* px = proExt(); px && px->makeScene) {
+    {
         SceneRequest rq;
         rq.shaderPath = shaderPath;
         rq.exeDir = exeDir;
@@ -617,7 +617,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         rq.preview = preview;
         rq.hooks = &H;
         std::wstring sceneErr;
-        scene = px->makeScene(rq, sceneErr);
+        scene = createProScene(rq, sceneProg, sceneErr);
         if (!scene && !sceneErr.empty()) {
             err = sceneErr;
             return Result::Failed;
@@ -625,10 +625,6 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         if (scene && (vrMode > 0 || tiled)) {  // le maillage n'est pas decoupable en tuiles et n'a pas de mode 360
             err = TX(vrMode > 0 ? "error.scene_vr" : "error.scene_tiled");
             return Result::Failed;
-        }
-        if (scene) {
-            sceneProg.version = scene->version();
-            sceneProg.vertex = scene->vertexSource();
         }
     }
     const bool wmOn = watermarkRequired();  // fonctions Pro utilisees (scene comprise) sans licence valide : filigrane sur la couleur
@@ -875,7 +871,13 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             glDrawArrays(GL_TRIANGLES, 0, 3);
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
         } else if (scene) {
-            scene->draw(t, curWeight, curPremul);
+            ProScene::Frame sf;
+            sf.t = t;
+            sf.frame = frameNumber(s, n, t) + extraFrame;
+            sf.dt = tm.identity() ? 1.0 / s.fps : deltaAt(n);
+            sf.weight = curWeight;
+            sf.premul = curPremul;
+            scene->draw(sf);
         } else {
             glDrawArrays(GL_TRIANGLES, 0, 3);
         }

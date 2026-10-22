@@ -1170,5 +1170,8 @@
   "selftest.lic_ui": "license interface: purchase button and trial texts shown without a license, hidden with a valid one; purchase links for 5, 10 and 15 euros",
   "error.compute_unavailable": "Compute passes need OpenGL 4.3, which this graphics driver does not offer",
   "error.scene_vr": "A 3D scene cannot be combined with a 360 (VR) render",
-  "error.scene_tiled": "A 3D scene cannot be rendered in tiles: use a smaller still image or remove the tile setting"
+  "error.scene_tiled": "A 3D scene cannot be rendered in tiles: use a smaller still image or remove the tile setting",
+  "status.orbit": "3D camera: %ls (kept in the settings)",
+  "status.orbit_locked": "The shader sets its own camera (// camera lines): remove them to choose the camera with the mouse",
+  "status.preview_ready_scene": "Preview ready. 3D scene: drag in the preview to orbit the camera, wheel to zoom"
 }

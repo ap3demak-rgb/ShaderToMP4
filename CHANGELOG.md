@@ -14,6 +14,8 @@ Format: one section per version, newest first. The section of a tagged version i
 
 ### Added
 
+- Pro edition: **3D scenes** (see “3D scenes (Pro edition)” in the README): OBJ, PLY and glTF 2.0 meshes read by the program, vertex stage `name.vert.glsl` in front of the same fragment shader, camera (fixed, orbit, path), object transform over time, depth buffer 24-bit or float, instances, shadow map `name.shadow.glsl`, dynamic reflection cubemap `envmap=`, GPU compute pass `name.compute.glsl` (OpenGL 4.3, state replayed so that parts and resumes give the same video), real-time preview with mouse orbit and zoom, errors located as `file:line:`, five example scenes, nineteen self-test cases.
+- Hooks for the Pro edition in the free engine, inert in the free edition: generic Pro settings (`Settings::pro`), scene interface (`proext.h`), OpenGL functions for meshes and compute, vertex stage in the main program, editor tabs Vertex / Shadow / Compute, HTML export refusing a scene. The OpenGL context is now requested as 4.3 core first, then 3.3 core.
 - Pro edition infrastructure (nothing is locked in the free edition): signed license file `ShaderToMP4.license` next to the program, checked offline (Ed25519, written for the program, tested against the RFC 8032 vectors); trial watermark on the colour of an output that uses a Pro feature without a valid license (never on data passes), none otherwise; license status in “About”, “Buy Pro” button and window (5 €, 10 € or 15 € through PayPal, opened on click only) that disappear with a valid license; `--license-info`; user agreement `EULA.md`; four self-test cases.
 
 ## 2.1.1 — 2026-10-20

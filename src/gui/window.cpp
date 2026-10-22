@@ -376,6 +376,46 @@ static LRESULT CALLBACK curtainProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT
     return DefSubclassProc(h, msg, wp, lp);
 }
 
+// Souris sur l'apercu d'une scene 3D (edition Pro) : glisser fait orbiter la camera autour de la cible ; la molette (voir wndProc) rapproche ou eloigne
+static LRESULT CALLBACK orbitProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    static bool dragging = false;
+    static POINT last{};
+    static auto checked = std::chrono::steady_clock::time_point();
+    static bool scene = false;
+    if (!g.curtain.on) {
+        auto now = std::chrono::steady_clock::now();
+        if (msg == WM_LBUTTONDOWN || now - checked > std::chrono::milliseconds(500)) {  // le shader selectionne change : relire de temps en temps
+            scene = sceneSelected();
+            checked = now;
+        }
+        if (scene) {
+            if (msg == WM_NCHITTEST) return HTCLIENT;
+            if (msg == WM_SETCURSOR) {
+                SetCursor(LoadCursorW(nullptr, MAKEINTRESOURCEW(32646)));  // IDC_SIZEALL
+                return TRUE;
+            }
+            if (msg == WM_LBUTTONDOWN) {
+                dragging = true;
+                SetCapture(h);
+                last = {(short)LOWORD(lp), (short)HIWORD(lp)};
+                return 0;
+            }
+            if (msg == WM_MOUSEMOVE && dragging) {
+                const POINT p{(short)LOWORD(lp), (short)HIWORD(lp)};
+                orbitScene((p.x - last.x) * 0.4, (p.y - last.y) * 0.4, 1.0);
+                last = p;
+                return 0;
+            }
+            if (msg == WM_LBUTTONUP && dragging) {
+                dragging = false;
+                ReleaseCapture();
+                return 0;
+            }
+        }
+    }
+    return DefSubclassProc(h, msg, wp, lp);
+}
+
 void drawPreview(const DRAWITEMSTRUCT* d) {
     RECT r = d->rcItem;
     int cw = r.right - r.left, ch = r.bottom - r.top;
@@ -591,6 +631,7 @@ void createControls(HWND hw) {
 
     g.preview = mk(hw, L"STATIC", L"", SS_OWNERDRAW, ID_PREVIEW);
     SetWindowSubclass(g.preview, curtainProc, 1, 0);
+    SetWindowSubclass(g.preview, orbitProc, 2, 0);  // scene 3D : glisser pour orbiter
     g.trkPrev = mk(hw, L"STSlider", L"", WS_TABSTOP, ID_PREVTRK);
     SendMessageW(g.trkPrev, TBM_SETRANGE, TRUE, MAKELPARAM(0, kPrevSteps));
     g.lblPrev = mk(hw, L"STATIC", L"", SS_LEFT | SS_NOPREFIX, 0);
@@ -915,6 +956,16 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             updateButtons();
             return 0;
         }
+        case WM_MOUSEWHEEL: {  // scene 3D (edition Pro) : la molette sur l'apercu rapproche ou eloigne la camera
+            const POINT pt{(short)LOWORD(lp), (short)HIWORD(lp)};
+            RECT pr;
+            GetWindowRect(g.preview, &pr);
+            if (PtInRect(&pr, pt) && !g.curtain.on && sceneSelected()) {
+                orbitScene(0, 0, std::pow(0.9, (double)GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA));
+                return 0;
+            }
+            break;
+        }
         case WM_APP_PREVIEW: {
             PreviewData* p = (PreviewData*)lp;
             if (p->t >= 0) {  // image du lecteur : la position suit le temps du shader
@@ -1101,8 +1152,12 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             SendMessageW(g.prog, ui::STPB_SETSTATE, 0, 0);
             if (g.previewRun) {
                 g.previewRun = false;
-                setStatus(TX("status.preview_ready"));
+                setStatus(TX(sceneSelected() ? "status.preview_ready_scene" : "status.preview_ready"));
                 updateButtons();
+                if (g.orbitPending) {  // la camera a bouge pendant ce rendu
+                    g.orbitPending = false;
+                    runPreview();
+                }
                 return 0;
             }
             int fails = 0, cancelled = 0;

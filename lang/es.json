@@ -1170,5 +1170,8 @@
   "selftest.lic_ui": "interfaz de licencia: botón de compra y textos de prueba visibles sin licencia, ocultos con una válida; enlaces de compra de 5, 10 y 15 euros",
   "error.compute_unavailable": "Los pases de cálculo requieren OpenGL 4.3, que este controlador gráfico no ofrece",
   "error.scene_vr": "Una escena 3D no se puede combinar con un render de 360 (VR)",
-  "error.scene_tiled": "Una escena 3D no se puede renderizar por teselas: reduzca la imagen fija o quite el ajuste tile"
+  "error.scene_tiled": "Una escena 3D no se puede renderizar por teselas: reduzca la imagen fija o quite el ajuste tile",
+  "status.orbit": "Cámara 3D: %ls (guardada en los ajustes)",
+  "status.orbit_locked": "El shader fija su propia cámara (líneas // camera): quítelas para elegir la cámara con el ratón",
+  "status.preview_ready_scene": "Vista previa lista. Escena 3D: arrastre en la vista previa para orbitar la cámara, rueda para acercar"
 }

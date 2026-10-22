@@ -1170,5 +1170,8 @@
   "selftest.lic_ui": "interface de licença: botão de compra e textos de avaliação visíveis sem licença, ocultos com uma válida; ligações de compra de 5, 10 e 15 euros",
   "error.compute_unavailable": "Os passes de cálculo exigem OpenGL 4.3, que este controlador gráfico não oferece",
   "error.scene_vr": "Uma cena 3D não pode ser combinada com um render de 360 (VR)",
-  "error.scene_tiled": "Uma cena 3D não pode ser renderizada em mosaicos: reduza a imagem fixa ou retire o ajuste tile"
+  "error.scene_tiled": "Uma cena 3D não pode ser renderizada em mosaicos: reduza a imagem fixa ou retire o ajuste tile",
+  "status.orbit": "Câmara 3D: %ls (guardada nas definições)",
+  "status.orbit_locked": "O shader define a sua própria câmara (linhas // camera): retire-as para escolher a câmara com o rato",
+  "status.preview_ready_scene": "Pré-visualização pronta. Cena 3D: arraste na pré-visualização para orbitar a câmara, roda do rato para aproximar"
 }

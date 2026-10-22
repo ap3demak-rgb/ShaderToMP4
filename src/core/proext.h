@@ -33,19 +33,38 @@ public:
     // Apres la compilation du programme principal : tampons du maillage, cibles, passes. w x h : taille du rendu.
     virtual bool prepare(GLuint prog, int w, int h, std::wstring& err) = 0;
     // Dessine l'image (programme principal actif, uniform de temps deja regles) au lieu du triangle plein ecran : la cible liee, la fenetre, les
-    // parametres de melange (accumulation) sont ceux de l'appelant et lui sont rendus intacts. t : temps du shader ; weight, premul : poids de fondu
-    // et mode d'alpha que l'appelant a regles dans le programme (st_weight, st_premul).
-    virtual void draw(double t, float weight, bool premul) = 0;
+    // parametres de melange (accumulation) sont ceux de l'appelant et lui sont rendus intacts.
+    struct Frame {
+        double t = 0;           // temps du shader
+        long long frame = 0;    // iFrame
+        double dt = 0;          // iTimeDelta
+        float weight = 1;       // poids de fondu et mode d'alpha que l'appelant a regles dans le programme (st_weight, st_premul)
+        bool premul = false;
+    };
+    virtual void draw(const Frame& f) = 0;
+    // Texte du fragment : declarations ajoutees avant le code du shader image (matrices de la scene, carte d'ombre, reflexion)
+    virtual std::string fragmentPrelude() const { return ""; }
     // Tout ce qui change le resultat (maillage, camera, passes) : entre dans la signature des parties reprenables.
     virtual std::string signature() const = 0;
+    // Apercu interactif : nouveaux reglages (camera, objet...) sans recompiler ; faux si le changement demande une reconstruction complete.
+    virtual bool reconfigure(const Settings& s) { (void)s; return false; }
 };
 
 struct ProExt {
     // Cree la scene d'un rendu. Renvoie nullptr sans erreur si le shader n'en demande pas ; nullptr avec err renseigne si la demande est invalide.
     std::function<std::unique_ptr<ProScene>(const SceneRequest&, std::wstring& err)> makeScene;
+    // Apercu interactif : les reglages (shader compris) demandent-ils une scene 3D ?
+    std::function<bool(const Settings&)> sceneRequested;
+    // Geste de souris sur l'apercu : dx, dy en degres d'orbite autour de la cible, zoom = facteur sur la distance (1 = inchange), t = temps de l'apercu.
+    // Renvoie les reglages (cle -> valeur, « off » efface) a appliquer pour que la camera fixe corresponde au point de vue obtenu.
+    std::function<std::vector<std::pair<std::string, std::string>>(const Settings&, double t, double dx, double dy, double zoom)> orbitCamera;
     // Cas d'auto-test de l'edition Pro (contexte OpenGL courant) : ajoute au rapport, compte les cas et les echecs.
     std::function<void(const std::wstring& exeDir, const std::wstring& testsDir, std::wstring& report, int& total, int& fails)> selfTest;
 };
+
+// Cree la scene demandee par les reglages (nullptr sans erreur s'il n'y en a pas) et remplit le programme de scene (etage sommets, version, declarations) ;
+// nullptr avec err renseigne si la demande est invalide. Utilise par le rendu et par le lecteur temps reel.
+std::unique_ptr<ProScene> createProScene(const SceneRequest& rq, SceneProgram& program, std::wstring& err);
 
 void registerProExt(const ProExt& ext);
 const ProExt* proExt();  // nullptr dans l'edition libre

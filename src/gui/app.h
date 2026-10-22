@@ -91,6 +91,7 @@ struct App {
     std::atomic<bool> running{false}, cancel{false}, pause{false};
     bool previewRun = false;   // le lot en cours est un apercu (UI uniquement)
     double previewTime = 0;
+    bool orbitPending = false;  // la camera a bouge pendant un apercu : en refaire un des que celui-ci est fini
     FpsMeter playMeter;         // cadence reelle de l'apercu en lecture
     double snapshotAt = -1;     // image PNG au temps de l'apercu : temps du shader (secondes), -1 = au temps de debut
     bool snapshotRun = false;  // le lot en cours est une image (PNG, vignette ou planche-contact) (UI uniquement)
@@ -186,6 +187,9 @@ void startJobs(bool snapshot = false, int imageKind = 0, int cols = 0, int rows 
 void showImageMenu();                // menu du bouton « Images » : PNG, vignette, planches-contact
 void updatePrevLabel();
 void runPreview();
+// Scene 3D (edition Pro) : le shader selectionne en demande-t-il une, et deplacement de la camera a la souris sur l'apercu (degres d'orbite, facteur de distance).
+bool sceneSelected();
+void orbitScene(double dx, double dy, double zoom);
 void openFolder();
 
 // --- window.cpp ---

@@ -1170,5 +1170,8 @@
   "selftest.lic_ui": "licentie-interface: koopknop en proefteksten zichtbaar zonder licentie, verborgen met een geldige; koopkoppelingen voor 5, 10 en 15 euro",
   "error.compute_unavailable": "Compute-passes hebben OpenGL 4.3 nodig, dat deze grafische driver niet biedt",
   "error.scene_vr": "Een 3D-scène kan niet worden gecombineerd met een 360-render (VR)",
-  "error.scene_tiled": "Een 3D-scène kan niet in tegels worden gerenderd: verklein de stilstaande afbeelding of verwijder de tegelinstelling"
+  "error.scene_tiled": "Een 3D-scène kan niet in tegels worden gerenderd: verklein de stilstaande afbeelding of verwijder de tegelinstelling",
+  "status.orbit": "3D-camera: %ls (bewaard in de instellingen)",
+  "status.orbit_locked": "De shader bepaalt zijn eigen camera (regels // camera): verwijder ze om de camera met de muis te kiezen",
+  "status.preview_ready_scene": "Voorbeeld klaar. 3D-scène: sleep in het voorbeeld om de camera te laten draaien, scrollwiel om te zoomen"
 }

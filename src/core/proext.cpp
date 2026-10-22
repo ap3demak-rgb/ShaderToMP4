@@ -25,6 +25,18 @@ void registerProExt(const ProExt& ext) {
 
 const ProExt* proExt() { return gRegistered ? &gExt : nullptr; }
 
+std::unique_ptr<ProScene> createProScene(const SceneRequest& rq, SceneProgram& program, std::wstring& err) {
+    err.clear();
+    const ProExt* px = proExt();
+    if (!px || !px->makeScene) return nullptr;
+    std::unique_ptr<ProScene> scene = px->makeScene(rq, err);
+    if (!scene) return nullptr;
+    program.version = scene->version();
+    program.vertex = scene->vertexSource();
+    program.fragmentPrelude = scene->fragmentPrelude();
+    return scene;
+}
+
 void initProExtensions() {
     static bool done = false;
     if (done) return;

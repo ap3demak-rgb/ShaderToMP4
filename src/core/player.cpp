@@ -13,6 +13,7 @@
 #include "params.h"
 #include "source.h"
 #include "postfx.h"
+#include "proext.h"
 #include "previewconv.h"
 #include "vr.h"
 #include "passes.h"
@@ -27,6 +28,7 @@ struct PreviewPlayer::Impl {
     std::mutex m;
     bool hasSeek = false;
     double seekT = 0.0;
+    std::vector<std::pair<std::string, std::string>> pendingSettings;  // reglages a appliquer sans recompiler (camera d'une scene 3D...)
 };
 
 namespace {
@@ -50,7 +52,10 @@ struct Rig {
     std::wstring paramFile;    // valeurs enregistrees par le panneau
     int vr = 0; // mainVR : 0 = non, 1 = 360 mono, 2 = 360 stereo haut / bas
     PostChain post;            // post-traitement (passe .post, effets, LUT)
+    std::unique_ptr<ProScene> scene;  // scene 3D de l'edition Pro (maillage dessine a la place du triangle plein ecran), nullptr sinon
+    SceneProgram sceneProg;
     void release() {
+        scene.reset();
         post.release();
         bp.release();
         freeChannels(chans);
@@ -72,7 +77,7 @@ std::string watchedContent(const std::wstring& shaderPath) {
     const size_t dot = shaderPath.find_last_of(L'.');
     const std::wstring stem = dot == std::wstring::npos ? shaderPath : shaderPath.substr(0, dot);
     const std::wstring ext = dot == std::wstring::npos ? L".glsl" : shaderPath.substr(dot);
-    for (const char* n : {"common", "bufferA", "bufferB", "bufferC", "bufferD", "cubemapA", "post"})
+    for (const char* n : {"common", "bufferA", "bufferB", "bufferC", "bufferD", "cubemapA", "post", "vert", "shadow", "compute"})
         if (readFile(stem + L"." + W(n) + ext, text)) all += n + text;
     return fnvHex(all);
 }
@@ -130,9 +135,33 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
         r.params.setAudio(findFfmpeg(exeDir), s.audio, audioErr);  // sans le son, le parametre garde sa valeur par defaut
     }
     r.bp.setPreamble(r.params.declarations());
-    r.prog = buildProgram(r.bp.withCommon(code), err, false, chTypes, false, false, r.vr, r.params.declarations(), s.alpha);
+    {  // scene 3D (edition Pro) : meme creation que le rendu
+        SceneRequest rq;
+        rq.shaderPath = shaderPath;
+        rq.exeDir = exeDir;
+        rq.settings = &s;
+        rq.code = &code;
+        rq.width = r.w;
+        rq.height = r.h;
+        rq.preview = true;
+        rq.hooks = &quiet;
+        std::wstring sceneErr;
+        r.scene = createProScene(rq, r.sceneProg, sceneErr);
+        if (!r.scene && !sceneErr.empty()) {
+            err = sceneErr;
+            return false;
+        }
+        if (r.scene && r.vr > 0) {
+            err = TX("error.scene_vr");
+            return false;
+        }
+    }
+    r.prog = buildProgram(r.bp.withCommon(code), err, false, chTypes, false, false, r.vr, r.params.declarations(), s.alpha, r.scene ? &r.sceneProg : nullptr);
     if (!r.prog) {
-        err = locateGlslErrors(err, shaderPath, 1 + (int)std::count(code.begin(), code.end(), '\n'), r.bp.commonPath());
+        if (r.scene && r.sceneProg.vertexFailed)
+            err = locateGlslErrors(err, r.scene->vertexPath().empty() ? shaderPath : r.scene->vertexPath(), r.scene->vertexLines());
+        else
+            err = locateGlslErrors(err, shaderPath, 1 + (int)std::count(code.begin(), code.end(), '\n'), r.bp.commonPath());
         return false;
     }
     const size_t cut = shaderPath.find_last_of(L"\\/");
@@ -153,6 +182,7 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
         err = TX("error.framebuffer");
         return false;
     }
+    if (r.scene && !r.scene->prepare(r.prog, r.w, r.h, err)) return false;
     if (!r.bp.build(r.w, r.h, shaderDir, ffmpeg, quiet, err, s.start, s.fps, &s)) return false;
     if (!r.post.build(s, r.bp, shaderDir, ffmpeg, quiet, err, r.w, r.h, r.params.declarations())) return false;
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, r.fbo);
@@ -228,7 +258,15 @@ void drawRig(Rig& r, double t) {
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, pp ? r.post.inputFbo() : r.fbo);
     setUniforms(r, r.prog, idx, t);
     ogl::Uniform1f(r.uWeight, 1.0f);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+    if (r.scene) {
+        ProScene::Frame sf;
+        sf.t = t;
+        sf.frame = frameNumber(r.s, idx, t);
+        sf.dt = 1.0 / r.s.fps;
+        r.scene->draw(sf);
+    } else {
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
     if (pp) {
         GLuint latest[5] = {0, 0, 0, 0, 0};
         if (r.bp.any()) r.bp.latest(latest);
@@ -312,6 +350,19 @@ void playerMain(PreviewPlayer::Impl* I, std::wstring shaderPath, std::wstring ex
                 I->hasSeek = false;
                 need = true;
             }
+        }
+        std::vector<std::pair<std::string, std::string>> changes;
+        {
+            std::lock_guard<std::mutex> l(I->m);
+            changes.swap(I->pendingSettings);
+        }
+        if (!changes.empty() && built) {  // reglages changes a la volee (camera d'une scene 3D) : appliques sans recompiler quand la scene le permet
+            for (const auto& kv : changes) {
+                applySetting(base, kv.first, kv.second);
+                applySetting(rig.s, kv.first, kv.second);
+            }
+            if (!(rig.scene && rig.scene->reconfigure(rig.s))) rebuild();
+            need = true;
         }
         if (built) {
             t = std::min(std::max(t, rig.s.start), rig.s.start + rig.s.duration);
@@ -433,6 +484,12 @@ void PreviewPlayer::setPlaying(bool p) {
     if (impl_) impl_->play = p;
 }
 bool PreviewPlayer::playing() const { return impl_ && impl_->play.load(); }
+void PreviewPlayer::changeSettings(const std::vector<std::pair<std::string, std::string>>& kv) {
+    if (!impl_) return;
+    std::lock_guard<std::mutex> l(impl_->m);
+    impl_->pendingSettings.insert(impl_->pendingSettings.end(), kv.begin(), kv.end());
+}
+
 void PreviewPlayer::seek(double t) {
     if (!impl_) return;
     std::lock_guard<std::mutex> l(impl_->m);

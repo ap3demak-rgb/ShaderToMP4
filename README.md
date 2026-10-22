@@ -419,7 +419,7 @@ Taken from [CHANGELOG.md](CHANGELOG.md), which has the details; the list is chec
 
 | Version | Main additions |
 |---|---|
-| Unreleased | Linux and macOS frozen (2.1.1 is the last version with them), Windows only continuous integration; Pro edition infrastructure (nothing locked in the free edition): signed `ShaderToMP4.license` checked offline, trial watermark on Pro outputs without a license, “Buy Pro” (5, 10 or 15 € by PayPal) and license status in “About”, `--license-info` |
+| Unreleased | Pro edition: 3D scenes (OBJ / PLY / glTF meshes, camera, depth, instances, shadows, reflections, GPU compute, preview with mouse orbit); Linux and macOS frozen (2.1.1 is the last version with them), Windows only continuous integration; Pro edition infrastructure (nothing locked in the free edition): signed `ShaderToMP4.license` checked offline, trial watermark on Pro outputs without a license, “Buy Pro” (5, 10 or 15 € by PayPal) and license status in “About”, `--license-info` |
 | 2.1.1 | Sound normalization with a constant gain (the volume no longer rises and falls); Multilayer OpenEXR written by the program (HDR colour, depth, normal, id, alpha, estimated motion), straight or premultiplied alpha, floating-point TIFF, DPX, 16-bit depth map; effect mode: the shader applied to videos, images, sequences and folders (size, rate, duration, sound, subtitles and chapters follow the source), playing backwards, 25 transitions between two sources with `iProgress`, chroma / luma / difference keys |
 | 2.1.0 | Windows installer (NSIS, per user, ffmpeg included, optional) |
 | 2.0.0 | Quality check (flashes, NaN, flicker, aliasing, precision), shader comparison and reference frames, render time estimate with alert; seamless loops (crossfade, ping-pong), time curve and real slow motion, loop period search, seam check, smart thumbnail, averaged still image; posters by tiles up to 65536 pixels, GPU cost map and GPU time per pass, side-by-side / anaglyph / fulldome VR, cubemap faces; publication targets, target file size, master cache, reproducible video, standalone HTML page; sound and rhythm (tempo, beat variables, markers, beat editor); parts rendered in parallel and a render farm without a server |
@@ -488,6 +488,37 @@ The **Pro edition** (the versions that add the Pro features, after 2.2) is share
 - **Buy** with the “Buy Pro” button (main window or “About”): choose **5 €, 10 € or 15 €** (same license for all three), and the button opens the PayPal page in your browser. The program sends nothing and receives no payment data. Once the payment is received, the file `ShaderToMP4.license` is sent to you by e-mail.
 - **Activate** by putting `ShaderToMP4.license` in the program folder, next to the executable (no key to type, no button). The program reads it at start-up and checks its signature **offline**, with no network. With a valid file the watermark, the “Buy Pro” button and every trial notice disappear, and only the registered version remains: “About” shows the license holder. A file that is altered, expired or for another major version gives the trial version again. `ShaderToMP4 --license-info` shows the status.
 - The watermark is a brake, not an absolute protection. Lost file: ask for it again by e-mail with the payment reference.
+
+## 3D scenes (Pro edition)
+
+The Pro edition draws a **3D mesh** in front of the same fragment shader as the image mode: the shader still writes `mainImage`, the pixels it colours are those of a model seen by a camera, with a depth buffer, instances, shadows, reflections and a GPU compute pass. Everything is written as text (`// key=value` comments in the shader, `config.ini`, `--key=value`), nothing is hidden in a binary format. A scene is a **Pro feature**: without a valid license the colour of the output carries the trial watermark (see above).
+
+**Files** (next to the shader `name.glsl`): `name.vert.glsl` (vertex stage, optional), `name.shadow.glsl` (shadow pass, optional), `name.compute.glsl` (compute pass, optional, OpenGL 4.3). Models: OBJ (vertices, normals, texture coordinates, polygons, groups), PLY (ASCII and binary), glTF 2.0 (`.gltf` with its `.bin` or embedded data, `.glb`), read by the program itself; always a local file, never an address; a file that is too big (8 million vertices, 512 MB), corrupt or not supported (Draco, sparse accessors) is refused with a clear message. Built-in shapes: `cube`, `plane`, `quad`, `sphere`.
+
+| Setting | Meaning |
+|---|---|
+| `mesh` | `cube`, `plane`, `quad`, `sphere` or a file name (`.obj .ply .gltf .glb`); without it there is no scene |
+| `meshgroup` | only this group of an OBJ file |
+| `meshfit` | `1` (default): the model is centred and scaled so that its largest half-extent is 1 |
+| `camerapos`, `cameratarget`, `camerafov` | position, target and vertical field of view in degrees (default `0,0,4`, `0,0,0`, `45`); `camerarange=near,far` (default `0.1,100`) |
+| `camera` | animated camera: `orbit:radius=3,speed=0.25,height=1,start=0` (turns per second around the target) or `path:0:0,0,3;4:3,1,2` (positions at times in seconds, linear between them), `fixed` or `off` for a static camera |
+| `modelangle`, `modelrotate`, `modelscale`, `modeloffset` | initial angles in degrees (`x,y,z`), rotation speed in degrees per second, scale (one number or `x,y,z`), offset |
+| `instances` | number of copies drawn at once (`gl_InstanceID`); without a vertex stage they are laid out on a cubic grid |
+| `scenebg` | background colour `r,g,b` (transparent with `alpha=1`) |
+| `scenedepth` | `24` (24-bit depth buffer, default) or `32` (32-bit float) |
+| `cull` | `back` removes the back faces, `none` (default) keeps them |
+| `envmap` | `x,y,z[,size]`: a cubemap rendered from that point at every frame, sampled as `iEnvMap` (dynamic reflection) |
+| `computebuffer`, `computegroups` | size of the storage buffer in `vec4` (default 1024) and work groups `x[,y[,z]]` (default: one thread per `vec4`, from the `local_size_x` of the compute shader) |
+
+**What the shaders see.** Vertex stage (the file is a complete `main()`; the attributes and uniforms are already declared): `aPosition`, `aNormal`, `aUV`, `iModel`, `iView`, `iProjection`, `iNormalMatrix` (`mat3`), `iCameraPos`, `iBaseColor` (glTF base colour factor, white otherwise), `iInstanceCount`, `iPass` (0 image, 1 shadow map, 2 face of the reflection cubemap), the Shadertoy uniforms (`iTime`, `iFrame`, `iMouse`...), `sceneInstanceOffset()` (grid position of the instance), and `iData[]` with `iDataCount` when there is a compute pass. Without `name.vert.glsl` a default stage writes `vWorldPos`, `vLocalPos`, `vNormal` and `vUV`; the image shader reads them by declaring the matching `in` variables. Fragment (the image shader): the same matrices and `iCameraPos`, `iBaseColor`, `iLightViewProj` and `iLightPos` (`mat4`, `vec3`), `iShadowMap` (`sampler2D` of the depth seen from the light) and `iEnvMap` (`samplerCube`). Compile errors are shown as `file:line:` in the log, in the file that has them (double-click to open it).
+
+**Shadows.** `name.shadow.glsl` only holds comments: `// light=4,7,3`, `// lighttarget=0,0,0`, `// shadowsize=1024`, `// shadowortho=5` (half-extent of an orthographic light; without it a perspective light of `shadowfov=60` degrees), `// shadowrange=1,20`. The same vertex stage draws the shadow map, so animated geometry casts its own shadow; the comparison with `iShadowMap` is written in the image shader (see `examples/scenes/shadows.glsl`).
+
+**Compute.** `name.compute.glsl` is a `#version 430` compute shader to which `iData` (the storage buffer, binding 0), `iTime`, `iTimeDelta`, `iFrame`, `iFrameRate` and `iDataCount` are added; it declares its own `layout(local_size_x = ...) in;`. It runs once per frame of the render, before the image; a render that starts later (resume, parts, farm) first replays the previous frames, so the result does not depend on how the render is cut. It needs a driver with OpenGL 4.3; without it the scene is refused with a message.
+
+**Preview.** In the main window, a scene shader shows "drag in the preview to orbit the camera, wheel to zoom": the camera is kept in the settings (`camerapos`, saved in `config.ini`), also during the real-time playback. A camera written in the shader (`// camera...` lines) takes priority and the program says so. Not available for a scene: HTML export, 360 renders (`mainVR`) and still images rendered in tiles. The editor gets the tabs Vertex, Shadow and Compute.
+
+Examples (`examples/scenes/` of the Pro package): `cube`, `sphere_orbit`, `shadows`, `reflection`, `particles` (8192 particles simulated on the GPU).
 
 ## FAQ
 

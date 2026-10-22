@@ -127,6 +127,7 @@ bool createGLContext(GLContext& c, std::wstring& err);  // contexte 3.3 core + c
 struct SceneProgram {
     std::string version = "330";  // « 330 » ou « 430 » (passes de calcul)
     std::string vertex;           // vertex shader complet, ligne #version comprise
+    std::string fragmentPrelude;  // declarations GLSL ajoutees avant le code du fragment shader (uniforms de la scene)
     bool vertexFailed = false;
 };
 GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut = false, const std::string* chType = nullptr,

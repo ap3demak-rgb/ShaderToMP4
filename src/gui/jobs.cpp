@@ -7,6 +7,7 @@
 #include "core/gl.h"
 #include "core/outputopts.h"
 #include "core/params.h"
+#include "core/proext.h"
 #include "core/formats.h"
 #include "core/publish.h"
 #include "core/webexport.h"
@@ -383,6 +384,44 @@ void startPlayer() {
 
 void followSelection() {
     if (g.player && g.player->running() && !g.paths.empty() && g.paths[selectedOrFirst()] != g.playerPath) startPlayer();
+}
+
+// --- Camera d'une scene 3D (edition Pro) choisie a la souris sur l'apercu -------------------------------------------------
+// Reglages vus par le rendu du shader selectionne : ceux de la fenetre, puis les commentaires // du shader
+static bool shaderSettings(Settings& out) {
+    if (g.paths.empty()) return false;
+    out = g.base;
+    std::string code;
+    if (readFile(g.paths[selectedOrFirst()], code)) parseLines(out, code, true);
+    return true;
+}
+
+bool sceneSelected() {
+    const ProExt* px = proExt();
+    Settings s;
+    return px && px->sceneRequested && px->orbitCamera && shaderSettings(s) && px->sceneRequested(s);
+}
+
+void orbitScene(double dx, double dy, double zoom) {
+    const ProExt* px = proExt();
+    Settings s;
+    if (!px || !px->orbitCamera || !shaderSettings(s) || !px->sceneRequested || !px->sceneRequested(s)) return;
+    for (const Override& o : shaderOverrides(g.paths[selectedOrFirst()]))  // la camera ecrite dans le shader prime : la souris ne la changerait pas
+        if (o.key == "camera" || o.key == "camerapos" || o.key == "cameratarget") {
+            setStatus(TX("status.orbit_locked"));
+            return;
+        }
+    const double t = g.player && g.player->running() ? g.player->time() : g.previewTime;
+    const auto changes = px->orbitCamera(s, t, dx, dy, zoom);
+    if (changes.empty()) return;
+    for (const auto& kv : changes) applySetting(g.base, kv.first, kv.second);  // le point de vue est copie dans les reglages (config.ini a la fermeture)
+    std::string text;
+    for (const char* k : {"camerapos", "cameratarget"})
+        if (g.base.pro.count(k)) text += (text.empty() ? "" : "  ") + std::string(k) + "=" + g.base.pro[k];
+    setStatus(TXF("status.orbit", W(text).c_str()));
+    if (g.player && g.player->running()) g.player->changeSettings(changes);
+    else if (g.running) g.orbitPending = true;
+    else runPreview();
 }
 
 void runPreview() {

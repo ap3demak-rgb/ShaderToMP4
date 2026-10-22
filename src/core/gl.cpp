@@ -123,6 +123,7 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         "uniform vec3  iChannelResolution[4];\n"
         "uniform float iChannelTime[4];\n"
         + preamble +  // uniforms personnalises (// uniform float x = 1.0)
+        (scene ? scene->fragmentPrelude : std::string()) +  // declarations propres a une scene 3D (matrices, ombre, reflexion)
         "#define texture2D texture\n"  // noms GLSL ES 1.00, encore tres repandus sur Shadertoy
         "#define texture2DLod textureLod\n"
         "#define texture3D texture\n"

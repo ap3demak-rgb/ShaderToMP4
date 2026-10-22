@@ -13,7 +13,7 @@ struct PassTab {
     bool exists = false;
 };
 
-// Neuf onglets dans l'ordre Image, Buffer A-D, Common, Cubemap A, Sound, Post. Une passe existante garde l'extension trouvee
+// Neuf onglets dans l'ordre Image, Buffer A-D, Common, Cubemap A, Sound, Post (douze avec l'edition Pro : Vertex, Shadow, Compute). Une passe existante garde l'extension trouvee
 // (.glsl ou .txt, comme le moteur la cherche) ; une passe absente est proposee en .glsl.
 std::vector<PassTab> passTabs(const std::wstring& shaderPath);
 

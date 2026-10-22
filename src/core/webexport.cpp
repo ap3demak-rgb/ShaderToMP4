@@ -282,6 +282,10 @@ bool exportHtml(const std::wstring& shaderPath, const std::wstring& exeDir, cons
         err = TXF("error.html_unsupported", L"post / lut");
         return false;
     }
+    if (st.pro.count("mesh")) {  // scene 3D (edition Pro) : pas de maillage dans la page
+        err = TXF("error.html_unsupported", L"3D mesh");
+        return false;
+    }
     const size_t cut = shaderPath.find_last_of(L"\\/");
     const std::wstring dir = cut == std::wstring::npos ? L"" : shaderPath.substr(0, cut + 1);
     const std::wstring name = shaderPath.substr(cut == std::wstring::npos ? 0 : cut + 1);

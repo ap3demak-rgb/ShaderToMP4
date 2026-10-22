@@ -50,6 +50,8 @@ public:
     void setPlaying(bool playing);  // pause / reprise
     bool playing() const;
     void seek(double t);            // saute a ce temps (une image est rendue meme en pause)
+    // Change des reglages a la volee (cle, valeur ; « off » efface) : camera d'une scene 3D choisie a la souris. Sans recompiler quand c'est possible.
+    void changeSettings(const std::vector<std::pair<std::string, std::string>>& kv);
     double time() const;            // temps courant du shader
 
     struct Impl;  // detail interne (thread, etat partage)

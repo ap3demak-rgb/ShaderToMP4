@@ -234,10 +234,13 @@ void layout() {
     GetClientRect(E.wnd, &rc);
     const int w = rc.right, h = rc.bottom, m = S(12), tabsH = S(36), barH = S(48), gutterW = S(52);
     int x = m;
+    int need = 0;  // largeur voulue des onglets ; reduite proportionnellement quand elle depasse la fenetre (douze onglets avec l'edition Pro)
+    for (size_t i = 0; i < E.tabButtons.size(); i++) need += S(i == 0 ? 76 : i < 5 ? 96 : 104) + S(6);
+    const double shrink = need > w - 2 * m ? (double)(w - 2 * m) / need : 1.0;
     for (size_t i = 0; i < E.tabButtons.size(); i++) {
-        const int bw = S(i == 0 ? 76 : i < 5 ? 96 : 104);
+        const int bw = (int)(S(i == 0 ? 76 : i < 5 ? 96 : 104) * shrink);
         MoveWindow(E.tabButtons[i], x, m, bw, S(30), TRUE);
-        x += bw + S(6);
+        x += bw + (int)(S(6) * shrink);
     }
     const int top = m + tabsH;
     MoveWindow(E.gutter, m, top, gutterW, h - top - barH - m, TRUE);

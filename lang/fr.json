@@ -1170,5 +1170,8 @@
   "selftest.lic_ui": "interface de licence : bouton d'achat et mentions d'essai visibles sans licence, absents avec une licence valide ; liens d'achat à 5, 10 et 15 euros",
   "error.compute_unavailable": "Les passes de calcul demandent OpenGL 4.3, que ce pilote graphique n'offre pas",
   "error.scene_vr": "Une scène 3D ne se combine pas avec un rendu 360 (VR)",
-  "error.scene_tiled": "Une scène 3D ne se rend pas par tuiles : réduisez l'image fixe ou retirez le réglage tile"
+  "error.scene_tiled": "Une scène 3D ne se rend pas par tuiles : réduisez l'image fixe ou retirez le réglage tile",
+  "status.orbit": "Caméra 3D : %ls (retenue dans les réglages)",
+  "status.orbit_locked": "Le shader fixe sa propre caméra (lignes // camera) : retirez-les pour choisir la caméra à la souris",
+  "status.preview_ready_scene": "Aperçu prêt. Scène 3D : glissez dans l'aperçu pour orbiter la caméra, molette pour zoomer"
 }

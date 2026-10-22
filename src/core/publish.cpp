@@ -467,7 +467,7 @@ SourceBundle makeBundle(const std::wstring& shaderPath, const std::string& setti
         const std::wstring rest = en.name.substr(stem.size());
         const std::wstring ext = dot == std::wstring::npos ? L"" : name.substr(dot);
         bool ok = en.name == name;
-        for (const wchar_t* p : {L".common", L".bufferA", L".bufferB", L".bufferC", L".bufferD", L".cubemapA", L".sound", L".post"})
+        for (const wchar_t* p : {L".common", L".bufferA", L".bufferB", L".bufferC", L".bufferD", L".cubemapA", L".sound", L".post", L".vert", L".shadow", L".compute"})
             if (rest == std::wstring(p) + ext) ok = true;
         if (!ok) continue;
         std::string text;

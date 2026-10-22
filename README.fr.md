@@ -419,7 +419,7 @@ Tirées de [CHANGELOG.fr.md](CHANGELOG.fr.md), qui donne le détail ; la liste e
 
 | Version | Principaux ajouts |
 |---|---|
-| Non publié | Linux et macOS gelés (la 2.1.1 est la dernière version avec eux), intégration continue Windows seulement ; infrastructure de l'édition Pro (rien de verrouillé dans l'édition libre) : `ShaderToMP4.license` signé et vérifié hors ligne, filigrane d'essai sur les sorties Pro sans licence, « Acheter Pro » (5, 10 ou 15 € par PayPal) et état de la licence dans « À propos », `--license-info` |
+| Non publié | Édition Pro : scènes 3D (maillages OBJ / PLY / glTF, caméra, profondeur, instances, ombres, réflexions, calcul GPU, aperçu avec orbite à la souris) ; Linux et macOS gelés (la 2.1.1 est la dernière version avec eux), intégration continue Windows seulement ; infrastructure de l'édition Pro (rien de verrouillé dans l'édition libre) : `ShaderToMP4.license` signé et vérifié hors ligne, filigrane d'essai sur les sorties Pro sans licence, « Acheter Pro » (5, 10 ou 15 € par PayPal) et état de la licence dans « À propos », `--license-info` |
 | 2.1.1 | Normalisation du son à gain constant (le volume ne monte plus ni ne descend) ; OpenEXR multicouche écrit par le programme (couleur HDR, profondeur, normale, id, alpha, mouvement estimé), alpha droit ou prémultiplié, TIFF flottant, DPX, carte de profondeur 16 bits ; mode effet : le shader appliqué à des vidéos, images, séquences et dossiers (taille, cadence, durée, son, sous-titres et chapitres suivent la source), lecture à l'envers, 25 transitions entre deux sources avec `iProgress`, clés chroma / luminance / différence |
 | 2.1.0 | Installeur Windows (NSIS, par utilisateur, ffmpeg inclus, facultatif) |
 | 2.0.0 | Contrôle qualité (flashs, NaN, scintillement, aliasing, précision), comparaison de shaders et images de référence, estimation du temps de rendu avec alerte ; boucles sans couture (fondu, aller-retour), courbe de temps et vrai ralenti, recherche de la période, contrôle de la couture, vignette intelligente, image fixe moyennée ; affiches par tuiles jusqu'à 65536 pixels, carte du coût GPU et temps GPU par passe, VR côte à côte / anaglyphe / fulldome, faces de cubemap ; destinations de publication, poids cible, cache des maîtres, vidéo reproductible, page HTML autonome ; son et rythme (tempo, variables de temps, repères, éditeur de temps) ; parties rendues en parallèle et ferme de rendu sans serveur |
@@ -488,6 +488,37 @@ L'**édition Pro** (les versions qui ajoutent les fonctions Pro, après la 2.2) 
 - **Acheter** avec le bouton « Acheter Pro » (fenêtre principale ou « À propos ») : choisissez **5 €, 10 € ou 15 €** (même licence pour les trois), et le bouton ouvre la page PayPal dans votre navigateur. Le programme n'envoie rien et ne reçoit aucune donnée de paiement. Une fois le paiement reçu, le fichier `ShaderToMP4.license` vous est envoyé par e-mail.
 - **Activer** en posant `ShaderToMP4.license` dans le dossier du programme, à côté de l'exécutable (aucune clé à saisir, aucun bouton). Le programme le lit au démarrage et vérifie sa signature **hors ligne**, sans réseau. Avec un fichier valide, le filigrane, le bouton « Acheter Pro » et toutes les mentions d'essai disparaissent, et il ne reste que la version enregistrée : « À propos » affiche le titulaire de la licence. Un fichier modifié, expiré ou d'une autre version majeure redonne la version d'essai. `ShaderToMP4 --license-info` affiche l'état.
 - Le filigrane est un frein, pas une protection absolue. Fichier perdu : redemandez-le par e-mail avec la référence du paiement.
+
+## Scènes 3D (édition Pro)
+
+L'édition Pro dessine un **maillage 3D** devant le même fragment shader que le mode image : le shader écrit toujours `mainImage`, les pixels qu'il colore sont ceux d'un modèle vu par une caméra, avec un tampon de profondeur, des instances, des ombres, des réflexions et une passe de calcul sur le GPU. Tout s'écrit en texte (commentaires `// clé=valeur` du shader, `config.ini`, `--clé=valeur`), rien n'est caché dans un format binaire. Une scène est une **fonction Pro** : sans licence valide, la couleur de la sortie porte le filigrane d'essai (voir plus haut).
+
+**Fichiers** (à côté du shader `nom.glsl`) : `nom.vert.glsl` (étage des sommets, facultatif), `nom.shadow.glsl` (passe d'ombre, facultative), `nom.compute.glsl` (passe de calcul, facultative, OpenGL 4.3). Modèles : OBJ (sommets, normales, coordonnées de texture, polygones, groupes), PLY (ASCII et binaire), glTF 2.0 (`.gltf` avec son `.bin` ou des données intégrées, `.glb`), lus par le programme lui-même ; toujours un fichier local, jamais une adresse ; un fichier trop gros (8 millions de sommets, 512 Mo), corrompu ou non pris en charge (Draco, accessors épars) est refusé avec un message clair. Formes de base : `cube`, `plane`, `quad`, `sphere`.
+
+| Réglage | Sens |
+|---|---|
+| `mesh` | `cube`, `plane`, `quad`, `sphere` ou un nom de fichier (`.obj .ply .gltf .glb`) ; sans lui il n'y a pas de scène |
+| `meshgroup` | seulement ce groupe d'un fichier OBJ |
+| `meshfit` | `1` (défaut) : le modèle est centré et mis à l'échelle pour que sa plus grande demi-étendue vaille 1 |
+| `camerapos`, `cameratarget`, `camerafov` | position, cible et champ de vision vertical en degrés (défaut `0,0,4`, `0,0,0`, `45`) ; `camerarange=près,loin` (défaut `0.1,100`) |
+| `camera` | caméra animée : `orbit:radius=3,speed=0.25,height=1,start=0` (tours par seconde autour de la cible) ou `path:0:0,0,3;4:3,1,2` (positions à des temps en secondes, interpolées linéairement), `fixed` ou `off` pour une caméra fixe |
+| `modelangle`, `modelrotate`, `modelscale`, `modeloffset` | angles initiaux en degrés (`x,y,z`), vitesse de rotation en degrés par seconde, échelle (un nombre ou `x,y,z`), décalage |
+| `instances` | nombre de copies dessinées d'un coup (`gl_InstanceID`) ; sans étage des sommets elles sont rangées sur une grille cubique |
+| `scenebg` | couleur de fond `r,g,b` (transparente avec `alpha=1`) |
+| `scenedepth` | `24` (tampon de profondeur 24 bits, défaut) ou `32` (flottant 32 bits) |
+| `cull` | `back` retire les faces arrière, `none` (défaut) les garde |
+| `envmap` | `x,y,z[,taille]` : une cubemap rendue depuis ce point à chaque image, lue par `iEnvMap` (réflexion dynamique) |
+| `computebuffer`, `computegroups` | taille du tampon de stockage en `vec4` (défaut 1024) et groupes de travail `x[,y[,z]]` (défaut : un thread par `vec4`, d'après le `local_size_x` du shader de calcul) |
+
+**Ce que voient les shaders.** Étage des sommets (le fichier est un `main()` complet ; les attributs et uniforms sont déjà déclarés) : `aPosition`, `aNormal`, `aUV`, `iModel`, `iView`, `iProjection`, `iNormalMatrix` (`mat3`), `iCameraPos`, `iBaseColor` (facteur de couleur de base glTF, blanc sinon), `iInstanceCount`, `iPass` (0 image, 1 carte d'ombre, 2 face de la cubemap de réflexion), les uniforms de Shadertoy (`iTime`, `iFrame`, `iMouse`...), `sceneInstanceOffset()` (position de l'instance dans la grille), et `iData[]` avec `iDataCount` quand il y a une passe de calcul. Sans `nom.vert.glsl`, un étage par défaut écrit `vWorldPos`, `vLocalPos`, `vNormal` et `vUV` ; le shader image les lit en déclarant les variables `in` correspondantes. Fragment (le shader image) : les mêmes matrices et `iCameraPos`, `iBaseColor`, `iLightViewProj` et `iLightPos` (`mat4`, `vec3`), `iShadowMap` (`sampler2D` de la profondeur vue de la lumière) et `iEnvMap` (`samplerCube`). Les erreurs de compilation s'affichent en `fichier:ligne:` dans le journal, dans le fichier qui les contient (double-clic pour l'ouvrir).
+
+**Ombres.** `nom.shadow.glsl` ne contient que des commentaires : `// light=4,7,3`, `// lighttarget=0,0,0`, `// shadowsize=1024`, `// shadowortho=5` (demi-étendue d'une lumière orthographique ; sans lui, une lumière en perspective de `shadowfov=60` degrés), `// shadowrange=1,20`. Le même étage des sommets dessine la carte d'ombre : une géométrie animée projette donc sa propre ombre ; la comparaison avec `iShadowMap` s'écrit dans le shader image (voir `examples/scenes/shadows.glsl`).
+
+**Calcul.** `nom.compute.glsl` est un shader de calcul `#version 430` auquel s'ajoutent `iData` (le tampon de stockage, binding 0), `iTime`, `iTimeDelta`, `iFrame`, `iFrameRate` et `iDataCount` ; il déclare lui-même son `layout(local_size_x = ...) in;`. Il s'exécute une fois par image du rendu, avant l'image ; un rendu qui commence plus loin (reprise, parties, ferme) rejoue d'abord les images précédentes : le résultat ne dépend donc pas de la façon dont le rendu est découpé. Il demande un pilote OpenGL 4.3 ; sans lui la scène est refusée avec un message.
+
+**Aperçu.** Dans la fenêtre principale, un shader de scène affiche « glissez dans l'aperçu pour orbiter la caméra, molette pour zoomer » : la caméra est retenue dans les réglages (`camerapos`, enregistré dans `config.ini`), y compris pendant la lecture en temps réel. Une caméra écrite dans le shader (lignes `// camera...`) est prioritaire et le programme le dit. Indisponibles pour une scène : l'export HTML, les rendus 360 (`mainVR`) et les images fixes rendues par tuiles. L'éditeur gagne les onglets Vertex, Shadow et Compute.
+
+Exemples (`examples/scenes/` du paquet Pro) : `cube`, `sphere_orbit`, `shadows`, `reflection`, `particles` (8192 particules simulées sur le GPU).
 
 ## Questions fréquentes
 
