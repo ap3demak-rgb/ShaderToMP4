@@ -7,22 +7,26 @@
 #pragma once
 #include "common.h"
 
+class ProSignals;  // signaux exterieurs de l'edition Pro (proext.h)
+
 // Variables d'une expression, dans l'ordre de kExprVarNames
 enum ExprVar { EV_BEAT, EV_BEATCOUNT, EV_BPM, EV_BASS, EV_MID, EV_TREBLE, EV_ENERGY, EV_ONSET, EV_TIME, EV_COUNT };
 extern const char* const kExprVarNames[EV_COUNT];
 
 struct ExprEnv {
     double v[EV_COUNT] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+    const ProSignals* sig = nullptr;  // identifiants exterieurs (midi.cc1...) : lus au temps v[EV_TIME]
 };
 
 class Expr {
 public:
     // Faux + message (position comprise) si le texte n'est pas une expression valide
-    bool parse(const std::string& text, std::string& err);
+    bool parse(const std::string& text, std::string& err, const ProSignals* sig = nullptr);
     bool empty() const { return code_.empty(); }
     double eval(const ExprEnv& env) const;
     // Vrai si l'expression lit une variable du rythme (iBeat... iOnset) : elle demande alors l'analyse du son
     bool usesRhythm() const { return usesRhythm_; }
+    bool usesSignals() const { return usesSignals_; }
 
 private:
     struct Op {
@@ -32,9 +36,12 @@ private:
         int argc = 0;       // fonction
     };
     std::vector<Op> code_;
-    bool usesRhythm_ = false;
+    bool usesRhythm_ = false, usesSignals_ = false;
+    const ProSignals* sig_ = nullptr;
     friend struct ExprParser;
 };
 
 // Vrai si `text` contient, comme mot entier, une variable du rythme (iBeat, iBeatCount, iBPM, iBass, iMid, iTreble, iEnergy, iOnset)
 bool mentionsRhythmVar(const std::string& text);
+// Une extension (edition Pro) declare ce qui, dans un texte, est un identifiant d'expression a elle (midi.cc1, iNote...) : mentionsRhythmVar le dit aussi
+void registerExprMention(std::function<bool(const std::string&)> fn);

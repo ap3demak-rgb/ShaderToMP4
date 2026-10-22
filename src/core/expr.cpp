@@ -3,6 +3,7 @@
 
 #include "expr.h"
 #include "i18n.h"
+#include "proext.h"
 #include "util.h"
 #include <cmath>
 
@@ -144,14 +145,14 @@ struct ExprParser {
         }
         if (isalpha((unsigned char)c) || c == '_') {
             const size_t b = pos;
-            while (pos < s.size() && (isalnum((unsigned char)s[pos]) || s[pos] == '_')) pos++;
+            while (pos < s.size() && (isalnum((unsigned char)s[pos]) || s[pos] == '_' || (out.sig_ && s[pos] == '.'))) pos++;  // `midi.cc1` : le point fait partie du nom d'un signal
             const std::string name = s.substr(b, pos - b);
             ws();
             if (pos < s.size() && s[pos] == '(') {
                 int fi = -1;
                 for (int i = 0; i < kFuncCount; i++)
                     if (name == kFuncs[i].name) fi = i;
-                if (fi < 0) return failNamed("expr.err.func", name);
+                if (fi < 0 && !out.sig_) return failNamed("expr.err.func", name);
                 pos++;
                 int argc = 0;
                 ws();
@@ -173,6 +174,13 @@ struct ExprParser {
                         return fail("expr.err.comma");
                     }
                 }
+                if (fi < 0) {  // fonction d'un signal : `midi.note(60)`
+                    const int h = out.sig_->resolve(name, argc);
+                    if (h < 0) return failNamed("expr.err.func", name);
+                    out.usesSignals_ = true;
+                    emit(5, 0, h, argc);
+                    return true;
+                }
                 if (argc != kFuncs[fi].argc) return failNamed("expr.err.args", name);
                 emit(4, 0, fi, argc);
                 return true;
@@ -187,15 +195,24 @@ struct ExprParser {
                     if (i != EV_TIME) out.usesRhythm_ = true;
                     return true;
                 }
+            if (out.sig_) {
+                const int h = out.sig_->resolve(name, -1);
+                if (h >= 0) {
+                    out.usesSignals_ = true;
+                    emit(5, 0, h, -1);
+                    return true;
+                }
+            }
             return failNamed("expr.err.var", name);
         }
         return failNamed("expr.err.char", std::string(1, c));
     }
 };
 
-bool Expr::parse(const std::string& text, std::string& err) {
+bool Expr::parse(const std::string& text, std::string& err, const ProSignals* sig) {
     code_.clear();
-    usesRhythm_ = false;
+    usesRhythm_ = usesSignals_ = false;
+    sig_ = sig;
     ExprParser p(text, *this);
     if (trim(text).empty()) {
         err = U8(TX("expr.err.empty"));
@@ -237,6 +254,13 @@ double Expr::eval(const ExprEnv& env) const {
                 break;
             }
             case 3: st[sp - 1] = -st[sp - 1]; break;
+            case 5: {  // signal exterieur : sans signaux, 0
+                const int argc = std::max(0, o.argc);
+                sp -= argc;
+                const double r = env.sig ? env.sig->value(o.index, st + sp, o.argc, env.v[EV_TIME]) : 0.0;
+                st[sp++] = std::isfinite(r) ? r : 0.0;
+                break;
+            }
             default: {
                 sp -= o.argc;
                 const double r = callFunc(o.index, st + sp);
@@ -249,7 +273,15 @@ double Expr::eval(const ExprEnv& env) const {
     return sp > 0 ? st[sp - 1] : 0.0;
 }
 
+static std::function<bool(const std::string&)>& exprMention() {
+    static std::function<bool(const std::string&)> fn;
+    return fn;
+}
+
+void registerExprMention(std::function<bool(const std::string&)> fn) { exprMention() = std::move(fn); }
+
 bool mentionsRhythmVar(const std::string& text) {
+    if (exprMention() && exprMention()(text)) return true;
     for (int i = 0; i < EV_TIME; i++) {
         const std::string n = kExprVarNames[i];
         for (size_t p = text.find(n); p != std::string::npos; p = text.find(n, p + 1)) {

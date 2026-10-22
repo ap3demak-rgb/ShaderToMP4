@@ -325,6 +325,7 @@
   "selftest.fmt_replay": "Buffer-Passes mit zurücklaufender Zeit: Zustand von vorn neu abgespielt, gleicher Zustand zur gleichen Shaderzeit, Kostenlimit",
   "selftest.fmt_audiofollow": "Ton, der einer konstanten Geschwindigkeit folgt (atempo): der laute Teil dauert so lange wie das verlangsamte Video",
   "error.tile_post": "Ein Bild in Kacheln kann keine Nachbearbeitung verwenden: Sie liest die Nachbarn jedes Pixels. Verkleinern Sie das Bild oder rendern Sie ohne sie.",
+  "error.denoise_tiled": "Ein gekacheltes Bild kann nicht entrauscht werden: Der Filter liest die Nachbarn jedes Pixels. Größe verringern oder ohne Entrauschen rendern.",
   "status.gpu": "  ·  GPU %ls ms (Buffer %ls, Nachbearbeitung %ls)",
   "ini.stillformat": "Standbildformat: png | tiff (16 Bit pro Kanal mit depth=10)",
   "ui.output.stillformat": "Bildformat",

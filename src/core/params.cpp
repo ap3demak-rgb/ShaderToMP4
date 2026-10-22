@@ -5,6 +5,7 @@
 #include "compat.h"
 #include "expr.h"
 #include "i18n.h"
+#include "proext.h"
 #include "render.h"
 #include "util.h"
 #include "platform/platform.h"
@@ -334,6 +335,15 @@ bool ParamSet::load(const std::string& code, const Settings& s, const std::wstri
     decls_.clear();
     hasExpr_ = false;
     hasSpectrum_ = false;
+    signals_.reset();
+    sigVars_.clear();
+    if (proExt() && proExt()->makeSignals) {
+        std::wstring sigErr;
+        if (!(signals_ = proExt()->makeSignals(s, shaderPath_, sigErr)) && !sigErr.empty()) {
+            err = sigErr;
+            return false;
+        }
+    }
     bpm_ = s.bpm;
     beatsPerBar_ = s.beatsPerBar;
     if (rhythm_.loaded() && (rhythm_.forcedBpm() != bpm_ || rhythm_.beatsPerBar() != beatsPerBar_)) rhythm_.retune(bpm_, beatsPerBar_);
@@ -496,13 +506,22 @@ bool ParamSet::load(const std::string& code, const Settings& s, const std::wstri
     for (const Param& p : params_) {
         const char* glType = p.info.type == "color" ? "vec3" : p.info.type.c_str();
         decls_ += std::string("uniform ") + glType + " " + p.info.name + ";\n";
-        if (!p.info.expr.empty()) hasExpr_ = true;
+        if (p.expr.usesRhythm()) hasExpr_ = true;  // une expression qui ne lit que des signaux exterieurs n'a pas besoin du son
         if (!p.info.audio.empty() && p.info.audio != "expr") hasSpectrum_ = true;
     }
     // variables du rythme lues par le code du shader : declarees ici (rien a declarer dans le shader)
     for (int i = 0; i < EV_TIME; i++) {
         rhythmUsed_[i] = usesWord(stripped, kExprVarNames[i]) && !declaredGlobally(stripped, kExprVarNames[i]);
         if (rhythmUsed_[i]) decls_ += std::string("uniform ") + (i == EV_BEATCOUNT ? "int " : "float ") + kExprVarNames[i] + ";\n";
+    }
+    // variables des signaux exterieurs (iNote...) lues par le code du shader : declarees ici comme celles du rythme
+    if (signals_) {
+        const std::vector<ProSignals::Var> vars = signals_->shaderVars();
+        for (size_t i = 0; i < vars.size(); i++) {
+            if (!usesWord(stripped, vars[i].name) || declaredGlobally(stripped, vars[i].name)) continue;
+            sigVars_.push_back(i);
+            decls_ += std::string("uniform ") + (vars[i].isInt ? "int " : "float ") + vars[i].name + ";\n";
+        }
     }
     // iProgress (transitions et fondus ecrits en GLSL) : declare ici quand le code le lit
     progressUsed_ = usesWord(stripped, "iProgress") && !declaredGlobally(stripped, "iProgress");
@@ -519,7 +538,7 @@ bool ParamSet::load(const std::string& code, const Settings& s, const std::wstri
 
 bool ParamSet::compileExpr(Param& p, std::wstring& err) const {
     std::string e;
-    if (!p.expr.parse(p.info.expr, e)) {
+    if (!p.expr.parse(p.info.expr, e, signals_.get())) {
         err = TXF("error.param_expr", W(p.info.name).c_str(), W(e).c_str());
         return false;
     }
@@ -551,6 +570,7 @@ bool ParamSet::loadRhythm(const std::wstring& ffmpeg, const std::wstring& path, 
 double ParamSet::rawExpr(const Param& p, double t) const {
     ExprEnv env;
     env.v[EV_TIME] = t;
+    env.sig = signals_.get();
     if (rhythm_.loaded()) {
         const RhythmValues r = rhythm_.at(t);
         const double th = p.info.threshold;
@@ -570,10 +590,10 @@ double ParamSet::rawExpr(const Param& p, double t) const {
 // Valeur de l'expression au temps t, lissee par attack / release : une fonction du temps seulement (la serie entiere est calculee une fois depuis le debut du
 // son), donc la meme a chaque rendu, en apercu, apres une coupure ou en rendu par parties
 double ParamSet::exprValue(const Param& p, double t) const {
-    if ((p.info.attack <= 0 && p.info.release <= 0) || !rhythm_.loaded()) return rawExpr(p, t);
+    if ((p.info.attack <= 0 && p.info.release <= 0) || !(rhythm_.loaded() || signals_)) return rawExpr(p, t);
     constexpr double kStep = 0.01;
     if (!p.seriesBuilt) {
-        const size_t n = (size_t)std::ceil(std::max(1.0, rhythm_.duration()) / kStep) + 2;
+        const size_t n = (size_t)std::ceil(std::max(1.0, std::max(rhythm_.loaded() ? rhythm_.duration() : 0.0, signals_ ? signals_->duration() : 0.0)) / kStep) + 2;
         p.series.assign(n, 0.0f);
         double y = 0;
         for (size_t i = 0; i < n; i++) {
@@ -664,6 +684,16 @@ void ParamSet::apply(GLuint prog, double t) const {
             }
         }
     }
+    if (signals_ && !sigVars_.empty()) {  // variables des signaux exterieurs, lues au temps exact de l'image
+        const std::vector<ProSignals::Var> vars = signals_->shaderVars();
+        for (size_t i : sigVars_) {
+            const GLint loc = ogl::GetUniformLocation(prog, vars[i].name.c_str());
+            if (loc < 0) continue;
+            const double v = signals_->shaderValue(i, t);
+            if (vars[i].isInt) ogl::Uniform1i(loc, (GLint)std::lround(v));
+            else ogl::Uniform1f(loc, (float)v);
+        }
+    }
     for (const Param& p : params_) {
         const GLint loc = ogl::GetUniformLocation(prog, p.info.name.c_str());
         if (loc < 0) continue;  // ce programme (une autre passe) ne le lit pas
@@ -707,6 +737,7 @@ std::string ParamSet::signature() const {
         }
     }
     if (rhythm_.loaded()) s += rhythm_.signature();
+    if (signals_) s += "|sig:" + signals_->signature();
     return s;
 }
 

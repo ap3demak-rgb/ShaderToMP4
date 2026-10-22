@@ -325,6 +325,7 @@
   "selftest.fmt_replay": "pasadas Buffer con un tiempo que retrocede: estado reproducido desde el principio, mismo estado en el mismo instante del shader, límite de coste",
   "selftest.fmt_audiofollow": "sonido que sigue una velocidad constante (atempo): la parte fuerte dura lo que el vídeo ralentizado",
   "error.tile_post": "Una imagen por teselas no puede usar posprocesado: lee los vecinos de cada píxel. Reduzca el tamaño o renderice sin él.",
+  "error.denoise_tiled": "Una imagen por teselas no se puede limpiar de ruido: el filtro lee los vecinos de cada píxel. Reduzca el tamaño o renderice sin reducción de ruido.",
   "status.gpu": "  ·  GPU %ls ms (búferes %ls, post %ls)",
   "ini.stillformat": "formato de la imagen fija: png | tiff (16 bits por canal con depth=10)",
   "ui.output.stillformat": "Formato imagen",

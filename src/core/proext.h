@@ -50,6 +50,32 @@ public:
     virtual bool reconfigure(const Settings& s) { (void)s; return false; }
 };
 
+// Signaux exterieurs (edition Pro : MIDI, series de donnees) : des valeurs lues au temps exact de chaque image, jamais en temps reel, donc les memes a chaque
+// rendu. Le moteur declare dans le shader les variables que le code lit, les regle a chaque image, et laisse les expressions des parametres
+// (`// uniform float k = midi.cc1 * 2`) lire les signaux par leur nom.
+class ProSignals {
+public:
+    virtual ~ProSignals() {}
+    struct Var {
+        std::string name;      // variable GLSL lisible sans declaration (iNote...)
+        bool isInt = false;
+    };
+    virtual std::vector<Var> shaderVars() const = 0;
+    virtual double shaderValue(size_t index, double t) const = 0;  // valeur de shaderVars()[index] au temps t du shader
+    virtual bool mentions(const std::string& text) const = 0;      // le texte d'une expression lit-il un signal ?
+    // Identifiant d'une expression : `midi.cc1` (argc = -1), `midi.note(60)` (argc = nombre d'arguments). -1 si inconnu.
+    virtual int resolve(const std::string& name, int argc) const = 0;
+    virtual double value(int handle, const double* args, int argc, double t) const = 0;
+    virtual double duration() const = 0;      // etendue des donnees en secondes (lissage des expressions)
+    virtual std::string signature() const = 0;  // tout ce qui change les valeurs : entre dans la signature des parties reprenables
+};
+
+// Image d'un canal d'entree fournie par une extension : « data:serie » (texture de lecture d'une serie de donnees) ; rgba : w x h x 4 flottants, premiere ligne en haut.
+struct ProChannelImage {
+    int w = 0, h = 0;
+    std::vector<float> rgba;
+};
+
 // Outils d'edition de l'interface Windows (edition Pro) : annuler / retablir, editeurs de courbes, de temps et de montage. Le programme public ne fait
 // qu'appeler ces fonctions quand elles existent (boutons et raccourcis absents de l'edition libre) ; la verification de la licence est faite par elles.
 struct ProTools {
@@ -67,6 +93,31 @@ struct ProTools {
 
 struct ProExt {
     ProTools tools;
+    // Signaux du rendu (reglages `midi=`, `data=`...) : nullptr sans erreur s'il n'y en a pas, nullptr avec err si une source est invalide. shaderPath : chemins relatifs au shader.
+    std::function<std::shared_ptr<const ProSignals>(const Settings&, const std::wstring& shaderPath, std::wstring& err)> makeSignals;
+    // Reglages calcules par l'extension avant le rendu, l'apercu et la lecture (ex. une chaine de LUT cuite en un seul fichier, le son d'un canal video) :
+    // modifie s ; faux + err si un reglage de l'extension est invalide.
+    std::function<bool(Settings& s, const std::wstring& shaderPath, const std::wstring& exeDir, std::wstring& err)> prepareSettings;
+    // Etage de couleur du programme image : code GLSL qui definit `vec3 st_color(vec3 c)`, applique a la couleur de l'image avant le fondu et l'ecriture
+    // (courbe de tons, exposition). "" = aucun : le programme reste identique a celui de l'edition libre.
+    std::function<std::string(const Settings&)> colorStage;
+    // Sortie finie (image fixe ou sequence d'images : le premier fichier) : l'extension peut la completer (profil ICC). Appelee avant que le programme
+    // ajoute lui-meme son bloc sRGB a un PNG.
+    std::function<void(const Settings& s, const std::wstring& file, bool still, bool sequence)> finishOutput;
+    // Sortie GIF : fin de la chaine de filtres ffmpeg (conversion, palette, tramage) d'une extension ; "" = celle du programme.
+    std::function<std::wstring(const Settings&)> gifFilter;
+    // Image fixe a echantillons (`samples=N`) : l'extension veut-elle debruiter ? Si oui le moteur accumule deux moities independantes des tirages (pairs et impairs)
+    // et lui rend leurs moyennes pour estimer le bruit.
+    std::function<bool(const Settings&)> denoiseWanted;
+    // Debruitage : halfA et halfB sont les moyennes (RGBA flottant, w x h, premiere ligne en bas) des nA et nB tirages de chaque moitie ; out recoit l'image debruitee
+    // (moyenne de tous les tirages, meme disposition). Appelee dans le thread de rendu.
+    std::function<void(const Settings&, int w, int h, int nA, int nB, const std::vector<float>& halfA, const std::vector<float>& halfB, std::vector<float>& out)> denoise;
+    // Canal d'entree d'une extension : vrai si `spec` (« data:serie ») est a elle ; faux + err si la source est invalide. Rendu en virgule flottante, lu en 1 x N ou W x H.
+    std::function<bool(const Settings&, const std::wstring& spec, const std::wstring& shaderDir, ProChannelImage& out, std::wstring& err, bool& handled)> channelImage;
+    // Canal image decode (fichier) : l'extension peut le convertir (espace de couleur) ; vrai si elle a change `rgba8` (w x h x 4 octets) en `out` (flottants, premiere ligne en haut).
+    std::function<bool(const Settings&, int channel, int w, int h, const uint8_t* rgba8, ProChannelImage& out)> decodeChannel;
+    // Canal image flottant (hdr, exr) : conversion en place d'un espace de couleur vers le lineaire ; rien a faire si l'extension ne le demande pas.
+    std::function<void(const Settings&, int channel, int w, int h, float* rgba)> decodeChannelFloat;
     // Cree la scene d'un rendu. Renvoie nullptr sans erreur si le shader n'en demande pas ; nullptr avec err renseigne si la demande est invalide.
     std::function<std::unique_ptr<ProScene>(const SceneRequest&, std::wstring& err)> makeScene;
     // Apercu interactif : les reglages (shader compris) demandent-ils une scene 3D ?

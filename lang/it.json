@@ -325,6 +325,7 @@
   "selftest.fmt_replay": "passaggi Buffer con un tempo che torna indietro: stato rieseguito dall'inizio, stesso stato allo stesso istante dello shader, limite di costo",
   "selftest.fmt_audiofollow": "audio che segue una velocità costante (atempo): la parte forte dura quanto il video rallentato",
   "error.tile_post": "Un'immagine a tessere non può usare la post-elaborazione: legge i vicini di ogni pixel. Riduci la dimensione o esegui il render senza.",
+  "error.denoise_tiled": "Un'immagine a tessere non può essere denoizzata: il filtro legge i vicini di ogni pixel. Riduci la dimensione o renderizza senza denoise.",
   "status.gpu": "  ·  GPU %ls ms (buffer %ls, post %ls)",
   "ini.stillformat": "formato dell'immagine fissa: png | tiff (16 bit per canale con depth=10)",
   "ui.output.stillformat": "Formato immagine",

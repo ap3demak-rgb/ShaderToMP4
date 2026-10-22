@@ -304,6 +304,7 @@
   "selftest.fmt_replay": "時間が戻る Buffer パス: 状態を最初から再生、同じシェーダー時刻で同じ状態、コスト上限",
   "selftest.fmt_audiofollow": "一定速度に追従する音（atempo）: 大きい部分がスローになった動画と同じ長さ続く",
   "error.tile_post": "タイル分割した画像ではポストプロセスは使えません（各ピクセルの隣を読むため）。サイズを小さくするか、使わずにレンダリングしてください。",
+  "error.denoise_tiled": "タイル分割された画像はノイズ除去できません。フィルターが各ピクセルの隣接画素を読み取るためです。サイズを小さくするか、ノイズ除去なしでレンダリングしてください。",
   "status.gpu": "  ·  GPU %ls ms（バッファ %ls、ポスト %ls）",
   "ini.stillformat": "静止画の形式: png | tiff（depth=10 でチャンネルあたり 16 ビット）",
   "ui.output.stillformat": "画像形式",

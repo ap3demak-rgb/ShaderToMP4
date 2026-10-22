@@ -123,6 +123,7 @@ bool createGLContext(GLContext& c, std::wstring& err);  // contexte 3.3 core + c
 // vrMode : image en realite virtuelle (mainVR) rendue en 360 equirectangulaire : 1 = mono, 2 = stereo haut / bas (oeil gauche en haut,
 // iResolution = taille d'un oeil, uniform st_ipd = ecart des yeux).
 // scene : programme d'une scene 3D (edition Pro) : etage sommets fourni, version GLSL choisie ; le fragment est le meme que celui du mode image.
+// colorStage : code GLSL d'une extension (edition Pro) qui definit `vec3 st_color(vec3 c)`, applique a la couleur avant le fondu et l'ecriture ; "" = aucun.
 // En cas d'echec de compilation de l'etage sommets, vertexFailed passe a vrai (les erreurs se rapportent alors au fichier des sommets).
 struct SceneProgram {
     std::string version = "330";  // « 330 » ou « 430 » (passes de calcul)
@@ -132,7 +133,7 @@ struct SceneProgram {
 };
 GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut = false, const std::string* chType = nullptr,
                     bool cubemapOut = false, bool soundOut = false, int vrMode = 0, const std::string& preamble = std::string(),
-                    bool alphaOut = false, SceneProgram* scene = nullptr);
+                    bool alphaOut = false, SceneProgram* scene = nullptr, const std::string& colorStage = std::string());
 // Compile un programme a partir de deux sources completes (#version comprise) : 0 + err si echec ; *vertexFailed dit si l'etage sommets a echoue.
 GLuint buildProgramFromSources(const std::string& vs, const std::string& fs, std::wstring& err, bool* vertexFailed = nullptr);
 // Programme de calcul (OpenGL 4.3) : source complete avec #version 430 ; 0 + err si echec ou si le contexte n'offre pas les passes de calcul.

@@ -28,8 +28,12 @@ struct ParamInfo {
     double value[4] = {0, 0, 0, 0};  // valeur de base : enregistree si elle existe, sinon la declaration
 };
 
+class ProSignals;
+
 class ParamSet {
 public:
+    // Fichier du shader (chemins relatifs des signaux exterieurs : midi=, data=) : a donner avant load
+    void setShaderPath(const std::wstring& p) { shaderPath_ = p; }
     // Lit les declarations de `code` (image, passes et commun reunis), puis les valeurs enregistrees dans valuesFile, puis les
     // reglages `key nom=...` / `--param=` de `s.paramSpecs`. Faux + err si une declaration ou un reglage est invalide, ou si un nom est
     // deja pris. notes recoit les avertissements (nom inconnu...).
@@ -88,6 +92,9 @@ private:
     bool progressUsed_ = false;       // le code lit iProgress (declare ici) : 0 a 1 pendant la transition, ou pendant tout le rendu sans transition
     double progStart_ = 0, progLen_ = 1;
     bool hasSpectrum_ = false;
+    std::wstring shaderPath_;
+    std::shared_ptr<const ProSignals> signals_;  // signaux exterieurs (edition Pro) ; null sans
+    std::vector<size_t> sigVars_;                 // variables du shader lues par le code (indices de ProSignals::shaderVars)
 };
 
 // Bornes du curseur d'un parametre : [min..max] de la declaration, sinon de 0 (ou 2x la valeur si negative) a 2x la valeur par defaut, au moins 1.

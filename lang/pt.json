@@ -325,6 +325,7 @@
   "selftest.fmt_replay": "passagens Buffer com um tempo que recua: estado reproduzido desde o início, mesmo estado no mesmo instante do shader, limite de custo",
   "selftest.fmt_audiofollow": "som que segue uma velocidade constante (atempo): a parte forte dura tanto como o vídeo abrandado",
   "error.tile_post": "Uma imagem por mosaicos não pode usar pós-processamento: lê os vizinhos de cada píxel. Reduza o tamanho ou renderize sem ele.",
+  "error.denoise_tiled": "Uma imagem em mosaicos não pode ser desruidada: o filtro lê os vizinhos de cada pixel. Reduza o tamanho ou renderize sem redução de ruído.",
   "status.gpu": "  ·  GPU %ls ms (buffers %ls, pós %ls)",
   "ini.stillformat": "formato da imagem fixa: png | tiff (16 bits por canal com depth=10)",
   "ui.output.stillformat": "Formato imagem",

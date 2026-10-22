@@ -5,6 +5,7 @@
 #include "formats.h"
 #include "i18n.h"
 #include "process.h"
+#include "proext.h"
 #include "util.h"
 #include <cmath>
 
@@ -305,8 +306,13 @@ std::wstring imageFilterTail(const Settings& s, bool alphaModeFilter) {
 }
 
 static std::wstring imageFormatTail(const Settings& s, bool deep) {
-    if (s.container == "gif")  // palette optimisee calculee sur toute la sequence, tramage Bayer
+    if (s.container == "gif") {  // palette optimisee calculee sur toute la sequence, tramage Bayer ; l'edition Pro peut en proposer une autre (palette par image, tramage, couleurs)
+        if (proExt() && proExt()->gifFilter) {
+            const std::wstring pro = proExt()->gifFilter(s);
+            if (!pro.empty()) return pro;
+        }
         return L"format=rgb24,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle";
+    }
     if (s.container == "webp") return s.alpha ? L"format=yuva420p" : L"format=yuv420p";
     if (s.container == "png") return s.alpha ? (deep ? L"format=rgba64be" : L"format=rgba") : (deep ? L"format=rgb48be" : L"format=rgb24");
     if (s.container == "tiff") return s.alpha ? (deep ? L"format=rgba64le" : L"format=rgba") : (deep ? L"format=rgb48le" : L"format=rgb24");

@@ -89,7 +89,7 @@ static std::string vrMainSource(int mode, const std::string& finalColor) {
 }
 
 GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferOut, const std::string* chType, bool cubemapOut, bool soundOut,
-                    int vrMode, const std::string& preamble, bool alphaOut, SceneProgram* scene) {
+                    int vrMode, const std::string& preamble, bool alphaOut, SceneProgram* scene, const std::string& colorStage) {
     std::string channels;
     for (int i = 0; i < 4; i++) channels += "uniform " + (chType && !chType[i].empty() ? chType[i] : std::string("sampler2D")) + " iChannel" + std::to_string(i) + ";\n";
     const std::string vs = scene ? scene->vertex :
@@ -99,9 +99,10 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
 
     // Couleur ecrite par l'image : opaque (poids = fondu sur la couleur) ou avec transparence. En mode alpha, le fondu agit sur l'alpha ;
     // st_premul = 1 pendant l'accumulation du flou de mouvement (couleurs prémultipliées, somme exacte), 0 sinon (alpha droit).
+    const std::string rgb = colorStage.empty() ? "c.rgb" : "st_color(c.rgb)";
     const std::string finalColor =
-        alphaOut ? "{ float a = clamp(c.a, 0.0, 1.0); st_outColor = st_premul != 0 ? vec4(c.rgb * a, a) * st_weight : vec4(c.rgb, a * st_weight); }"
-                 : "st_outColor = vec4(c.rgb * st_weight, 1.0);";
+        alphaOut ? "{ float a = clamp(c.a, 0.0, 1.0); vec3 k = " + rgb + "; st_outColor = st_premul != 0 ? vec4(k * a, a) * st_weight : vec4(k, a * st_weight); }"
+                 : "st_outColor = vec4(" + rgb + " * st_weight, 1.0);";
     const std::string fs =
         "#version " + (scene ? scene->version : std::string("330")) + " core\n"
         "uniform vec3  iResolution;\n"
@@ -124,6 +125,7 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
         "uniform float iChannelTime[4];\n"
         + preamble +  // uniforms personnalises (// uniform float x = 1.0)
         (scene ? scene->fragmentPrelude : std::string()) +  // declarations propres a une scene 3D (matrices, ombre, reflexion)
+        (colorStage.empty() ? std::string() : colorStage + "\n") +  // courbe de tons d'une extension : vec3 st_color(vec3)
         "#define texture2D texture\n"  // noms GLSL ES 1.00, encore tres repandus sur Shadertoy
         "#define texture2DLod textureLod\n"
         "#define texture3D texture\n"

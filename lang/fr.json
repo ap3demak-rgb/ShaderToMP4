@@ -325,6 +325,7 @@
   "selftest.fmt_replay": "passes Buffer avec un temps qui recule : état rejoué depuis le début, même état au même instant du shader, limite de coût",
   "selftest.fmt_audiofollow": "son qui suit une vitesse constante (atempo) : la partie forte dure aussi longtemps que la vidéo ralentie",
   "error.tile_post": "Une image par tuiles ne peut pas utiliser de post-traitement : il lit les voisins de chaque pixel. Réduisez la taille, ou rendez sans lui.",
+  "error.denoise_tiled": "Une image par tuiles ne peut pas être débruitée : le filtre lit les voisins de chaque pixel. Réduisez la taille, ou rendez sans débruitage.",
   "status.gpu": "  ·  GPU %ls ms (tampons %ls, post %ls)",
   "ini.stillformat": "format de l'image fixe : png | tiff (16 bits par canal avec depth=10)",
   "ui.output.stillformat": "Format image",

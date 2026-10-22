@@ -311,6 +311,7 @@
   "selftest.fmt_replay": "Buffer-passes met teruglopende tijd: toestand vanaf het begin opnieuw afgespeeld, dezelfde toestand op hetzelfde shadertijdstip, kostenlimiet",
   "selftest.fmt_audiofollow": "geluid dat een constante snelheid volgt (atempo): het harde deel duurt zo lang als de vertraagde video",
   "error.tile_post": "Een beeld in tegels kan geen nabewerking gebruiken: ze leest de buren van elke pixel. Verklein het beeld of render zonder.",
+  "error.denoise_tiled": "Een in tegels verdeeld beeld kan niet worden ontruist: het filter leest de buren van elke pixel. Verklein het formaat of render zonder ruisonderdrukking.",
   "status.gpu": "  ·  GPU %ls ms (buffers %ls, nabew. %ls)",
   "ini.stillformat": "formaat van het stilstaande beeld: png | tiff (16 bit per kanaal met depth=10)",
   "ui.output.stillformat": "Beeldformaat",

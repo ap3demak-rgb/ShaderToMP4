@@ -325,6 +325,7 @@
   "selftest.fmt_replay": "Buffer passes with a time that goes back: state replayed from the start, same state at the same shader time, cost limit",
   "selftest.fmt_audiofollow": "sound that follows a constant speed (atempo): the loud part lasts as long as the slowed video",
   "error.tile_post": "A tiled image cannot use post-processing: it reads the neighbours of each pixel. Lower the size, or render without it.",
+  "error.denoise_tiled": "A tiled image cannot be denoised: the filter reads the neighbours of each pixel. Lower the size, or render without denoise.",
   "status.gpu": "  ·  GPU %ls ms (buffers %ls, post %ls)",
   "ini.stillformat": "still image format: png | tiff (16 bits per channel with depth=10)",
   "ui.output.stillformat": "Still format",

@@ -304,6 +304,7 @@
   "selftest.fmt_replay": "时间倒退的 Buffer 通道：状态从头重放，同一着色器时刻状态相同，成本上限",
   "selftest.fmt_audiofollow": "跟随恒定速度的声音（atempo）：响亮部分的时长与放慢的视频相同",
   "error.tile_post": "分块图像不能使用后期处理：它会读取每个像素的相邻像素。请缩小尺寸，或不使用它渲染。",
+  "error.denoise_tiled": "分块渲染的图像无法降噪：滤波器需要读取每个像素的相邻像素。请减小尺寸，或在不降噪的情况下渲染。",
   "status.gpu": "  ·  GPU %ls 毫秒（缓冲 %ls，后期 %ls）",
   "ini.stillformat": "静态图像格式：png | tiff（depth=10 时每通道 16 位）",
   "ui.output.stillformat": "图像格式",

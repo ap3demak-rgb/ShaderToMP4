@@ -107,6 +107,7 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
     }
     s.width = std::max(16, s.width & ~1);
     s.height = std::max(16, s.height & ~1);
+    if (proExt() && proExt()->prepareSettings && !proExt()->prepareSettings(s, shaderPath, exeDir, err)) return false;  // reglages calcules par l'edition Pro
     if (s.fps <= 0) s.fps = 60;
     if (s.duration <= 0) s.duration = 10;
     // image reduite : 640 pixels au plus sur le grand cote (moins pour les sondes)
@@ -129,6 +130,7 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
     if (r.vr == 3) r.w &= ~1;  // stereo cote a cote : deux yeux de meme largeur
     r.paramCode = code + "\n" + r.bp.allCode();
     r.paramFile = paramsFile(exeDir, shaderPath);
+    r.params.setShaderPath(shaderPath);
     if (!r.params.load(r.paramCode, s, r.paramFile, err)) return false;
     if (r.params.needsAudio() && !s.audio.empty()) {
         std::wstring audioErr;
@@ -156,7 +158,8 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
             return false;
         }
     }
-    r.prog = buildProgram(r.bp.withCommon(code), err, false, chTypes, false, false, r.vr, r.params.declarations(), s.alpha, r.scene ? &r.sceneProg : nullptr);
+    const std::string colorStage = proExt() && proExt()->colorStage ? proExt()->colorStage(s) : std::string();  // courbe de tons et exposition (edition Pro)
+    r.prog = buildProgram(r.bp.withCommon(code), err, false, chTypes, false, false, r.vr, r.params.declarations(), s.alpha, r.scene ? &r.sceneProg : nullptr, colorStage);
     if (!r.prog) {
         if (r.scene && r.sceneProg.vertexFailed)
             err = locateGlslErrors(err, r.scene->vertexPath().empty() ? shaderPath : r.scene->vertexPath(), r.scene->vertexLines());

@@ -6,6 +6,7 @@
 #include "audio.h"
 #include "i18n.h"
 #include "process.h"
+#include "proext.h"
 #include "util.h"
 #include "platform/platform.h"
 #include <cctype>
@@ -744,6 +745,25 @@ bool loadChannels(const Settings& s, const std::wstring& shaderDir, const std::w
             H.log(L"  " + TXF("log.channel_loaded", i, path.c_str(), vw, vh));
             continue;
         }
+        if (proExt() && proExt()->channelImage) {  // canal d'une extension (« data:serie ») : image en virgule flottante
+            ProChannelImage im;
+            bool handled = false;
+            const bool ok = proExt()->channelImage(s, spec, shaderDir, im, err, handled);
+            if (handled) {
+                if (!ok) return false;
+                Pixels dp;
+                dp.w = im.w;
+                dp.h = im.h;
+                dp.isFloat = true;
+                dp.data.resize(im.rgba.size() * sizeof(float));
+                memcpy(dp.data.data(), im.rgba.data(), dp.data.size());
+                out.tex[i] = upload(dp, s.chFilter[i].empty() ? "linear" : s.chFilter[i], s.chWrap[i].empty() ? "clamp" : s.chWrap[i]);
+                out.w[i] = dp.w;
+                out.h[i] = dp.h;
+                H.log(L"  " + TXF("log.channel_loaded", i, spec.c_str(), dp.w, dp.h));
+                continue;
+            }
+        }
         Pixels p;
         if (spec == L"noise") {
             p = makeNoise(i);
@@ -752,6 +772,16 @@ bool loadChannels(const Settings& s, const std::wstring& shaderDir, const std::w
         } else {
             const std::wstring path = resolvePath(shaderDir, spec);
             if (!decodeImage(ffmpeg, path, p, err)) return false;
+            if (proExt()) {  // espace de couleur du canal (edition Pro) : decode avant le calcul
+                ProChannelImage im;
+                if (!p.isFloat && proExt()->decodeChannel && proExt()->decodeChannel(s, i, p.w, p.h, p.data.data(), im)) {
+                    p.isFloat = true;
+                    p.data.resize(im.rgba.size() * sizeof(float));
+                    memcpy(p.data.data(), im.rgba.data(), p.data.size());
+                } else if (p.isFloat && proExt()->decodeChannelFloat) {
+                    proExt()->decodeChannelFloat(s, i, p.w, p.h, (float*)p.data.data());
+                }
+            }
             if (s.chVflip[i]) flipRows(p);  // Shadertoy : le haut de l'image est en v = 1
             H.log(L"  " + TXF("log.channel_loaded", i, path.c_str(), p.w, p.h));
         }

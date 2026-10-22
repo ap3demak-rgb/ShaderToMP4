@@ -260,6 +260,13 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     }
     s.width = std::max(16, s.width & ~1);
     s.height = std::max(16, s.height & ~1);
+    if (proExt() && proExt()->prepareSettings) {  // reglages calcules par l'edition Pro (chaine de LUT, son d'un canal video)
+        std::wstring prepErr;
+        if (!proExt()->prepareSettings(s, shaderPath, exeDir, prepErr)) {
+            err = prepErr;
+            return Result::Failed;
+        }
+    }
     if (rd) {
         rd->s = s;
         rd->haveSettings = true;
@@ -589,6 +596,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     ParamSet params;
     {
         std::vector<std::wstring> pnotes;
+        params.setShaderPath(shaderPath);
         if (!params.load(code + "\n" + bp.allCode(), s, paramsFile(exeDir, shaderPath), err, &pnotes)) return Result::Failed;
         if (!preview)
             for (const auto& n : pnotes) H.log(L"  " + n);
@@ -637,7 +645,9 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     for (const auto& kv : s.pro) proSig += "|" + kv.first + "=" + kv.second;
     if (scene) proSig += "|scene:" + scene->signature();
     if (wmOn) proSig += "|wm";
-    GLuint prog = buildProgram(bp.withCommon(code), err, false, chTypes, false, false, vrMode, params.declarations(), s.alpha, scene ? &sceneProg : nullptr);
+    const std::string colorStage = proExt() && proExt()->colorStage ? proExt()->colorStage(s) : std::string();  // courbe de tons et exposition (edition Pro)
+    if (!colorStage.empty()) proSig += "|color:" + fnvHex(colorStage);
+    GLuint prog = buildProgram(bp.withCommon(code), err, false, chTypes, false, false, vrMode, params.declarations(), s.alpha, scene ? &sceneProg : nullptr, colorStage);
     if (!prog) {  // erreurs « fichier:ligne: message », cliquables dans le journal
         if (scene && sceneProg.vertexFailed)
             err = locateGlslErrors(err, scene->vertexPath().empty() ? shaderPath : scene->vertexPath(), scene->vertexLines());
@@ -648,6 +658,8 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
 
     ChannelSet chans;
     GLuint vao = 0, tex = 0, fbo = 0, accTex = 0, accFbo = 0, present = 0;
+    GLuint accTex2 = 0, accFbo2 = 0;  // seconde moitie des tirages (debruitage de l'edition Pro : estimation du bruit par deux moyennes independantes)
+    const bool halfBuffers = SMP >= 4 && proExt() && proExt()->denoiseWanted && proExt()->denoise && proExt()->denoiseWanted(s);
     GLuint pbo[8] = {0};
     auto cleanupGL = [&] {
         ogl::BindBuffer(ogl::K_PIXEL_PACK_BUFFER, 0);
@@ -655,8 +667,10 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, 0);
         if (fbo) ogl::DeleteFramebuffers(1, &fbo);
         if (accFbo) ogl::DeleteFramebuffers(1, &accFbo);
+        if (accFbo2) ogl::DeleteFramebuffers(1, &accFbo2);
         if (tex) glDeleteTextures(1, &tex);
         if (accTex) glDeleteTextures(1, &accTex);
+        if (accTex2) glDeleteTextures(1, &accTex2);
         ogl::UseProgram(0);
         freeChannels(chans);
         post.release();
@@ -705,6 +719,26 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             err = TX("error.blur_unavailable");
             cleanupGL();
             return Result::Failed;
+        }
+        if (halfBuffers) {
+            if (tiled) {  // le filtre lit les voisins de chaque pixel : pas decoupable
+                err = TX("error.denoise_tiled");
+                cleanupGL();
+                return Result::Failed;
+            }
+            glGenTextures(1, &accTex2);
+            glBindTexture(GL_TEXTURE_2D, accTex2);
+            glTexImage2D(GL_TEXTURE_2D, 0, ogl::K_RGBA32F, RW, RH, 0, GL_RGBA, GL_FLOAT, nullptr);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            ogl::GenFramebuffers(1, &accFbo2);
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, accFbo2);
+            ogl::FramebufferTexture2D(ogl::K_FRAMEBUFFER, ogl::K_COLOR_ATTACHMENT0, GL_TEXTURE_2D, accTex2, 0);
+            if (ogl::CheckFramebufferStatus(ogl::K_FRAMEBUFFER) != ogl::K_FRAMEBUFFER_COMPLETE) {
+                err = TX("error.blur_unavailable");
+                cleanupGL();
+                return Result::Failed;
+            }
         }
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
     }
@@ -920,6 +954,10 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, accFbo);
         glClearColor(0, 0, 0, 0);
         glClear(GL_COLOR_BUFFER_BIT);
+        if (halfBuffers) {
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, accFbo2);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE, GL_ONE);
         setWeight(weight / SMP);
@@ -929,6 +967,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         int done = 0;
         for (int k = 0; k < SMP; k++) {
             if (k > 0 && H.cancelled()) break;
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, halfBuffers && (k & 1) ? accFbo2 : accFbo);  // tirages pairs et impairs : deux moyennes independantes
             drawAt(t, n, k);
             done++;
             if ((k & 7) == 7) glFinish();  // un tirage long ne doit pas bloquer le pilote graphique
@@ -944,6 +983,26 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         setWeight(1.0f);
         if (done < SMP) H.log(L"  " + TXF("log.samples_partial", done, SMP));
         else H.log(L"  " + TXF("log.samples_done", SMP));
+        if (halfBuffers && done >= 4) {  // debruitage (edition Pro) : l'image debruitee remplace la somme des deux moities
+            const int nA = (done + 1) / 2, nB = done / 2;
+            std::vector<float> a((size_t)RW * RH * 4), b((size_t)RW * RH * 4), out;
+            GLint packBuffer = 0;  // un tampon de lecture asynchrone peut rester lie : la lecture irait dans lui, pas dans notre memoire
+            glGetIntegerv(0x88ED /*GL_PIXEL_PACK_BUFFER_BINDING*/, &packBuffer);
+            ogl::BindBuffer(ogl::K_PIXEL_PACK_BUFFER, 0);
+            glBindTexture(GL_TEXTURE_2D, accTex);
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, a.data());
+            glBindTexture(GL_TEXTURE_2D, accTex2);
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, b.data());
+            ogl::BindBuffer(ogl::K_PIXEL_PACK_BUFFER, (GLuint)packBuffer);
+            for (float& v : a) v *= (float)SMP / (float)nA;  // somme ponderee par 1 / SMP -> moyenne de la moitie
+            for (float& v : b) v *= (float)SMP / (float)nB;
+            proExt()->denoise(s, RW, RH, nA, nB, a, b, out);
+            if (out.size() == (size_t)RW * RH * 4) {
+                for (float& v : out) v *= (float)done / (float)SMP;  // la copie finale multiplie par SMP / done
+                glBindTexture(GL_TEXTURE_2D, accTex);
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, RW, RH, GL_RGBA, GL_FLOAT, out.data());
+            }
+        }
         ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, imgFbo);
         ogl::UseProgram(present);
         ogl::Uniform1f(ogl::GetUniformLocation(present, "st_scale"), (float)SMP / (float)done);
@@ -1153,6 +1212,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         clearDir(tilesDir);
         platform::removeDir(tilesDir);
         cleanupGL();
+        if (proExt() && proExt()->finishOutput) proExt()->finishOutput(s, out, true, false);  // profil ICC (edition Pro)
         if (!tiff) pngTagSrgb(out);  // declare l'image en sRGB
         H.log(L"  " + TXF("log.ok_output", out.c_str()));
         if (H.output) H.output(out);
@@ -2222,6 +2282,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                 }
             }
         }
+        if (proExt() && proExt()->finishOutput && (still || sequence) && fileExists(out)) proExt()->finishOutput(s, out, still, sequence);  // profil ICC (edition Pro)
         if (still && !tiff && !sequence && fileExists(out)) pngTagSrgb(out);  // declare l'image en sRGB
         H.log(L"  " + TXF("log.ok_output", out.c_str()));
         if (H.output) H.output(out);
