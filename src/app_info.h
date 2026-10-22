@@ -15,6 +15,8 @@
 #define APP_LICENSE_ID "GPL-3.0-or-later"
 #define APP_CONTACT_EMAIL "sandefjord.development@proton.me"
 #define APP_WEBSITE_URL "https://ap3demak-rgb.github.io/ShaderToMP4"
+// Achat de l'edition Pro : page PayPal.me de l'auteur ; le montant choisi (5, 10 ou 15 euros) est ajoute sous la forme /5EUR (voir core/prolicense.h)
+#define APP_PURCHASE_URL "https://www.paypal.me/sandefjorddevel"
 
 #ifndef RC_INVOKED
 #define APP_WIDEN2(x) L##x
@@ -26,4 +28,5 @@
 #define APP_LICENSE_ID_WSTR APP_WIDEN(APP_LICENSE_ID)
 #define APP_CONTACT_EMAIL_WSTR APP_WIDEN(APP_CONTACT_EMAIL)
 #define APP_WEBSITE_URL_WSTR APP_WIDEN(APP_WEBSITE_URL)
+#define APP_PURCHASE_URL_WSTR APP_WIDEN(APP_PURCHASE_URL)
 #endif

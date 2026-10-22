@@ -4,6 +4,7 @@
 // Fenêtre « À propos » : nom, version, copyright, licence, e-mail de contact et site web (liens cliquables).
 #include "app.h"
 #include "core/i18n.h"
+#include "core/prolicense.h"
 #include "core/util.h"
 #include "ui_controls.h"
 #include "ui_render.h"
@@ -14,7 +15,7 @@ using namespace theme;
 
 namespace {
 
-enum { ID_ABOUT_LICENSE = 701, ID_ABOUT_NOTICES, ID_ABOUT_CLOSE = IDCANCEL };
+enum { ID_ABOUT_LICENSE = 701, ID_ABOUT_NOTICES, ID_ABOUT_BUY, ID_ABOUT_CLOSE = IDCANCEL };
 
 struct Link {
     RECT r;
@@ -22,7 +23,7 @@ struct Link {
 };
 
 struct Dialog {
-    HWND wnd = nullptr, bLicense = nullptr, bNotices = nullptr, bClose = nullptr;
+    HWND wnd = nullptr, bLicense = nullptr, bNotices = nullptr, bClose = nullptr, bBuy = nullptr;
     UINT dpi = 96;
     std::vector<Link> links;
     int hover = -1;
@@ -52,6 +53,10 @@ void layoutButtons() {
     for (int i = 0; i < 3; i++) {
         MoveWindow(b[i], x, y, S(bw[i]), bh, TRUE);
         x += S(bw[i]) + gap;
+    }
+    if (D.bBuy) {  // version d'essai : « Acheter Pro » au-dessus de la rangée de boutons
+        const int buyW = S(160);
+        MoveWindow(D.bBuy, (rc.right - buyW) / 2, y - gap - bh, buyW, bh, TRUE);
     }
 }
 
@@ -104,6 +109,17 @@ void paint() {
     row(TX("about.licence_label"), TX("about.license"), L"");
     row(TX("about.contact"), APP_CONTACT_EMAIL_WSTR, L"mailto:" APP_CONTACT_EMAIL_WSTR);
     row(TX("about.website"), APP_WEBSITE_URL_WSTR, APP_WEBSITE_URL_WSTR);
+    {  // édition : version enregistrée (vert) ou d'essai (orange, avec le fichier attendu) ; rien d'autre n'apparaît quand la licence est valide
+        const ProLicense li = currentLicense();
+        const bool registered = li.state == ProLicenseState::Valid;
+        f.text(TX("about.edition"), ui::rectf(F(48), cy, F(150), cy + F(26)), F(13), false, ui::rgb(MUTED));
+        f.text(licenseStatusText(li), ui::rectf(F(150), cy, w - F(40), cy + F(44)), F(13), false, ui::rgb(registered ? OK : WARN), ui::Left, false, true);
+        cy += F(46);
+        if (!registered) {
+            f.text(TXF("lic.info.file", (g.exeDir + licenseFileName()).c_str()), ui::rectf(F(48), cy, w - F(48), cy + F(36)), F(11.5f), false, ui::rgb(FAINT), ui::Left, false, true);
+            cy += F(40);
+        }
+    }
     cy += F(8);
 
     // Avis GPL (retour à la ligne automatique)
@@ -156,6 +172,7 @@ LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     openTextFile(i18n::language() == "fr" ? L"THIRD_PARTY_NOTICES.fr.md" : L"THIRD_PARTY_NOTICES.md",
                                  APP_WEBSITE_URL_WSTR);
                     break;
+                case ID_ABOUT_BUY: showBuy(h); break;
                 case ID_ABOUT_CLOSE: DestroyWindow(h); break;
             }
             return 0;
@@ -184,7 +201,7 @@ void showAbout(HWND parent) {
     }
     D = Dialog();
     D.dpi = theme::dpiFor(parent);
-    RECT want{0, 0, S(540), S(520)};
+    RECT want{0, 0, S(540), S(showTrialUi() ? 640 : 570)};
     const DWORD style = WS_CAPTION | WS_SYSMENU;
     AdjustWindowRectExForDpi(&want, style, FALSE, WS_EX_DLGMODALFRAME, D.dpi);
     RECT pr;
@@ -206,6 +223,7 @@ void showAbout(HWND parent) {
     D.bLicense = button("about.btn.license", ID_ABOUT_LICENSE, IC_SAVE, ui::BtnStyle::Secondary);
     D.bNotices = button("about.btn.notices", ID_ABOUT_NOTICES, IC_FILM, ui::BtnStyle::Secondary);
     D.bClose = button("about.btn.close", ID_ABOUT_CLOSE, IC_CHECK, ui::BtnStyle::Primary);
+    if (showTrialUi()) D.bBuy = button("about.btn.buy", ID_ABOUT_BUY, IC_ZAP, ui::BtnStyle::Secondary);  // absent avec une licence valide
     layoutButtons();
 
     // Boîte modale : la fenêtre principale est désactivée pendant l'affichage

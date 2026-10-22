@@ -34,6 +34,8 @@ struct Hooks {
     // rendre une partie (une partie lente, pour verifier qu'elle est redistribuee)
     std::function<bool(int worker, long long chunk)> injectFailure;
     std::function<int(int worker, long long chunk)> injectDelay;
+    // Auto-test seulement : fonctions Pro simulees (passent par proCheck comme une vraie fonction Pro, voir prolicense.h)
+    std::vector<std::string> proTestFeatures;
     double speculateAfter = 8.0;  // secondes apres lesquelles une partie encore en cours peut etre rendue aussi par un contexte libre (la plus rapide gagne)
     bool cancelled() const { return cancel && cancel->load(); }
     bool paused() const { return pause && pause->load(); }

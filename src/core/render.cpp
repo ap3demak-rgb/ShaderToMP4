@@ -22,6 +22,8 @@
 #include "overlay.h"
 #include "params.h"
 #include "postfx.h"
+#include "prolicense.h"
+#include "watermark.h"
 #include "previewconv.h"
 #include "mouse.h"
 #include "vr.h"
@@ -316,6 +318,16 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                 H.log(L"  " + TXF("log.credit_auto", s.credit.c_str()));
             }
         }
+    }
+    // Licence Pro : les fonctions Pro utilisees sont notees (proCheck) ; sans licence valide, la couleur de la sortie porte le filigrane d'essai
+    ensureLicense(exeDir);
+    proBegin();
+    for (const std::string& f : H.proTestFeatures) proCheck(f.c_str());
+    const bool wmOn = watermarkRequired();
+    if (wmOn && !partMode) {
+        std::string names;
+        for (const std::string& f : proUsed()) names += (names.empty() ? "" : ", ") + f;
+        H.log(L"  " + TXF("log.watermark", W(names).c_str()));
     }
     const bool deep = s.depth >= 10;
     const size_t bpc = deep ? 2 : 1;  // octets par composante lue sur le GPU
@@ -685,6 +697,12 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     }
     ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);  // la creation des tampons a change la cible
     glViewport(0, 0, RW, RH);
+    Watermark wm;
+    int wmOffX = 0, wmOffY = 0;  // origine de la tuile dans l'image complete (image fixe par tuiles)
+    if (wmOn && !wm.build(FW, FH, H_, SS, err)) {
+        cleanupGL();
+        return Result::Failed;
+    }
 
     ogl::UseProgram(prog);
     GLint uRes = ogl::GetUniformLocation(prog, "iResolution");
@@ -823,13 +841,20 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     };
     // Fin d'une image : post-traitement en virgule flottante (le fondu s'applique a la fin de la chaine)
     auto finishFrame = [&](long long n, double t, float fade) {
-        if (!post.active()) return;
-        const Tick tp = timing ? tickStart() : Tick();
-        GLuint latest[5] = {0, 0, 0, 0, 0};
-        if (bp.any()) bp.latest(latest);
-        post.apply(fbo, n, t, fade, setPassUniforms, latest);
-        ogl::UseProgram(prog);
-        if (timing) tickStop(tp, 2);
+        if (post.active()) {
+            const Tick tp = timing ? tickStart() : Tick();
+            GLuint latest[5] = {0, 0, 0, 0, 0};
+            if (bp.any()) bp.latest(latest);
+            post.apply(fbo, n, t, fade, setPassUniforms, latest);
+            ogl::UseProgram(prog);
+            if (timing) tickStop(tp, 2);
+        }
+        if (wm.active()) {  // filigrane d'essai : dernier trait sur la couleur, apres le post-traitement et le fondu
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
+            glViewport(0, 0, RW, RH);
+            wm.draw(RW, RH, wmOffX, wmOffY);
+            ogl::UseProgram(prog);
+        }
     };
     // Plusieurs echantillons d'un meme instant (image fixe) : iFrame different a chaque tirage, moyenne en virgule flottante ;
     // une interruption garde ce qui est deja accumule (la moyenne est remise a l'echelle)
@@ -958,7 +983,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         platform::makeDir(tilesDir);
         std::string sigSrc = code + params.signature() + "|poster|" + std::to_string(W_) + "x" + std::to_string(H_) + "|" + std::to_string(SS) + "|" + std::to_string(TW) + "x" + std::to_string(TH) +
                              "|" + std::to_string(deep) + std::to_string(s.alpha) + "|" + std::to_string(SMP) + "|" + std::to_string(s.start) + "|" + std::to_string(s.dpi) + "|" +
-                             std::to_string(vrMode) + std::to_string(s.vrIpd) + "|" + std::to_string(H.cubeFace) + "|" + s.date + "|" + formatMouseKeys(s.mouseKeys) + "|" + std::to_string(s.warmup);
+                             std::to_string(vrMode) + std::to_string(s.vrIpd) + "|" + std::to_string(H.cubeFace) + "|" + s.date + "|" + formatMouseKeys(s.mouseKeys) + "|" + std::to_string(s.warmup) + (wmOn ? "|wm" : "");
         for (int i = 0; i < 4; i++) sigSrc += "|" + U8(s.channel[i]) + s.chFilter[i] + s.chWrap[i] + std::to_string(s.chVflip[i]);
         const std::string sig = fnvHex(sigSrc);
         std::string oldSig;
@@ -1005,6 +1030,8 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                 }
                 const int c0 = tx * TW, c1 = std::min(FW, c0 + TW);
                 ogl::Uniform2f(uOff, (float)c0, (float)r0);
+                wmOffX = c0;
+                wmOffY = r0;
                 if (SMP > 1) renderSamples(0, s.start, 1.0f);
                 else renderFrame(0, s.start, 1.0f);
                 ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
@@ -1220,7 +1247,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         if (size_t dot = title.find_last_of(L'.'); dot != std::wstring::npos && dot > 0) title.erase(dot);
         title.erase(std::remove(title.begin(), title.end(), L'"'), title.end());
         metaArgs = L" -metadata \"title=" + title + L"\" -metadata \"comment=" + wfmt(L"%dx%d, %g fps, ", OW, OH, s.interp > 0 ? s.interp : s.fps) +
-                   APP_NAME_WSTR + L" " + APP_VER_WSTR + L"\"";
+                   APP_NAME_WSTR + L" " + APP_VER_WSTR + (wmOn ? L", " + TX("meta.watermark") : std::wstring()) + L"\"";
         if (lic.found) {  // auteur et licence du shader dans le fichier
             auto clean = [](std::wstring v) {
                 v.erase(std::remove(v.begin(), v.end(), L'"'), v.end());
@@ -1474,6 +1501,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         texts.push_back({"comment", U8(shaderPath.substr(shaderPath.find_last_of(L"\\/") + 1)) + ", " + std::to_string(W_) + "x" + std::to_string(H_) + ", " + std::to_string((int)std::llround(s.fps)) + " fps"});
         texts.push_back({"alphaMode", s.alpha ? (s.alphaMode == "premult" ? "premultiplied" : "straight") : "none"});
         if (!desc.empty()) texts.push_back({"aov", desc});
+        if (wmOn) texts.push_back({"watermark", U8(TX("meta.watermark"))});
         if (wantMotion) texts.push_back({"motionConvention", "estimated, pixels from the previous frame to this one, x to the right, y downward"});
         if (lic.found && !lic.author.empty()) texts.push_back({"owner", U8(lic.author)});
         if (lic.found && !lic.id.empty()) texts.push_back({"license", U8(licenseText(lic))});
@@ -1676,7 +1704,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         char nums[256];
         snprintf(nums, sizeof(nums), "|%d|%d|%d|%.9g|%.9g|%lld|%d|%.9g|%.9g|%.9g|%d|%d|%d|%.9g|%d", W_, H_, SS, s.fps, s.start, (long long)N, B, s.shutter, fi, fo, (int)deep, (int)s.alpha,
                  vrMode, s.vrIpd, s.warmup);
-        std::string sg = code + "|fr|" + bp.allCode() + params.signature() + nums + "|" + tm.canonical() + "|loop:" + s.loopMode + "," + std::to_string(loopFade) + "|" + APP_VER_STR;
+        std::string sg = code + "|fr|" + bp.allCode() + params.signature() + nums + "|" + tm.canonical() + "|loop:" + s.loopMode + "," + std::to_string(loopFade) + "|" + APP_VER_STR + (wmOn ? "|wm" : "");
         std::string lutBytes;
         if (!s.lut.empty()) {
             const bool absolute = s.lut.size() > 1 && (s.lut[1] == L':' || s.lut[0] == L'/' || s.lut[0] == L'\\');
@@ -1928,7 +1956,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
                                      s.start, s.crf, W(s.preset).c_str(), W(s.codec).c_str(), W(enc).c_str(), s.bitrate,
                                      s.blur, W(s.color).c_str(), s.shutter, s.fadein, s.fadeout, s.ss,
                                      W(s.container).c_str(), N, chunkFrames, s.depth);
-            sigSrc = code + U8(tail) + "|vr" + std::to_string(vrMode) + (vrMode >= 2 && vrMode <= 4 ? "|" + std::to_string(s.vrIpd) : "") + params.signature();
+            sigSrc = code + U8(tail) + "|vr" + std::to_string(vrMode) + (vrMode >= 2 && vrMode <= 4 ? "|" + std::to_string(s.vrIpd) : "") + params.signature() + (wmOn ? "|wm" : "");
             {  // post-traitement : passe .post, effets et contenu du fichier LUT
                 std::string lutBytes;
                 if (!s.lut.empty()) {

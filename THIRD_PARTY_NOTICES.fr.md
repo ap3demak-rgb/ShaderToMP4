@@ -10,7 +10,9 @@ Dernière revue : ShaderToMP4 2.1.0 (l'installeur Windows livre ffmpeg 9.0.2 et 
 
 ## 1. Code compilé dans le programme
 
-**Windows** : aucun. Le lecteur JSON (traductions), la couche de dessin Direct2D, les fonctions de processus, de HTTP et de fichiers sont du code original du projet (`src/`). Seuls l'environnement d'exécution C++ et le Windows SDK servent à la compilation (voir la section 3).
+**Tous les systèmes** : la vérification de la signature des licences (`src/core/ed25519.cpp` : Ed25519 et SHA-512) est une adaptation de **TweetNaCl** (Daniel J. Bernstein, Wesley Janssen, Tanja Lange, Peter Schwabe et d'autres, [tweetnacl.cr.yp.to](https://tweetnacl.cr.yp.to)), qui est **dans le domaine public** (aucune condition, compatible avec la GPL-3.0 et avec une édition propriétaire). La fonction de ronde de SHA-512 et ses constantes suivent la FIPS 180-4. Le code est comparé aux vecteurs de test de la RFC 8032 et de la FIPS 180 par l'auto-test.
+
+**Windows** : aucune bibliothèque. Le lecteur JSON (traductions), la couche de dessin Direct2D, les fonctions de processus, de HTTP et de fichiers sont du code original du projet (`src/`). Seuls l'environnement d'exécution C++ et le Windows SDK servent à la compilation (voir la section 3).
 
 **Linux et macOS** : trois bibliothèques sont téléchargées à la configuration (versions figées, voir `CMakeLists.txt` et `src/ui_imgui/CMakeLists.txt`) et compilées dans l'exécutable, et une police est embarquée. Leurs licences sont permissives et compatibles avec la GPL-3.0 ; leurs mentions de copyright restent dans leurs propres fichiers sources.
 
@@ -51,7 +53,11 @@ Dernière revue : ShaderToMP4 2.1.0 (l'installeur Windows livre ffmpeg 9.0.2 et 
 | Fichiers de langue (`lang/*.json` : anglais, français, allemand, espagnol, italien, portugais, néerlandais, japonais, chinois) | Textes originaux du projet | GPL-3.0-or-later |
 | Captures d'écran et bannière (`docs/`) | Produites à partir du programme lui-même | GPL-3.0-or-later |
 
-## 5. Règles pour les futurs composants
+## 5. Revue pour l'édition Pro (shareware, à partir de la phase 25)
+
+L'édition Pro est distribuée sous licence propriétaire : chaque composant doit donc permettre la redistribution dans un logiciel propriétaire. Revue des composants ci-dessus : **aucun composant uniquement GPL** parmi ceux compilés dans le programme (TweetNaCl : domaine public ; GLFW et NanoSVG : zlib ; Dear ImGui : MIT ; Inter : OFL). FFmpeg reste un **programme séparé** que l'édition Pro ne lie pas : l'installeur Windows livre sa version GPL v3 avec le texte de sa licence et l'offre de son code source correspondant (section 2) ; l'archive portable le télécharge. La liste des contributeurs a été vérifiée : le dépôt n'a qu'un seul auteur (le titulaire du copyright), aucun apport externe ne demande donc de cession écrite. Linux et macOS sont gelés : leurs bibliothèques ne font pas partie de l'édition Pro.
+
+## 6. Règles pour les futurs composants
 
 Avant d'ajouter une dépendance (bibliothèque, police, jeu d'icônes, outil téléchargé à l'exécution) :
 

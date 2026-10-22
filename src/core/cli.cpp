@@ -14,6 +14,7 @@
 #include "looptools.h"
 #include "quality.h"
 #include "process.h"
+#include "prolicense.h"
 #include "publish.h"
 #include "parts.h"
 #include "rhythm.h"
@@ -61,9 +62,15 @@ std::string num(double v) {
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
     for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_verify", "cli.render.opt_beats", "cli.render.opt_farm", "cli.render.opt_source", "cli.render.opt_exr", "cli.render.opt_reproduce", "cli.render.opt_exporthtml", "cli.render.opt_cachepurge", "cli.render.opt_check", "cli.render.opt_compare", "cli.render.opt_golden", "cli.render.opt_dryrun", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
-                          "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark"})
+                          "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark", "cli.opt.licenseinfo"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
+}
+
+int runLicenseInfoCli(const std::wstring& exeDir, const std::function<void(const std::string&, bool)>& write) {
+    initLicense(exeDir);
+    write(U8(licenseInfoText(currentLicense(), exeDir)), false);
+    return currentLicense().state == ProLicenseState::Valid ? 0 : 1;
 }
 
 int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& args,

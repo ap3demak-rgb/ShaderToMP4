@@ -417,6 +417,7 @@ Tirées de [CHANGELOG.fr.md](CHANGELOG.fr.md), qui donne le détail ; la liste e
 
 | Version | Principaux ajouts |
 |---|---|
+| Non publié | Infrastructure de l'édition Pro (rien de verrouillé dans l'édition libre) : `ShaderToMP4.license` signé et vérifié hors ligne, filigrane d'essai sur les sorties Pro sans licence, « Acheter Pro » (5, 10 ou 15 € par PayPal) et état de la licence dans « À propos », `--license-info` |
 | 2.1.1 | Normalisation du son à gain constant (le volume ne monte plus ni ne descend) ; OpenEXR multicouche écrit par le programme (couleur HDR, profondeur, normale, id, alpha, mouvement estimé), alpha droit ou prémultiplié, TIFF flottant, DPX, carte de profondeur 16 bits ; mode effet : le shader appliqué à des vidéos, images, séquences et dossiers (taille, cadence, durée, son, sous-titres et chapitres suivent la source), lecture à l'envers, 25 transitions entre deux sources avec `iProgress`, clés chroma / luminance / différence |
 | 2.1.0 | Installeur Windows (NSIS, par utilisateur, ffmpeg inclus, facultatif) |
 | 2.0.0 | Contrôle qualité (flashs, NaN, scintillement, aliasing, précision), comparaison de shaders et images de référence, estimation du temps de rendu avec alerte ; boucles sans couture (fondu, aller-retour), courbe de temps et vrai ralenti, recherche de la période, contrôle de la couture, vignette intelligente, image fixe moyennée ; affiches par tuiles jusqu'à 65536 pixels, carte du coût GPU et temps GPU par passe, VR côte à côte / anaglyphe / fulldome, faces de cubemap ; destinations de publication, poids cible, cache des maîtres, vidéo reproductible, page HTML autonome ; son et rythme (tempo, variables de temps, repères, éditeur de temps) ; parties rendues en parallèle et ferme de rendu sans serveur |
@@ -448,6 +449,7 @@ Les vidéos plus longues que `chunk` secondes sont rendues par parties, dans un 
 |---|---|
 | `ShaderToMP4 a.glsl b.glsl` | Ajoute les fichiers et lance le rendu |
 | `ShaderToMP4 --render [options] a.glsl b.glsl` | Rendre sans fenêtre, identique sous Windows, Linux et macOS (voir plus bas) |
+| `ShaderToMP4 --license-info` | Affiche l'état de la licence (essai ou enregistrée) et le fichier de licence attendu à côté du programme ; code de sortie `0` si une licence valide est présente, `1` sinon |
 | `ShaderToMP4 --diagnostic` | Affiche système, carte graphique, OpenGL, ffmpeg et encodeurs trouvés (sans chemin ni donnée personnelle) : à coller dans un rapport de bug |
 | `ShaderToMP4 --benchmark [--seconds=N] [--quick] [--json] [--compare=precedent.json --max-drop=N]` | Mesure les images par seconde en 720p, 1080p et 4K avec l'encodeur CPU, et avec le matériel s'il existe. Avec `--compare` (une sortie `--json` précédente) chaque cas est comparé au même cas d'avant ; code de sortie `5` quand l'un est plus lent de plus de N % (15 par défaut). L'intégration continue Linux garde le résultat précédent dans un cache et échoue au-delà de 50 % |
 | `ShaderToMP4 --selftest [--update] [--quiet]` | Auto-test (voir plus bas) |
@@ -473,6 +475,17 @@ ShaderToMP4 --render --progress=json --container=webm --codec=vp9 --width=1280 -
 Tous les textes de l'interface viennent de `lang/en.json` et `lang/fr.json`, embarqués dans l'exécutable, et des autres fichiers du dossier `lang` livré à côté : allemand (`de`), espagnol (`es`), italien (`it`), portugais (`pt`), néerlandais (`nl`), japonais (`ja`) et chinois simplifié (`zh`). Ces sept traductions sont récentes et n'ont pas été relues par des locuteurs natifs : les corrections sont bienvenues. La langue suit le système par défaut (quand un fichier existe pour elle), se change avec le bouton globe et est mémorisée dans `window.ini`. Le japonais et le chinois demandent une police qui contient ces caractères : Windows en a une (le système y retombe tout seul) ; sous Linux et macOS le programme charge une police CJK du système quand il y en a une (Noto Sans CJK, WenQuanYi, Droid Sans Fallback, PingFang ou Hiragino...) et montre des carrés vides sinon. Pour ajouter ou corriger une langue sans recompiler, place un fichier `lang/<code>.json` à côté de l'exécutable (les clés qui y manquent retombent sur l'anglais) ; le bouton globe passe alors en revue toutes les langues disponibles.
 
 </details>
+
+## Éditions libre et Pro
+
+Le programme que vous avez est l'**édition libre** : il est distribué sous GPL-3.0-or-later, toutes ses fonctions marchent, et rien n'est jamais verrouillé ni chronométré. Ce qui est publié sous GPL reste libre pour ceux qui l'ont reçu.
+
+L'**édition Pro** (les versions qui ajoutent les fonctions Pro, après la 2.2) est un shareware sous le contrat d'utilisation [EULA.fr.md](EULA.fr.md) :
+
+- **Sans limite de durée.** Sans licence, les fonctions Pro restent utilisables ; une sortie qui en utilise une porte un petit filigrane sur sa couleur (les passes de données — profondeur, identifiants, mouvement — ne sont jamais touchées). Une sortie qui n'utilise aucune fonction Pro n'en porte jamais. Le journal et les métadonnées du fichier disent quand un filigrane a été appliqué.
+- **Acheter** avec le bouton « Acheter Pro » (fenêtre principale ou « À propos ») : choisissez **5 €, 10 € ou 15 €** (même licence pour les trois), et le bouton ouvre la page PayPal dans votre navigateur. Le programme n'envoie rien et ne reçoit aucune donnée de paiement. Une fois le paiement reçu, le fichier `ShaderToMP4.license` vous est envoyé par e-mail.
+- **Activer** en posant `ShaderToMP4.license` dans le dossier du programme, à côté de l'exécutable (aucune clé à saisir, aucun bouton). Le programme le lit au démarrage et vérifie sa signature **hors ligne**, sans réseau. Avec un fichier valide, le filigrane, le bouton « Acheter Pro » et toutes les mentions d'essai disparaissent, et il ne reste que la version enregistrée : « À propos » affiche le titulaire de la licence. Un fichier modifié, expiré ou d'une autre version majeure redonne la version d'essai. `ShaderToMP4 --license-info` affiche l'état.
+- Le filigrane est un frein, pas une protection absolue. Fichier perdu : redemandez-le par e-mail avec la référence du paiement.
 
 ## Questions fréquentes
 

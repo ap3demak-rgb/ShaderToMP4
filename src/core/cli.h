@@ -21,6 +21,8 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
 
 // --diagnostic : systeme, carte graphique, OpenGL, ffmpeg et encodeurs, sans chemin ni donnee personnelle (a joindre a un ticket).
 int runDiagnosticCli(const std::wstring& exeDir, const std::function<void(const std::string&, bool isError)>& write);
+// --license-info : etat de la licence (version d'essai ou enregistree) et fichier attendu a cote du programme.
+int runLicenseInfoCli(const std::wstring& exeDir, const std::function<void(const std::string&, bool isError)>& write);
 // --benchmark [--seconds=N] [--json] [--compare=precedent.json --max-drop=N] : images par seconde par resolution et par encodeur (rendu reel
 // puis encodage) ; avec --compare, code de sortie 5 si une cadence a baisse de plus de N % (15 par defaut) par rapport au resultat precedent.
 int runBenchmarkCli(const std::wstring& exeDir, const std::vector<std::wstring>& args,

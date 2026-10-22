@@ -7,6 +7,7 @@
 #include "core/cli.h"
 #include "core/ffmpeg_download.h"
 #include "core/i18n.h"
+#include "core/prolicense.h"
 #include "core/selftest.h"
 #include "core/util.h"
 #include "gui/ui_controls.h"
@@ -80,12 +81,14 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         return 1;
     }
 
+    initLicense(g.exeDir);  // fichier de licence a cote du programme, relu a chaque demarrage
+
     // Ligne de commande
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     std::vector<std::wstring> files;
     bool selftest = false, update = false, quiet = false, getFfmpeg = false, version = false, help = false, render = false,
-         diagnostic = false, benchmark = false;
+         diagnostic = false, benchmark = false, licenseInfo = false;
     for (int i = 1; argv && i < argc; i++) {
         std::wstring a = argv[i];
         if (a == L"--selftest") selftest = true;
@@ -93,6 +96,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         else if (a.compare(0, 6, L"--dpi=") == 0) theme::dpiOverride = (UINT)std::max(96, std::min(384, _wtoi(a.c_str() + 6)));  // verification de l'echelle
         else if (a == L"--diagnostic") diagnostic = true;
         else if (a == L"--benchmark") benchmark = true;
+        else if (a == L"--license-info") licenseInfo = true;
         else if (a == L"--update") update = true;
         else if (a == L"--quiet") quiet = true;
         else if (a == L"--get-ffmpeg") getFfmpeg = true;
@@ -107,6 +111,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         writeConsole(help ? helpText() : versionText());
         return 0;
     }
+    if (licenseInfo) return runLicenseInfoCli(g.exeDir, [](const std::string& s, bool) { writeConsole(s); });
     if (diagnostic) return runDiagnosticCli(g.exeDir, [](const std::string& s, bool) { writeConsole(s); });
     if (benchmark) return runBenchmarkCli(g.exeDir, files, [](const std::string& s, bool) { writeConsole(s); });
     if (render)  // ShaderToMP4 --render [options] fichiers : sans fenetre, texte sur la console de l'appelant

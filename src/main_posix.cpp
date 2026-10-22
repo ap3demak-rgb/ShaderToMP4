@@ -7,6 +7,7 @@
 #include "core/gl.h"
 #include "core/render.h"
 #include "core/i18n.h"
+#include "core/prolicense.h"
 #include "core/selftest.h"
 #include "core/util.h"
 #include "platform/platform.h"
@@ -50,7 +51,9 @@ int main(int argc, char** argv) {
         fprintf(stderr, "The built-in language data is missing or damaged.\n");  // i18n-bootstrap
         return 1;
     }
+    initLicense(exeDir);
     std::vector<std::wstring> files;
+    bool licenseInfo = false;
     bool render = false, diagnostic = false, benchmark = false, selftest = false, update = false, quiet = false, getFfmpeg = false, version = false, help = false;
     for (int i = 1; i < argc; i++) {
         const std::string a = argv[i];
@@ -58,6 +61,7 @@ int main(int argc, char** argv) {
         else if (a == "--render") render = true;
         else if (a == "--diagnostic") diagnostic = true;
         else if (a == "--benchmark") benchmark = true;
+        else if (a == "--license-info") licenseInfo = true;
         else if (a == "--update") update = true;
         else if (a == "--quiet") quiet = true;
         else if (a == "--get-ffmpeg") getFfmpeg = true;
@@ -87,6 +91,7 @@ int main(int argc, char** argv) {
         fputs(s.c_str(), isError ? stderr : stdout);
         fflush(isError ? stderr : stdout);
     };
+    if (licenseInfo) return runLicenseInfoCli(exeDir, out);
     if (diagnostic) return runDiagnosticCli(exeDir, out);
     if (benchmark) return runBenchmarkCli(exeDir, files, out);
     if (selftest) return runSelfTest(exeDir, update, quiet);

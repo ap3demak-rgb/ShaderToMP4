@@ -29,6 +29,7 @@ namespace ogl {
     F(void, Uniform1fv, (GLint, GLsizei, const GLfloat*))                            \
     F(void, Uniform3fv, (GLint, GLsizei, const GLfloat*))                            \
     F(void, ActiveTexture, (GLenum))                                                 \
+    F(void, BlendFuncSeparate, (GLenum, GLenum, GLenum, GLenum))                     \
     F(void, GenerateMipmap, (GLenum))                                                \
     F(void, TexImage3D, (GLenum, GLint, GLint, GLsizei, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*)) \
     F(void, GenVertexArrays, (GLsizei, GLuint*))                                     \

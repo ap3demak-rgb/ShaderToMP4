@@ -3,6 +3,7 @@
 
 #include "app.h"
 #include "core/ffmpeg_download.h"
+#include "core/prolicense.h"
 #include "core/i18n.h"
 #include "core/util.h"
 #include "accessible.h"
@@ -47,6 +48,11 @@ void layout() {
         MoveWindow(g.bOutput, hx, hy, S(40), hh, TRUE);
         hx -= gap + S(40);
         MoveWindow(g.bEditor, hx, hy, S(40), hh, TRUE);
+        if (showTrialUi()) {  // version d'essai : bouton d'achat ; avec une licence valide il disparait
+            hx -= gap + S(120);
+            MoveWindow(g.bBuy, hx, hy, S(120), hh, TRUE);
+        }
+        ShowWindow(g.bBuy, showTrialUi() ? SW_SHOW : SW_HIDE);
         g.chipRight = hx - gap;
     }
     int y = S(64);
@@ -483,6 +489,7 @@ void createControls(HWND hw) {
     g.bParams = button(nullptr, ID_PARAMS, IC_SLIDERS, BtnStyle::Ghost, BG);
     g.bOutput = button(nullptr, ID_OUTPUT, IC_FILM, BtnStyle::Ghost, BG);
     g.bEditor = button(nullptr, ID_EDITOR, IC_EDIT, BtnStyle::Ghost, BG);  // dans l'ordre de l'en-tete : l'ordre de tabulation suit la creation
+    g.bBuy = button("ui.btn.buy", ID_BUY, IC_ZAP, BtnStyle::Secondary, BG);
     g.bFileScope = button("ui.btn.file_scope", ID_FILESCOPE, IC_SLIDERS, BtnStyle::Chip, CARD);
     g.bAdd = button("ui.btn.add", ID_ADD, IC_ADD, BtnStyle::Secondary, BG);
     g.bRemove = button("ui.btn.remove", ID_REMOVE, IC_TRASH, BtnStyle::Secondary, BG);
@@ -625,7 +632,7 @@ void createControls(HWND hw) {
     SendMessageW(g.tip, TTM_SETDELAYTIME, TTDT_INITIAL, 450);
     struct Tip { HWND c; const char* key; };
     const Tip tips[] = {
-        {g.bAbout, "ui.tip.about"}, {g.bLang, "ui.tip.language"}, {g.bParams, "ui.tip.params_btn"}, {g.bOutput, "ui.tip.output_btn"}, {g.bFileScope, "ui.tip.file_scope"}, {g.bEditor, "ui.tip.editor_btn"},
+        {g.bAbout, "ui.tip.about"}, {g.bLang, "ui.tip.language"}, {g.bParams, "ui.tip.params_btn"}, {g.bOutput, "ui.tip.output_btn"}, {g.bFileScope, "ui.tip.file_scope"}, {g.bEditor, "ui.tip.editor_btn"}, {g.bBuy, "ui.tip.buy"},
         {g.bAdd, "ui.tip.add"}, {g.bRemove, "ui.tip.remove"}, {g.bClear, "ui.tip.clear"}, {g.bFolder, "ui.tip.folder"},
         {g.bSnap, "ui.tip.png"}, {g.bStart, "ui.tip.start"}, {g.bPause, "ui.tip.pause"}, {g.bCancel, "ui.tip.cancel"},
         {g.cmbRes, "ui.tip.resolution"}, {g.edW, "ui.tip.width"}, {g.edH, "ui.tip.height"}, {g.cmbFps, "ui.tip.fps"},
@@ -1022,6 +1029,7 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                     setStatus(TX(g.pause ? "status.paused" : "status.rendering"));
                     break;
                 case ID_ABOUT: showAbout(hw); break;
+                case ID_BUY: showBuy(hw); break;
                 case ID_PARAMS: showParams(hw); break;
                 case ID_OUTPUT: showOutput(hw); break;
                 case ID_FILESCOPE: toggleFileScope(); break;

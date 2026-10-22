@@ -417,6 +417,7 @@ Taken from [CHANGELOG.md](CHANGELOG.md), which has the details; the list is chec
 
 | Version | Main additions |
 |---|---|
+| Unreleased | Pro edition infrastructure (nothing locked in the free edition): signed `ShaderToMP4.license` checked offline, trial watermark on Pro outputs without a license, “Buy Pro” (5, 10 or 15 € by PayPal) and license status in “About”, `--license-info` |
 | 2.1.1 | Sound normalization with a constant gain (the volume no longer rises and falls); Multilayer OpenEXR written by the program (HDR colour, depth, normal, id, alpha, estimated motion), straight or premultiplied alpha, floating-point TIFF, DPX, 16-bit depth map; effect mode: the shader applied to videos, images, sequences and folders (size, rate, duration, sound, subtitles and chapters follow the source), playing backwards, 25 transitions between two sources with `iProgress`, chroma / luma / difference keys |
 | 2.1.0 | Windows installer (NSIS, per user, ffmpeg included, optional) |
 | 2.0.0 | Quality check (flashes, NaN, flicker, aliasing, precision), shader comparison and reference frames, render time estimate with alert; seamless loops (crossfade, ping-pong), time curve and real slow motion, loop period search, seam check, smart thumbnail, averaged still image; posters by tiles up to 65536 pixels, GPU cost map and GPU time per pass, side-by-side / anaglyph / fulldome VR, cubemap faces; publication targets, target file size, master cache, reproducible video, standalone HTML page; sound and rhythm (tempo, beat variables, markers, beat editor); parts rendered in parallel and a render farm without a server |
@@ -448,6 +449,7 @@ Videos longer than `chunk` seconds are rendered in parts, in a `<name>.parts` fo
 |---|---|
 | `ShaderToMP4 a.glsl b.glsl` | Add the files and start rendering |
 | `ShaderToMP4 --render [options] a.glsl b.glsl` | Render without a window, same on Windows, Linux and macOS (see below) |
+| `ShaderToMP4 --license-info` | Print the license status (trial or registered) and the license file expected next to the program; exit code `0` when a valid license is present, `1` otherwise |
 | `ShaderToMP4 --diagnostic` | Print system, graphics card, OpenGL, ffmpeg and the encoders found (no path, no personal data): paste it in a bug report |
 | `ShaderToMP4 --benchmark [--seconds=N] [--quick] [--json] [--compare=previous.json --max-drop=N]` | Measure frames per second at 720p, 1080p and 4K with the CPU encoder, and with the hardware one when available. With `--compare` (a previous `--json` output) each case is compared with the same case before; exit code `5` when one is slower by more than N % (15 by default). The Linux continuous integration keeps the previous result in a cache and fails above 50 % |
 | `ShaderToMP4 --selftest [--update] [--quiet]` | Self-test (see below) |
@@ -473,6 +475,17 @@ ShaderToMP4 --render --progress=json --container=webm --codec=vp9 --width=1280 -
 All interface texts come from `lang/en.json` and `lang/fr.json`, embedded in the executable, and from the other files of the `lang` folder shipped next to it: German (`de`), Spanish (`es`), Italian (`it`), Portuguese (`pt`), Dutch (`nl`), Japanese (`ja`) and Simplified Chinese (`zh`). These seven translations are recent and have not been reviewed by native speakers: corrections are welcome. The language follows the system by default (when a file exists for it), can be switched with the globe button, and is remembered in `window.ini`. Japanese and Chinese need a font with those characters: Windows has one (the system falls back to it by itself); on Linux and macOS the program loads a system CJK font when one is installed (Noto Sans CJK, WenQuanYi, Droid Sans Fallback, PingFang or Hiragino...) and shows empty boxes otherwise. To add or fix a language without rebuilding, put a `lang/<code>.json` file next to the executable (keys missing from it fall back to English); the globe button then cycles through every available language.
 
 </details>
+
+## Free and Pro editions
+
+The program you have is the **free edition**: it is distributed under the GPL-3.0-or-later, every function works, and nothing is ever locked or timed. What is published under the GPL stays free for those who received it.
+
+The **Pro edition** (the versions that add the Pro features, after 2.2) is shareware under the user agreement [EULA.md](EULA.md):
+
+- **No time limit.** Without a license, the Pro features stay usable; an output that uses one carries a small watermark on its colour (the data passes — depth, identifiers, motion — are never touched). An output that uses no Pro feature never has one. The log and the file metadata say when a watermark was applied.
+- **Buy** with the “Buy Pro” button (main window or “About”): choose **5 €, 10 € or 15 €** (same license for all three), and the button opens the PayPal page in your browser. The program sends nothing and receives no payment data. Once the payment is received, the file `ShaderToMP4.license` is sent to you by e-mail.
+- **Activate** by putting `ShaderToMP4.license` in the program folder, next to the executable (no key to type, no button). The program reads it at start-up and checks its signature **offline**, with no network. With a valid file the watermark, the “Buy Pro” button and every trial notice disappear, and only the registered version remains: “About” shows the license holder. A file that is altered, expired or for another major version gives the trial version again. `ShaderToMP4 --license-info` shows the status.
+- The watermark is a brake, not an absolute protection. Lost file: ask for it again by e-mail with the payment reference.
 
 ## FAQ
 

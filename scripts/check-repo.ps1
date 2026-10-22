@@ -72,6 +72,23 @@ if ((Test-Path LICENSE) -and (Test-Path COPYING)) {
 }
 if ((Test-Path .gitignore) -and ((Get-Content .gitignore -Raw) -match ("ROADMAP|CL" + "AUDE"))) { Fail ".gitignore ne doit pas nommer les documents de travail (utiliser .git/info/exclude)" }
 
+# --- Edition Pro : le depot public ne contient que l'edition libre ---------------------------------
+# Les fichiers de l'edition Pro portent l'identifiant de licence proprietaire et vivent dans le depot prive ; la cle secrete de signature des licences
+# et le generateur de licences ne sont jamais dans un depot. Les identifiants sont assembles ici pour que ce script ne les contienne pas en clair.
+Section "Edition Pro"
+$proMark = 'LicenseRef-ShaderToMP4-' + 'Proprietary'
+$secretNames = 'license-' + 'private', 'lic' + 'gen', 'ShaderToMP4-' + 'Secret'
+foreach ($f in $tracked) {
+  if ($f -eq "scripts/check-repo.ps1") { continue }
+  if ($f -match '\.(key|pem|license)$') { Fail "cle ou licence suivie par Git (jamais dans un depot) : $f"; continue }
+  foreach ($n in $secretNames) { if ($f -like "*$n*") { Fail "fichier du generateur de licences ou cle secrete suivi par Git : $f" } }
+  if ($binaryExt -contains ([System.IO.Path]::GetExtension($f).ToLower())) { continue }
+  if (-not (Test-Path $f)) { continue }
+  $text = [System.IO.File]::ReadAllText((Resolve-Path $f), $enc)
+  if ($text.Contains($proMark)) { Fail "fichier de l'edition Pro dans le depot public : $f" }
+  foreach ($n in $secretNames) { if ($text.Contains($n)) { Fail "reference au generateur ou a la cle secrete dans $f : $n" } }
+}
+
 # --- 3. Internationalisation ---------------------------------------------------------------------
 Section "Internationalisation"
 $en = [System.IO.File]::ReadAllText((Resolve-Path "lang/en.json"), $enc) | ConvertFrom-Json
@@ -128,7 +145,7 @@ $srcFiles = Get-ChildItem src -Recurse -Include *.cpp, *.h
 $used = @{}
 foreach ($f in $srcFiles) {
   $text = Get-Content $f.FullName -Raw -Encoding UTF8
-  foreach ($m in [regex]::Matches($text, '"((?:ui|log|error|dialog|status|dl|selftest|ini|about|cli|diag|expr|rhythm|farm)\.[a-z0-9_.]+)"')) { $used[$m.Groups[1].Value] = $f.Name }
+  foreach ($m in [regex]::Matches($text, '"((?:ui|log|error|dialog|status|dl|selftest|ini|about|cli|diag|expr|rhythm|farm|lic|buy|meta)\.[a-z0-9_.]+)"')) { $used[$m.Groups[1].Value] = $f.Name }
 }
 # Textes de l'installeur Windows : les cles installer.* sont lues par scripts/package-installer.ps1 (pas par le code du programme)
 foreach ($f in "scripts/package-installer.ps1") {

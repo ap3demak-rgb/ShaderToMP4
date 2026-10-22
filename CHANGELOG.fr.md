@@ -6,6 +6,12 @@
 
 Format : une section par version, la plus récente en premier. La section d'une version étiquetée est reprise dans les notes de version.
 
+## Non publié
+
+### Ajouté
+
+- Infrastructure de l'édition Pro (rien n'est verrouillé dans l'édition libre) : fichier de licence signé `ShaderToMP4.license` à côté du programme, vérifié hors ligne (Ed25519, écrit pour le programme, comparé aux vecteurs de la RFC 8032) ; filigrane d'essai sur la couleur d'une sortie qui utilise une fonction Pro sans licence valide (jamais sur les passes de données), aucun sinon ; état de la licence dans « À propos », bouton et fenêtre « Acheter Pro » (5 €, 10 € ou 15 € par PayPal, ouverts sur clic seulement) qui disparaissent avec une licence valide ; `--license-info` ; contrat d'utilisation `EULA.fr.md` ; quatre cas d'auto-test.
+
 ## 2.1.1 — 2026-10-20
 
 ### Ajouté

@@ -9,6 +9,8 @@
 #include "parts.h"
 #include "source.h"
 #include "dpx.h"
+#include "ed25519.h"
+#include "prolicense.h"
 #include "exr.h"
 #include "exrtools.h"
 #include "tifffloat.h"
@@ -3921,6 +3923,280 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         const std::wstring label = TX("selftest.fmt_texture") + L" " + W(ext);
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + label + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
         if (!problem.empty()) fails++;
+    }
+    // Licence Pro (phase 24b) : signature, fichiers de licence, filigrane, interface
+    {
+        const std::wstring sep(1, platform::pathSeparator());
+        auto check = [&](const char* key, const std::wstring& problem) {
+            total++;
+            report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX(key) + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+            if (!problem.empty()) fails++;
+        };
+        auto bad = [&](const std::string& what) { return TXF("selftest.fmt_bad", W(what).c_str()); };
+        auto toHex = [](const uint8_t* p, size_t n) {
+            std::string s;
+            char b[3];
+            for (size_t i = 0; i < n; i++) {
+                snprintf(b, sizeof(b), "%02x", p[i]);
+                s += b;
+            }
+            return s;
+        };
+        auto fromHex = [](const std::string& s) {
+            std::vector<uint8_t> v;
+            for (size_t i = 0; i + 1 < s.size(); i += 2) v.push_back((uint8_t)strtoul(s.substr(i, 2).c_str(), nullptr, 16));
+            return v;
+        };
+
+        // Signature : SHA-512 (FIPS 180) et Ed25519 (RFC 8032) contre les vecteurs publies
+        {
+            std::wstring problem;
+            uint8_t h[64];
+            ed25519::sha512((const uint8_t*)"abc", 3, h);
+            if (toHex(h, 64) != "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f")
+                problem = bad("SHA-512 abc");
+            const std::string thousand(1000, 'a');  // franchit la limite d'un bloc (128 octets) plusieurs fois
+            ed25519::sha512((const uint8_t*)thousand.data(), thousand.size(), h);
+            if (problem.empty() && toHex(h, 8) != "67ba5535a46e3f86") problem = bad("SHA-512 of 1000 bytes");
+            struct V {
+                const char *seed, *pub, *msg, *sig;
+            };
+            const V vectors[] = {
+                {"9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60", "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", "",
+                 "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"},
+                {"4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb", "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c", "72",
+                 "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00"}};
+            for (const V& v : vectors) {
+                if (!problem.empty()) break;
+                const std::vector<uint8_t> seed = fromHex(v.seed), msg = fromHex(v.msg);
+                uint8_t pub[32], sec[64], sig[64];
+                ed25519::keypairFromSeed(seed.data(), pub, sec);
+                ed25519::sign(msg.data(), msg.size(), sec, sig);
+                if (toHex(pub, 32) != v.pub) problem = bad("Ed25519 public key");
+                else if (toHex(sig, 64) != v.sig) problem = bad("Ed25519 signature");
+                else if (!ed25519::verify(msg.data(), msg.size(), sig, pub)) problem = bad("Ed25519 verification");
+                else {
+                    std::vector<uint8_t> other = msg;
+                    other.push_back(1);
+                    uint8_t bent[64];
+                    memcpy(bent, sig, 64);
+                    bent[40] ^= 1;
+                    if (ed25519::verify(other.data(), other.size(), sig, pub) || ed25519::verify(msg.data(), msg.size(), bent, pub)) problem = bad("Ed25519 accepts an altered message or signature");
+                }
+            }
+            check("selftest.lic_crypto", problem);
+        }
+
+        // Fichiers de licence : cle d'essai propre a l'auto-test (la cle secrete du programme n'est dans aucun depot)
+        uint8_t testPub[32], testSec[64], otherPub[32], otherSec[64];
+        {
+            uint8_t seed[64];
+            ed25519::sha512((const uint8_t*)"ShaderToMP4 selftest key", 24, seed);
+            ed25519::keypairFromSeed(seed, testPub, testSec);
+            ed25519::sha512((const uint8_t*)"ShaderToMP4 other key", 21, seed);
+            ed25519::keypairFromSeed(seed, otherPub, otherSec);
+        }
+        auto makeLicense = [&](const std::string& holder, const std::string& edition, int major, const std::string& expires, const uint8_t* sec) {
+            std::string t = "ShaderToMP4-License=1\nholder=" + holder + "\nedition=" + edition + "\nmajor=" + std::to_string(major) + "\nexpires=" + expires + "\nid=TEST-0001\n";
+            uint8_t sig[64];
+            ed25519::sign((const uint8_t*)t.data(), t.size(), sec, sig);
+            return t + "signature=" + toHex(sig, 64) + "\n";
+        };
+        const long long today = daysFromCivil(2026, 10, 22);
+        {
+            std::wstring problem;
+            auto state = [&](const std::string& text) { return checkLicenseText(text, testPub, APP_VER_MAJOR, today).state; };
+            const std::string good = makeLicense("Tester", "pro", APP_VER_MAJOR, "never", testSec);
+            const ProLicense li = checkLicenseText(good, testPub, APP_VER_MAJOR, today);
+            std::string crlf;
+            for (char c : good) crlf += c == '\n' ? std::string("\r\n") : std::string(1, c);
+            std::string altered = good, majorEdit = good, truncated = good.substr(0, good.size() - 24);
+            altered.replace(altered.find("Tester"), 6, "Hacker");
+            majorEdit.replace(majorEdit.find("major=2"), 7, "major=3");
+            const struct {
+                const char* what;
+                std::string text;
+                ProLicenseState want;
+            } cases[] = {
+                {"valid", good, ProLicenseState::Valid},
+                {"valid with CRLF line ends", crlf, ProLicenseState::Valid},
+                {"valid on its last day", makeLicense("Tester", "pro", APP_VER_MAJOR, "2026-10-22", testSec), ProLicenseState::Valid},
+                {"expired the day before", makeLicense("Tester", "pro", APP_VER_MAJOR, "2026-10-21", testSec), ProLicenseState::Expired},
+                {"expired long ago", makeLicense("Tester", "pro", APP_VER_MAJOR, "2020-01-01", testSec), ProLicenseState::Expired},
+                {"holder altered", altered, ProLicenseState::Invalid},
+                {"major edited without re-signing", majorEdit, ProLicenseState::Invalid},
+                {"truncated", truncated, ProLicenseState::Invalid},
+                {"signature removed", good.substr(0, good.find("signature=")), ProLicenseState::Invalid},
+                {"empty", std::string(), ProLicenseState::Invalid},
+                {"signed by another key", makeLicense("Tester", "pro", APP_VER_MAJOR, "never", otherSec), ProLicenseState::Invalid},
+                {"other edition", makeLicense("Tester", "free", APP_VER_MAJOR, "never", testSec), ProLicenseState::Invalid},
+                {"unreadable expiry date", makeLicense("Tester", "pro", APP_VER_MAJOR, "someday", testSec), ProLicenseState::Invalid},
+                {"other major version", makeLicense("Tester", "pro", APP_VER_MAJOR + 1, "never", testSec), ProLicenseState::OtherMajor},
+                {"older major version", makeLicense("Tester", "pro", APP_VER_MAJOR - 1, "never", testSec), ProLicenseState::OtherMajor},
+            };
+            for (const auto& c : cases)
+                if (problem.empty() && state(c.text) != c.want) problem = bad(std::string("license case: ") + c.what);
+            if (problem.empty() && (li.holder != "Tester" || li.edition != "pro" || li.major != APP_VER_MAJOR || li.id != "TEST-0001")) problem = bad("license fields");
+            // deposees dans un dossier, comme a cote du programme : cle d'essai valide, cle du programme refuse, dossier vide = aucune licence
+            const std::wstring licDir = outDir + sep + L"lic";
+            platform::makeDir(licDir);
+            const std::wstring licDirSep = licDir + sep;  // comme exeDir : le dossier se termine par un separateur
+            const std::wstring file = licDirSep + licenseFileName();
+            if (problem.empty()) {
+                if (loadLicense(licDirSep, testPub).state != ProLicenseState::None) problem = bad("an empty folder must give no license");
+                if (FILE* f = platform::openFile(file, "wb")) {
+                    fwrite(good.data(), 1, good.size(), f);
+                    fclose(f);
+                }
+                if (loadLicense(licDirSep, testPub).state != ProLicenseState::Valid) problem = bad("license file in a folder");
+                else if (loadLicense(licDirSep).state != ProLicenseState::Invalid) problem = bad("a license not signed by the program key must be refused");
+            }
+            check("selftest.lic_files", problem);
+        }
+
+        // Filigrane : couleur seulement, jamais les passes de donnees ; present seulement avec une fonction Pro et sans licence valide
+        {
+            std::wstring problem;
+            const std::wstring shader = outDir + sep + L"lic_wm.glsl";
+            if (FILE* f = platform::openFile(shader, "wb")) {
+                const char* body = "void mainImage(out vec4 o, in vec2 p){ o = vec4(vec3(0.3), 1.0); }\n";
+                fwrite(body, 1, strlen(body), f);
+                fclose(f);
+            }
+            auto preview = [&](bool proFeature, const ProLicense& li, std::vector<uint8_t>& px) {
+                setLicenseForTest(li);
+                Settings st;
+                st.width = st.height = 64;
+                Hooks H;
+                H.log = [](const std::wstring&) {};
+                H.previewTime = 1.0;
+                H.previewFrame = [&](int, int, std::vector<uint8_t>&& got) { px = std::move(got); };
+                if (proFeature) H.proTestFeatures.push_back("selftest");
+                std::wstring e;
+                return convertFile(shader, exeDir, st, H, e) == Result::Ok && px.size() == 64 * 64 * 4;
+            };
+            ProLicense none, valid, expired, invalid;
+            valid.state = ProLicenseState::Valid;
+            expired.state = ProLicenseState::Expired;
+            invalid.state = ProLicenseState::Invalid;
+            std::vector<uint8_t> plain, marked, licensed, lapsed, forged, neutral;
+            if (!preview(false, none, plain) || !preview(true, none, marked) || !preview(true, valid, licensed) || !preview(true, expired, lapsed) ||
+                !preview(true, invalid, forged) || !preview(false, expired, neutral)) {
+                problem = TX("selftest.render_failed");
+            } else {
+                size_t changed = 0, outside = 0;
+                int minX = 64, minY = 64;
+                for (int y = 0; y < 64; y++)
+                    for (int x = 0; x < 64; x++) {
+                        const size_t i = ((size_t)y * 64 + x) * 4;
+                        if (memcmp(&plain[i], &marked[i], 3) == 0) continue;
+                        changed++;
+                        minX = std::min(minX, x);
+                        minY = std::min(minY, y);
+                        if (x < 32 || y < 32) outside++;  // le filigrane tient dans le quart bas droit
+                    }
+                const bool uniform = [&] {
+                    for (size_t i = 4; i < plain.size(); i += 4)
+                        if (memcmp(&plain[i], &plain[0], 3) != 0) return false;
+                    return true;
+                }();
+                if (!uniform) problem = bad("the reference image must be uniform");
+                else if (changed < 20) problem = bad("no watermark with a Pro feature and no license (" + std::to_string(changed) + " pixels)");
+                else if (outside != 0) problem = bad("watermark outside the bottom right corner");
+                else if (licensed != plain) problem = bad("watermark present with a valid license");
+                else if (lapsed != marked) problem = bad("an expired license must give the same result as no license");
+                else if (forged != marked) problem = bad("an invalid license must give the same result as no license");
+                else if (neutral != plain) problem = bad("watermark on an output without a Pro feature");
+            }
+            // passes de donnees (profondeur, normale) inchangees ; la couleur seule porte le filigrane
+            if (problem.empty()) {
+                const std::wstring layers = outDir + sep + L"lic_layers.glsl";
+                if (FILE* f = platform::openFile(layers, "wb")) {
+                    const char* body = "// aov depth=bufferB.r\n// aov normal=bufferB.gba\nvoid mainImage(out vec4 o, in vec2 p){ vec2 uv = p / iResolution.xy; o = vec4(uv.x, uv.y, 0.5, 1.0); }\n";
+                    fwrite(body, 1, strlen(body), f);
+                    fclose(f);
+                }
+                if (FILE* f = platform::openFile(outDir + sep + L"lic_layers.bufferB.glsl", "wb")) {
+                    const char* body = "void mainImage(out vec4 o, in vec2 p){ vec2 uv = p / iResolution.xy; o = vec4(uv.x * 10.0, 0.25, 0.5, uv.y); }\n";
+                    fwrite(body, 1, strlen(body), f);
+                    fclose(f);
+                }
+                auto exrFrame = [&](const wchar_t* name, bool proFeature, const ProLicense& li, exr::Image& img) {
+                    setLicenseForTest(li);
+                    Settings st = base("h264", "exr", 8);
+                    st.width = 48;
+                    st.height = 48;
+                    st.fps = 2;
+                    st.duration = 1;
+                    st.name = name;
+                    st.exrPrecision = "float";
+                    st.exrCompression = "zip";
+                    Hooks H;
+                    H.log = [](const std::wstring&) {};
+                    if (proFeature) H.proTestFeatures.push_back("selftest");
+                    std::wstring e;
+                    if (convertFile(layers, exeDir, st, H, e) != Result::Ok) return false;
+                    return exr::read(wfmt(sequencePattern(outputFile(layers, st, false)).c_str(), 0), img, e);
+                };
+                exr::Image withMark, without;
+                if (!exrFrame(L"lic_exr_wm", true, none, withMark) || !exrFrame(L"lic_exr_ok", true, valid, without)) {
+                    problem = TX("selftest.render_failed");
+                } else {
+                    const char* data[] = {"depth.Z", "normal.X", "normal.Y", "normal.Z"};
+                    for (const char* nm : data) {
+                        const auto *a = withMark.find(nm), *b = without.find(nm);
+                        if (!a || !b || a->pixels != b->pixels) problem = bad(std::string("data pass changed by the watermark: ") + nm);
+                    }
+                    size_t colorChanged = 0;
+                    for (const char* nm : {"R", "G", "B"}) {
+                        const auto *a = withMark.find(nm), *b = without.find(nm);
+                        if (!a || !b || a->pixels.size() != b->pixels.size()) {
+                            problem = bad("color channels");
+                            break;
+                        }
+                        for (size_t i = 0; i < a->pixels.size(); i++)
+                            if (a->pixels[i] != b->pixels[i]) colorChanged++;
+                    }
+                    if (problem.empty() && colorChanged < 20) problem = bad("the EXR color must carry the watermark");
+                }
+            }
+            initLicense(exeDir);  // rend l'etat reel de ce poste
+            check("selftest.lic_watermark", problem);
+        }
+
+        // Interface : bouton d'achat et mentions d'essai seulement sans licence valide ; liens d'achat
+        {
+            std::wstring problem;
+            ProLicense none, valid, expired;
+            valid.state = ProLicenseState::Valid;
+            valid.holder = "Tester";
+            valid.edition = "pro";
+            valid.major = APP_VER_MAJOR;
+            valid.expires = "never";
+            expired.state = ProLicenseState::Expired;
+            expired.expires = "2020-01-01";
+            const std::wstring buyLink = APP_PURCHASE_URL_WSTR;
+            setLicenseForTest(none);
+            if (!showTrialUi() || isRegistered()) problem = bad("trial interface must be shown without a license");
+            const std::wstring trialInfo = licenseInfoText(none, exeDir);
+            if (problem.empty() && trialInfo.find(buyLink) == std::wstring::npos) problem = bad("purchase link missing from the trial text");
+            if (problem.empty() && licenseInfoText(expired, exeDir).find(buyLink) == std::wstring::npos) problem = bad("purchase link missing with an expired license");
+            setLicenseForTest(valid);
+            if (problem.empty() && (showTrialUi() || !isRegistered())) problem = bad("trial interface must disappear with a valid license");
+            const std::wstring regInfo = licenseInfoText(valid, exeDir);
+            if (problem.empty() && (regInfo.find(buyLink) != std::wstring::npos || licenseStatusText(valid) == licenseStatusText(none) || regInfo.find(L"Tester") == std::wstring::npos))
+                problem = bad("registered text");
+            if (problem.empty()) {
+                const auto& amounts = purchaseAmounts();
+                if (amounts != std::vector<int>{5, 10, 15}) problem = bad("purchase amounts");
+                for (int a : amounts)
+                    if (problem.empty() && purchaseUrl(a) != buyLink + L"/" + std::to_wstring(a) + L"EUR") problem = bad("purchase link for " + std::to_string(a));
+                if (problem.empty() && purchaseUrl(7) != buyLink + L"/5EUR") problem = bad("an unlisted amount must give the first amount");
+                if (problem.empty() && purchaseUrl(15) != L"https://www.paypal.me/sandefjorddevel/15EUR") problem = bad("PayPal link");
+            }
+            initLicense(exeDir);
+            check("selftest.lic_ui", problem);
+        }
     }
     removeTree(outDir);
 }

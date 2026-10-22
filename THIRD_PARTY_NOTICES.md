@@ -10,7 +10,9 @@ Last review: ShaderToMP4 2.1.0 (the Windows installer ships ffmpeg 9.0.2 and the
 
 ## 1. Code compiled into the program
 
-**Windows**: none. The JSON reader (translations), the Direct2D drawing layer, the process, HTTP and file helpers are original code of the project (`src/`). Only the C++ runtime and the Windows SDK are used at build time (see section 3).
+**All systems**: the license signature check (`src/core/ed25519.cpp`: Ed25519 and SHA-512) is an adaptation of **TweetNaCl** (Daniel J. Bernstein, Wesley Janssen, Tanja Lange, Peter Schwabe and others, [tweetnacl.cr.yp.to](https://tweetnacl.cr.yp.to)), which is **in the public domain** (no condition, compatible with the GPL-3.0 and with a proprietary edition). The SHA-512 round function and its constants follow FIPS 180-4. The code is checked against the RFC 8032 and FIPS 180 test vectors by the self-test.
+
+**Windows**: no library. The JSON reader (translations), the Direct2D drawing layer, the process, HTTP and file helpers are original code of the project (`src/`). Only the C++ runtime and the Windows SDK are used at build time (see section 3).
 
 **Linux and macOS**: three libraries are downloaded at configuration time (pinned versions, see `CMakeLists.txt` and `src/ui_imgui/CMakeLists.txt`) and compiled into the executable, and one font is embedded. Their licenses are permissive and compatible with the GPL-3.0; their copyright notices are kept in their own source files.
 
@@ -51,7 +53,11 @@ Last review: ShaderToMP4 2.1.0 (the Windows installer ships ffmpeg 9.0.2 and the
 | Language files (`lang/*.json`: English, French, German, Spanish, Italian, Portuguese, Dutch, Japanese, Chinese) | Original texts of the project | GPL-3.0-or-later |
 | Screenshots and banner (`docs/`) | Produced from the program itself | GPL-3.0-or-later |
 
-## 5. Rules for future components
+## 5. Review for the Pro edition (shareware, from phase 25)
+
+The Pro edition is distributed under a proprietary license, so every component must allow redistribution in proprietary software. Review of the components above: **no component is GPL-only** among those compiled into the program (TweetNaCl: public domain; GLFW and NanoSVG: zlib; Dear ImGui: MIT; Inter: OFL). FFmpeg stays a **separate program** that the Pro edition does not link: the Windows installer carries its GPL v3 build with its license text and its corresponding source offer (section 2); the portable archive downloads it. The contributor list was checked: the repository has a single author (the owner of the copyright), so no external contribution needs a written assignment. Linux and macOS are frozen: their libraries are not part of the Pro edition.
+
+## 6. Rules for future components
 
 Before adding a dependency (library, font, icon set, tool downloaded at run time):
 

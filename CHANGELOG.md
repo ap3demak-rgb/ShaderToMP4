@@ -6,6 +6,12 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
+## Unreleased
+
+### Added
+
+- Pro edition infrastructure (nothing is locked in the free edition): signed license file `ShaderToMP4.license` next to the program, checked offline (Ed25519, written for the program, tested against the RFC 8032 vectors); trial watermark on the colour of an output that uses a Pro feature without a valid license (never on data passes), none otherwise; license status in “About”, “Buy Pro” button and window (5 €, 10 € or 15 € through PayPal, opened on click only) that disappear with a valid license; `--license-info`; user agreement `EULA.md`; four self-test cases.
+
 ## 2.1.1 — 2026-10-20
 
 ### Added
