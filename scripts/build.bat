@@ -20,5 +20,7 @@ copy /y COPYING bin\ >nul
 copy /y LICENSE bin\ >nul
 copy /y THIRD_PARTY_NOTICES.md bin\ >nul
 copy /y THIRD_PARTY_NOTICES.fr.md bin\ >nul
+copy /y EULA.md bin\ >nul
+copy /y EULA.fr.md bin\ >nul
 if not exist bin\lang mkdir bin\lang
 copy /y lang\*.json bin\lang\ >nul
