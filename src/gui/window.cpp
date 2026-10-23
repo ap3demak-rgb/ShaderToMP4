@@ -42,6 +42,8 @@ void layout() {
         const int hh = S(32), hy = S(16);
         int hx = w - m - S(40);
         MoveWindow(g.bAbout, hx, hy, S(40), hh, TRUE);
+        hx -= gap + S(40);
+        MoveWindow(g.bHelp, hx, hy, S(40), hh, TRUE);
         hx -= gap + S(64);
         MoveWindow(g.bLang, hx, hy, S(64), hh, TRUE);
         hx -= gap + S(40);
@@ -181,6 +183,7 @@ void layout() {
     g.cards.push_back({fr, TX("ui.card.shaders"), IC_FILM});
     g.cards.push_back({pr, TX("ui.card.preview"), IC_EYE});
     g.bandRect = fr;
+    MoveWindow(g.bGallery, fr.left + S(112), fr.top + S(10), std::max(S(60), std::min(S(132), (int)(fr.right - S(160) - (fr.left + S(112))))), S(28), TRUE);  // galerie d'exemples, dans l'en-tete de la carte des shaders
     RECT lr{fr.left + S(8), fr.top + S(46), fr.right - S(8), fr.bottom - S(10)};
     g.dropRect = lr;
     MoveWindow(g.list, lr.left, lr.top, lr.right - lr.left, lr.bottom - lr.top, TRUE);
@@ -302,6 +305,11 @@ void paintMain(HWND hw) {
                ui::rectf(d.left + F(10), cy + F(14), d.right - F(10), cy + F(38)), F(15), true, ui::rgb(TEXT), ui::Center);
         f.text(TX("ui.drop.hint"), ui::rectf(d.left + F(10), cy + F(38), d.right - F(10), cy + F(58)), F(12), false,
                ui::rgb(MUTED), ui::Center);
+    }
+    if (g.tourOn && g.tourRect.right > g.tourRect.left) {  // visite guidee : cadre autour de l'element presente
+        RECT t = g.tourRect;
+        InflateRect(&t, S(5), S(5));
+        f.strokeRound(ui::rectf(t), F(10), ui::rgb(ACCENT), 3.0f);
     }
     f.present(hdc);
     EndPaint(hw, &ps);
@@ -556,6 +564,7 @@ void createControls(HWND hw) {
         return b;
     };
     g.bAbout = button(nullptr, ID_ABOUT, IC_INFO, BtnStyle::Ghost, BG);
+    g.bHelp = button(nullptr, ID_HELP, IC_HELP, BtnStyle::Ghost, BG);
     g.bLang = button(nullptr, ID_LANG, IC_GLOBE, BtnStyle::Ghost, BG);
     g.bParams = button(nullptr, ID_PARAMS, IC_SLIDERS, BtnStyle::Ghost, BG);
     g.bOutput = button(nullptr, ID_OUTPUT, IC_FILM, BtnStyle::Ghost, BG);
@@ -566,6 +575,7 @@ void createControls(HWND hw) {
     g.bRemove = button("ui.btn.remove", ID_REMOVE, IC_TRASH, BtnStyle::Secondary, BG);
     g.bClear = button("ui.btn.clear", ID_CLEAR, IC_CLEAR, BtnStyle::Secondary, BG);
     g.bFolder = button("ui.btn.folder", ID_FOLDER, IC_FOLDER, BtnStyle::Secondary, BG);
+    g.bGallery = button("ui.btn.gallery", ID_GALLERY, IC_GALLERY, BtnStyle::Chip, CARD);
     g.bSnap = button("ui.btn.png", ID_SNAP, IC_IMAGE, BtnStyle::Secondary, BG);
     g.bStart = button("ui.btn.start", ID_START, IC_PLAY, BtnStyle::Primary, BG);
     g.bPause = button(nullptr, ID_PAUSE, IC_PAUSE, BtnStyle::Secondary, BG);  // texte : Pause / Reprendre
@@ -688,7 +698,7 @@ void createControls(HWND hw) {
             {g.cmbPreset, "ui.lbl.preset"}, {g.trkCrf, "ui.lbl.quality"}, {g.cmbContainer, "ui.lbl.container"},
             {g.cmbEncoder, "ui.lbl.encoder"}, {g.edBitrate, "ui.lbl.bitrate"}, {g.cmbColor, "ui.lbl.color"}, {g.cmbBlur, "ui.lbl.blur"},
             {g.edLoop, "ui.lbl.loop"}, {g.cmbDepth, "ui.lbl.depth"}, {g.edAudio, "ui.lbl.audio"}, {g.edFadeIn, "ui.lbl.fade_in"},
-            {g.bAbout, "ui.tip.about"}, {g.bLang, "ui.tip.language"}, {g.bParams, "ui.tip.params_btn"}, {g.bOutput, "ui.tip.output_btn"},
+            {g.bAbout, "ui.tip.about"}, {g.bHelp, "ui.tip.help"}, {g.bGallery, "ui.tip.gallery"}, {g.bLang, "ui.tip.language"}, {g.bParams, "ui.tip.params_btn"}, {g.bOutput, "ui.tip.output_btn"},
             {g.bEditor, "ui.tip.editor_btn"}, {g.bPause, "ui.tip.pause"},  // boutons a icone seule : nommes par leur info-bulle
             {g.edFadeOut, "ui.tip.fade_out"}, {g.edOut, "ui.lbl.output"}, {g.trkPrev, "ui.tip.preview_time"},
             {g.list, "ui.card.shaders"}, {g.preview, "ui.card.preview"}, {g.prog, "ui.card.progress"}};
@@ -704,7 +714,7 @@ void createControls(HWND hw) {
     SendMessageW(g.tip, TTM_SETDELAYTIME, TTDT_INITIAL, 450);
     struct Tip { HWND c; const char* key; };
     const Tip tips[] = {
-        {g.bAbout, "ui.tip.about"}, {g.bLang, "ui.tip.language"}, {g.bParams, "ui.tip.params_btn"}, {g.bOutput, "ui.tip.output_btn"}, {g.bFileScope, "ui.tip.file_scope"}, {g.bEditor, "ui.tip.editor_btn"}, {g.bBuy, "ui.tip.buy"},
+        {g.bAbout, "ui.tip.about"}, {g.bHelp, "ui.tip.help"}, {g.bGallery, "ui.tip.gallery"}, {g.bLang, "ui.tip.language"}, {g.bParams, "ui.tip.params_btn"}, {g.bOutput, "ui.tip.output_btn"}, {g.bFileScope, "ui.tip.file_scope"}, {g.bEditor, "ui.tip.editor_btn"}, {g.bBuy, "ui.tip.buy"},
         {g.bAdd, "ui.tip.add"}, {g.bRemove, "ui.tip.remove"}, {g.bClear, "ui.tip.clear"}, {g.bFolder, "ui.tip.folder"},
         {g.bSnap, "ui.tip.png"}, {g.bStart, "ui.tip.start"}, {g.bPause, "ui.tip.pause"}, {g.bCancel, "ui.tip.cancel"},
         {g.cmbRes, "ui.tip.resolution"}, {g.edW, "ui.tip.width"}, {g.edH, "ui.tip.height"}, {g.cmbFps, "ui.tip.fps"},
@@ -787,6 +797,14 @@ std::string readSavedLanguage() {
     return code.size() <= 8 ? code : "";
 }
 
+// Visite guidee : montree tant que window.ini ne dit pas tour=0
+bool readSavedTour() {
+    std::string text;
+    if (!readFile(g.exeDir + L"window.ini", text)) return true;
+    const size_t p = text.find("tour=");
+    return p == std::string::npos || text.compare(p + 5, 1, "0") != 0;
+}
+
 void saveWindowPlacement(HWND wnd) {
     WINDOWPLACEMENT wp{};
     wp.length = sizeof(wp);
@@ -794,8 +812,8 @@ void saveWindowPlacement(HWND wnd) {
     RECT r = wp.rcNormalPosition;
     FILE* f = _wfopen((g.exeDir + L"window.ini").c_str(), L"wb");
     if (!f) return;
-    fprintf(f, "x=%d y=%d w=%d h=%d max=%d\nlang=%s\n", (int)r.left, (int)r.top, (int)(r.right - r.left),
-            (int)(r.bottom - r.top), wp.showCmd == SW_SHOWMAXIMIZED ? 1 : 0, i18n::language().c_str());
+    fprintf(f, "x=%d y=%d w=%d h=%d max=%d\nlang=%s\ntour=%d\n", (int)r.left, (int)r.top, (int)(r.right - r.left),
+            (int)(r.bottom - r.top), wp.showCmd == SW_SHOWMAXIMIZED ? 1 : 0, i18n::language().c_str(), g.tourEnabled ? 1 : 0);
     fclose(f);
 }
 
@@ -884,6 +902,14 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                     if (t.first == ctl) {
                         static std::wstring tipText;
                         tipText = TX(t.second);
+                        static const struct { const char* tip; const char* ex; } kExamples[] = {  // info-bulles completees par un exemple de valeur
+                            {"ui.tip.width", "ui.ex.width"},       {"ui.tip.height", "ui.ex.height"},   {"ui.tip.fps", "ui.ex.fps"},
+                            {"ui.tip.smoothing", "ui.ex.smoothing"}, {"ui.tip.start_time", "ui.ex.start_time"}, {"ui.tip.bitrate", "ui.ex.bitrate"},
+                            {"ui.tip.loop", "ui.ex.loop"},         {"ui.tip.fade_in", "ui.ex.fade"},    {"ui.tip.fade_out", "ui.ex.fade"},
+                            {"ui.tip.audio", "ui.ex.audio"},       {"ui.tip.output", "ui.ex.output"},   {"ui.tip.depth", "ui.ex.depth"},
+                        };
+                        for (const auto& e : kExamples)
+                            if (strcmp(e.tip, t.second) == 0) tipText += L"\n" + TXF("ui.tip.example", TX(e.ex).c_str());
                         di->lpszText = const_cast<LPWSTR>(tipText.c_str());
                         break;
                     }
@@ -1130,6 +1156,8 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                     setStatus(TX(g.pause ? "status.paused" : "status.rendering"));
                     break;
                 case ID_ABOUT: showAbout(hw); break;
+                case ID_HELP: showHelp(hw, "main"); break;
+                case ID_GALLERY: showGallery(hw); break;
                 case ID_BUY: showBuy(hw); break;
                 case ID_PARAMS: showParams(hw); break;
                 case ID_OUTPUT: showOutput(hw); break;

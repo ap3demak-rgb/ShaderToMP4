@@ -75,7 +75,7 @@ Un seul programme portable pour **Windows** (rien à installer ; un **installeur
 
 <p align="center">
   <img src="docs/screenshots/fr/about.png" alt="Fenêtre À propos" width="420"><br>
-  <sub>La fenêtre « À propos » (<code>F1</code>) : version, copyright, licence, contact et site web. Le bouton globe change la langue instantanément.</sub>
+  <sub>La fenêtre « À propos » (bouton <code>i</code>) : version, copyright, licence, contact et site web. Le bouton globe change la langue instantanément.</sub>
 </p>
 
 ### Sous Linux et macOS (gelé : version 2.1.1 et antérieures)
@@ -90,6 +90,8 @@ Windows garde son interface native Direct2D. Linux et macOS utilisent une second
 ## Exemples
 
 Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : plasma, anneaux, tunnel et aurore.
+
+Le dossier [`examples/gallery`](examples/gallery) contient **soixante shaders originaux** en dix catégories (maths, bruit, fractales, ray marching, 2D, post-traitement, boucles, son, VR, passes multiples), chacun avec une vignette 128 × 72 (`.bmp`) et une explication en français et en anglais dans l'en-tête du fichier (lignes `// fr:` et `// en:` ; les autres langues affichent l'anglais). Le bouton **Exemples** du programme les ouvre dans une galerie. L'auto-test rend chacun en une image, sans erreur.
 
 <p align="center">
   <img src="docs/screenshots/gallery.png" alt="Galerie : plasma, anneaux, tunnel, aurore" width="860">
@@ -140,8 +142,12 @@ Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : 
 | **Dossier** | | Ouvre l'explorateur sur la vidéo du shader sélectionné |
 | **Profil / Enregistrer** | | Charge ou enregistre tous les réglages dans un fichier `.ini` |
 | **Paramètres** (icône à curseurs) | | Paramètres du shader et post-traitement (effets, LUT couleur) ; sous Linux et macOS ils sont en bas de la carte des réglages |
-| **À propos** | `F1` | Version, copyright, licence, contact, site web |
+| **Aide** (icône `?`) | `F1` | L'aide de la fenêtre où vous êtes (aussi `F1` dans les fenêtres Sortie, Paramètres, Éditeur et Exemples) : rubriques, glossaire, dépannage |
+| **Exemples** (dans la carte Shaders) | | Galerie de soixante shaders d'exemple : choisissez une catégorie, lisez l'explication, double-cliquez ou **Ajouter à la liste** |
+| **À propos** | | Version, copyright, licence, contact, site web |
 | **EN / FR** | | Change la langue de l'interface |
+
+**Aide, visite et explication des erreurs.** `F1` ouvre l'aide intégrée (pas de page web) à la rubrique de la fenêtre où vous êtes ; elle contient un glossaire (shader, canal, passe, partie, boucle, HDR, sur-échantillonnage…) et une page de dépannage, dans les neuf langues. Les info-bulles des champs taille, cadence, lissage, début, débit, boucle, fondus, son, dossier et profondeur de bits se terminent par un exemple de valeur. Une courte visite guidée (cinq étapes, jamais bloquante) apparaît au premier lancement ; on la revoit avec le bouton en bas à gauche de l'aide, et `tour=0` dans `window.ini` (écrit quand la visite est passée, terminée ou fermée) l'écarte. Quand un shader ne compile pas, le journal donne `fichier:ligne: message` comme avant et, dessous, une phrase qui explique les causes courantes (nom non déclaré, types mélangés, mauvais arguments, `mainImage` absent, syntaxe, redéfinition…) et une correction proposée ; le fichier du shader n'est jamais modifié, et le contrôle qualité ajoute une piste sous son rapport de NaN. Les langues au-delà des neuf livrées ne sont pas encore faites.
 
 `Tab` passe d'un réglage au suivant. Tous les textes de l'interface ont un contraste d'au moins 4,5:1 avec leur fond (WCAG AA), contrôlé automatiquement pour les deux interfaces.
 

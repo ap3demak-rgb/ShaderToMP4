@@ -39,11 +39,16 @@ struct Frame {
               bool vcenter = true, bool wrap = false);  // wrap : retour à la ligne automatique (haut du rectangle)
     // Icone SVG : tint = true recolore (fill et stroke de la racine) avec la couleur c ; sinon couleurs d'origine.
     void icon(int resId, D2D1_RECT_F r, bool tint, D2D1_COLOR_F c);
+    // Image BGRA opaque w x h dessinee dans r ; `key` identifie l'image (creee a la premiere utilisation, gardee ensuite : voir dropImages)
+    void image(int key, const uint8_t* bgra, int w, int h, D2D1_RECT_F r, float opacity = 1.0f);
 
 private:
     bool done = false;
 };
 
+void dropImages();  // oublie les images gardees par Frame::image
+
 float measureText(const std::wstring& s, float size, bool bold);
+float measureWrapped(const std::wstring& s, float size, bool bold, float width);  // hauteur d'un texte a retour a la ligne automatique dans `width`
 
 }  // namespace ui

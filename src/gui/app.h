@@ -20,7 +20,7 @@ enum {
     ID_LIST = 101, ID_ADD, ID_REMOVE, ID_CLEAR, ID_START, ID_CANCEL, ID_PROG, ID_STATUS, ID_LOG,
     ID_RES = 120, ID_W, ID_H, ID_FPS, ID_DUR, ID_START_T, ID_CODEC, ID_PRESET, ID_CRF, ID_SNAP, ID_CONTAINER, ID_SS, ID_OUT, ID_BROWSE, ID_LOADP, ID_SAVEP,
     ID_BITRATE, ID_COLOR, ID_BLUR, ID_LOOP, ID_AUDIO, ID_AUDIOB, ID_FADEIN, ID_FADEOUT, ID_PAUSE, ID_FOLDER, ID_PREVIEW,
-    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_PLAY, ID_ABOUT, ID_LANG, ID_PARAMS, ID_OUTPUT, ID_FILESCOPE, ID_EDITOR, ID_FINDLOOP, ID_BUY, ID_UNDO, ID_REDO, ID_GUIDES
+    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_PLAY, ID_ABOUT, ID_LANG, ID_PARAMS, ID_OUTPUT, ID_FILESCOPE, ID_EDITOR, ID_FINDLOOP, ID_BUY, ID_UNDO, ID_REDO, ID_GUIDES, ID_HELP, ID_GALLERY
 };
 enum {
     WM_APP_LOG = WM_APP + 1,  // lParam = std::wstring* (a liberer)
@@ -71,6 +71,7 @@ struct App {
     HWND chips[5] = {nullptr, nullptr, nullptr, nullptr, nullptr};  // preselections rapides
     HWND tip = nullptr;
     HWND bFileScope = nullptr;  // « ce shader seul » : les champs de la carte des reglages valent pour le shader selectionne uniquement
+    HWND bHelp = nullptr, bGallery = nullptr;  // aide (?) dans l'en-tete, galerie d'exemples dans la barre d'outils
     HWND bAbout = nullptr, bLang = nullptr, bParams = nullptr, bOutput = nullptr, bEditor = nullptr, bBuy = nullptr;  // en-tête : À propos, langue, paramètres et post-traitement, sortie
     int chipRight = 0;                       // bord droit de la pastille de version (à gauche des boutons de l'en-tête)
     struct Card {
@@ -80,6 +81,9 @@ struct App {
     };
     std::vector<Card> cards;  // recalcule par layout() ; peint par WM_PAINT
     RECT headerRect{}, dropRect{}, bandRect{};
+    bool tourEnabled = true;  // visite guidee : montree au premier lancement (window.ini : tour=0 l'arrete)
+    bool tourOn = false;      // la visite est ouverte
+    RECT tourRect{};          // element presente par la visite, entoure dans la fenetre principale (coordonnees client)
     bool dropHot = false;   // fichiers en cours de survol (glisser-deposer)
     float dropAmt = 0;      // intensite de l illumination 0..1, animee
     std::vector<std::wstring> paths;
@@ -196,8 +200,14 @@ void openFolder();
 LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp);
 void restoreWindowPlacement(HWND wnd, int showCmd);  // window.ini : position et taille memorisees
 void saveWindowPlacement(HWND wnd);
+bool readSavedTour();             // visite guidee : vrai sauf si window.ini dit tour=0
 std::string readSavedLanguage();  // langue mémorisée dans window.ini ("" si aucune)
 void toolsChanged();          // un reglage a change hors des champs de la fenetre principale (Sortie, Parametres, orbite...) : memorise pour l'annulation (edition Pro)
+void showHelp(HWND owner, const char* topicId);  // aide integree (help.cpp), non modale : start, main, output, params, editor, shaders, gallery, gloss, errors
+const char* helpTopicForWindow(HWND root);       // rubrique de la fenetre donnee (nullptr : l'aide elle-meme)
+void installHelpKey();                           // F1 dans n'importe quelle fenetre du programme ouvre l'aide de cette fenetre
+void showGallery(HWND owner);                    // galerie d'exemples (gallery_dialog.cpp), non modale
+void showTour(HWND owner, bool force);           // visite guidee (tour.cpp) ; force = meme si elle a deja ete vue
 void showBuy(HWND parent);        // achat de l'edition Pro : trois montants, ouvre la page PayPal (buy.cpp)
 void showAbout(HWND parent);      // fenêtre « À propos » (about.cpp)
 void showParams(HWND parent);     // fenêtre « Paramètres et post-traitement » (params_dialog.cpp)

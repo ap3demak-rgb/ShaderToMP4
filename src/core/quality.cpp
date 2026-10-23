@@ -367,7 +367,7 @@ bool runChecks(const std::wstring& shaderPath, const std::wstring& exeDir, const
         if (stripeFrames * dt >= 1.0 || (stripeFrames > 0 && stripeFrames * 2 >= N)) add("pattern", 1, firstStripes, stripeFrames * dt, stripeFrames, TXF("log.check.pattern", stripeFrames * dt, firstStripes));
     }
     if (opt.defects) {
-        if (nanFrames) add("nan", 1, firstNan, worstNan, nanFrames, TXF("log.check.nan", nanFrames, firstNan, worstNan));
+        if (nanFrames) add("nan", 1, firstNan, worstNan, nanFrames, TXF("log.check.nan", nanFrames, firstNan, worstNan) + L" " + TX("explain.nan"));
         if (infFrames) add("inf", 1, firstInf, worstInf, infFrames, TXF("log.check.inf", infFrames, firstInf, worstInf));
         const long long many = std::max(3LL, (long long)(0.05 * N));
         if (blackFrames) add("black", blackFrames >= many ? 1 : 0, firstBlack, 100.0 * blackFrames / N, blackFrames, TXF("log.check.black", blackFrames, firstBlack));

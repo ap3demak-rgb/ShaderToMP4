@@ -3,6 +3,8 @@
 
 #include "selftest.h"
 #include "formats.h"
+#include "gallery.h"
+#include "explain.h"
 #include "gl.h"
 #include "locate.h"
 #include "montage.h"
@@ -4318,6 +4320,101 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
             for (const auto& en : shaders)
                 if (en.name == L"circle.glsl") pick = en.name;
             runFormatTests(exeDir, dir, dir + pick, report, total, fails);
+        }
+        {  // galerie d'exemples : soixante shaders au moins, dix categories, vignette et deux langues pour chacun, tous rendus en une image sans erreur
+            total++;
+            std::wstring problem;
+            const std::vector<GalleryItem> items = listGallery(exeDir);
+            std::map<std::wstring, int> perCategory;
+            int rendered = 0;
+            if (items.size() < 60) problem = L"gallery: " + std::to_wstring(items.size()) + L" shaders";
+            for (const GalleryItem& it : items) {
+                if (!problem.empty()) break;
+                perCategory[it.category]++;
+                if (it.thumb.empty()) problem = it.name + L": no thumbnail";
+                else if (it.text[0].empty() || it.text[1].empty() || it.text[0] == it.text[1]) problem = it.name + L": the explanation is missing in a language";  // nom-technique
+                else {
+                    std::string src;
+                    readFile(it.path, src);
+                    if (src.find("SPDX-License-Identifier: GPL-3.0-or-later") == std::string::npos) problem = it.name + L": no licence header";  // nom-technique
+                }
+                if (!problem.empty()) break;
+                Settings st = base;
+                std::vector<uint8_t> got;
+                Hooks H;
+                H.log = [](const std::wstring&) {};
+                H.previewTime = 1.0;
+                H.previewFrame = [&](int, int, std::vector<uint8_t>&& px2) { got = std::move(px2); };
+                std::wstring e;
+                if (convertFile(it.path, exeDir, st, H, e) != Result::Ok || got.size() != 64 * 64 * 4) problem = it.category + L"/" + it.name + L": " + (e.empty() ? TX("selftest.render_failed") : e.substr(0, 200));
+                else rendered++;
+            }
+            if (problem.empty())
+                for (const std::wstring& c : galleryCategories())
+                    if (perCategory[c] < 6) problem = L"category " + c + L": " + std::to_wstring(perCategory[c]) + L" shaders";
+            if (problem.empty()) {
+                report += L"PASS    " + TX("selftest.gallery") + L": " + std::to_wstring(rendered) + L" shaders\r\n";
+            } else {
+                fails++;
+                report += L"FAIL    " + TX("selftest.gallery") + L": " + problem + L"\r\n";
+            }
+        }
+        {  // explication des erreurs : chaque regle reconnait des lignes de NVIDIA, Mesa et AMD ; une vraie erreur de compilation est suivie de son explication
+            total++;
+            std::string problem;
+            struct Case { const wchar_t* line; const char* id; };
+            const Case cases[] = {
+                {L"0(12) : error C1008: undefined variable \"foo\"", "undeclared"},  // nom-technique
+                {L"0:12(5): error: 'foo' undeclared identifier", "undeclared"},  // nom-technique
+                {L"ERROR: 0:12: 'foo' : undeclared identifier", "undeclared"},  // nom-technique
+                {L"0:3(9): error: 'iChannel7' undeclared", "channel"},
+                {L"ERROR: 0:5: 'texture2D' : no matching overloaded function found", "texture"},  // nom-technique
+                {L"0(8) : error C7011: implicit cast from \"vec3\" to \"float\"", "type"},  // nom-technique
+                {L"ERROR: 0:7: '=' : cannot convert from 'const float' to 'highp 3-component vector of float'", "type"},  // nom-technique
+                {L"ERROR: 0:9: 'length' : no matching overloaded function found", "overload"},  // nom-technique
+                {L"ERROR: 0:9: 'constructor' : not enough data provided for construction", "ctor"},  // nom-technique
+                {L"ERROR: 0:4: '' : syntax error: unexpected RIGHT_BRACE", "syntax"},  // nom-technique
+                {L"ERROR: 0:1: 'mainImage' : no matching overloaded function found", "main"},  // nom-technique
+                {L"ERROR: 0:6: 'x' : redefinition", "redefined"},
+                {L"ERROR: 0:6: 'a' : l-value required (can't modify a const)", "assign"},  // nom-technique
+                {L"ERROR: 0:6: 'z' : invalid vector field selection", "swizzle"},  // nom-technique
+                {L"ERROR: 0:6: '/' : divide by zero", "divzero"},  // nom-technique
+            };
+            for (const Case& c : cases) {
+                ErrorHelp h;
+                if (!explainGlslError(c.line, h) || h.id != c.id || h.help.empty() || h.help[0] == L'[' || h.fix.empty() || h.fix[0] == L'[') {
+                    problem = std::string("rule ") + c.id + ": " + U8(c.line).substr(0, 80);
+                    break;
+                }
+            }
+            ErrorHelp none;
+            if (problem.empty() && explainGlslError(L"ERROR: 0:6: 'x' : something unheard of", none)) problem = "an unknown message must stay without explanation";  // nom-technique
+            if (problem.empty()) {  // de bout en bout : la compilation d'un vrai shader faux donne l'erreur localisee suivie de l'explication, le fichier reste intact
+                const std::wstring bad = dir + L"explain_tmp.glsl";
+                const std::string code = "void mainImage(out vec4 c, in vec2 p) { c = vec4(undeclaredThing, 0.0, 0.0, 1.0); }\n";
+                if (FILE* f = platform::openFile(bad, "wb")) {
+                    fwrite(code.data(), 1, code.size(), f);
+                    fclose(f);
+                }
+                Hooks H;
+                H.log = [](const std::wstring&) {};
+                H.previewTime = 0.0;
+                H.previewFrame = [](int, int, std::vector<uint8_t>&&) {};
+                std::wstring e;
+                const Result r = convertFile(bad, exeDir, base, H, e);
+                std::string after;
+                readFile(bad, after);
+                if (r == Result::Ok) problem = "a wrong shader must not render";
+                else if (e.find(L"undeclaredThing") == std::wstring::npos || e.find(L"→") == std::wstring::npos) problem = "no explanation after the compile error: " + U8(e).substr(0, 160);
+                else if (after != code) problem = "the shader file was modified";
+                platform::removeFile(bad);
+            }
+            if (problem.empty()) {
+                report += L"PASS    " + TX("selftest.explain") + L"\r\n";
+            } else {
+                fails++;
+                report += L"FAIL    " + TX("selftest.explain") + L": " + W(problem) + L"\r\n";
+            }
         }
         if (const ProExt* px = proExt(); px && px->selfTest) px->selfTest(exeDir, dir, report, total, fails);  // cas de l'edition Pro, s'il y en a
         destroyGLContext(gl);

@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "locate.h"
+#include "explain.h"
+#include "i18n.h"
 #include "util.h"
 #include "platform/platform.h"
 #include <cwctype>
@@ -28,7 +30,10 @@ std::wstring locateGlslErrors(const std::wstring& err, const std::wstring& file,
         first = false;
         if (n > 0) {
             const std::wstring& target = (!commonFile.empty() && n > fileLines) ? commonFile : file;
+            ErrorHelp help;
+            const bool known = explainGlslError(line, help);  // l'explication suit la ligne d'erreur ; le code du shader n'est jamais change
             line = target + L":" + std::to_wstring(n) + L": " + line;
+            if (known) line += L"\n" + TXF("explain.line", help.help.c_str()) + L"\n" + TXF("explain.fixline", help.fix.c_str());
         }
         out += line;
         if (e < err.size()) out += L'\n';

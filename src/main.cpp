@@ -166,7 +166,6 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         {FVIRTKEY | FCONTROL, 'O', ID_ADD},
         {FVIRTKEY | FCONTROL, 'P', ID_PREVBTN},
         {FVIRTKEY | FCONTROL, 'E', ID_EDITOR},
-        {FVIRTKEY, VK_F1, ID_ABOUT},
         {FVIRTKEY, VK_F5, ID_START},
         {FVIRTKEY, VK_F6, ID_PAUSE},
         {FVIRTKEY, VK_ESCAPE, ID_CANCEL},
@@ -210,6 +209,9 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     }
 
     toolsChanged();  // etat de depart de l'annulation (edition Pro)
+    installHelpKey();  // F1 : aide de la fenetre en cours
+    g.tourEnabled = readSavedTour();
+    if (files.empty()) showTour(wnd, false);  // visite guidee du premier lancement, jamais bloquante
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0) > 0) {
         const bool inMain = GetAncestor(m.hwnd, GA_ROOT) == wnd;  // l'éditeur et les autres fenêtres ont leurs propres touches

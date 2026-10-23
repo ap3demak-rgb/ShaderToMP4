@@ -19,6 +19,8 @@ if ($Pro) { Copy-Item EULA.md, EULA.fr.md $root }
 New-Item -ItemType Directory -Path "$root\transitions", "$root\examples\effects" -Force | Out-Null
 Copy-Item transitions\*.glsl "$root\transitions"
 Copy-Item examples\effects\*.glsl "$root\examples\effects"
+New-Item -ItemType Directory -Path "$root\examples\gallery" -Force | Out-Null
+Copy-Item examples\gallery\* "$root\examples\gallery" -Recurse   # galerie : shaders, passes et vignettes
 $zip = "dist\$name.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path $root -DestinationPath $zip

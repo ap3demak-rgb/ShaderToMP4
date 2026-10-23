@@ -69,6 +69,8 @@ Copy-Item lang\*.json "$stage\lang"
 New-Item -ItemType Directory -Force "$stage\transitions", "$stage\examples\effects" | Out-Null
 Copy-Item transitions\*.glsl "$stage\transitions"
 Copy-Item examples\effects\*.glsl "$stage\examples\effects"
+New-Item -ItemType Directory -Force "$stage\examples\gallery" | Out-Null
+Copy-Item examples\gallery\* "$stage\examples\gallery" -Recurse   # galerie : shaders, passes et vignettes
 
 # --- Fichiers generes ---
 $utf8bom = New-Object System.Text.UTF8Encoding($true)

@@ -33,3 +33,5 @@
 #define IC_GLOBE     225
 #define IC_EDIT      226
 #define IC_CURVE     227
+#define IC_HELP      228
+#define IC_GALLERY   229

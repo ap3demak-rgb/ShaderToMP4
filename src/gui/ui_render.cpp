@@ -40,6 +40,7 @@ struct State {
     std::map<std::pair<int, int>, Surface> surfaces;
     std::map<int, ComPtr<IDWriteTextFormat>> formats;
     std::map<int, Svg> svgs;
+    std::map<int, ComPtr<ID2D1Bitmap1>> images;
     bool ok = false;
 } S;
 
@@ -247,6 +248,20 @@ void Frame::icon(int resId, D2D1_RECT_F r, bool tint, D2D1_COLOR_F c) {
     dc->SetTransform(D2D1::Matrix3x2F::Identity());
 }
 
+void Frame::image(int key, const uint8_t* bgra, int w, int h, D2D1_RECT_F r, float opacity) {
+    if (!dc || !bgra || w <= 0 || h <= 0) return;
+    auto it = S.images.find(key);
+    if (it == S.images.end()) {
+        ComPtr<ID2D1Bitmap1> bmp;
+        D2D1_BITMAP_PROPERTIES1 bp = D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE));
+        if (FAILED(dc->CreateBitmap(D2D1::SizeU((UINT32)w, (UINT32)h), bgra, (UINT32)w * 4, bp, &bmp))) return;
+        it = S.images.emplace(key, bmp).first;
+    }
+    dc->DrawBitmap(it->second.Get(), &r, opacity, D2D1_INTERPOLATION_MODE_LINEAR);
+}
+
+void dropImages() { S.images.clear(); }
+
 float measureText(const std::wstring& s, float size, bool bold) {
     if (!S.ok || s.empty()) return 0;
     IDWriteTextFormat* f = format(size, bold, Left, true);
@@ -256,6 +271,17 @@ float measureText(const std::wstring& s, float size, bool bold) {
     DWRITE_TEXT_METRICS m{};
     l->GetMetrics(&m);
     return m.widthIncludingTrailingWhitespace;
+}
+
+float measureWrapped(const std::wstring& s, float size, bool bold, float width) {
+    if (!S.ok || s.empty()) return 0;
+    IDWriteTextFormat* f = format(size, bold, Left, false, true);
+    if (!f) return 0;
+    ComPtr<IDWriteTextLayout> l;
+    if (FAILED(S.dw->CreateTextLayout(s.c_str(), (UINT32)s.size(), f, width, 100000, &l))) return 0;
+    DWRITE_TEXT_METRICS m{};
+    l->GetMetrics(&m);
+    return m.height;
 }
 
 }  // namespace ui

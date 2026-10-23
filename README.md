@@ -75,7 +75,7 @@ One portable program for **Windows** (nothing to install; an optional **installe
 
 <p align="center">
   <img src="docs/screenshots/en/about.png" alt="About window" width="420"><br>
-  <sub>The “About” window (<code>F1</code>): version, copyright, license, contact and website. The globe button switches the language instantly.</sub>
+  <sub>The “About” window (<code>i</code> button): version, copyright, license, contact and website. The globe button switches the language instantly.</sub>
 </p>
 
 ### On Linux and macOS (frozen: version 2.1.1 and earlier)
@@ -90,6 +90,8 @@ Windows keeps its native Direct2D interface. Linux and macOS use a second interf
 ## Examples
 
 The [`examples`](examples) folder contains four shaders ready to convert: plasma, rings (“anneaux”), tunnel and aurora (“aurore”).
+
+The [`examples/gallery`](examples/gallery) folder holds **sixty original shaders** in ten categories (maths, noise, fractals, ray marching, 2D, post-processing, loops, sound, VR, multiple passes), each with a 128 × 72 thumbnail (`.bmp`) and an explanation in French and English in the header of the file (`// fr:` and `// en:` lines; the other languages show the English one). The **Examples** button of the program opens them in a gallery. Every one is rendered as an image by the self-test, without error.
 
 <p align="center">
   <img src="docs/screenshots/gallery.png" alt="Gallery: plasma, rings, tunnel, aurora" width="860">
@@ -140,8 +142,12 @@ The [`examples`](examples) folder contains four shaders ready to convert: plasma
 | **Folder** | | Open the folder of the selected shader's video |
 | **Profile / Save** | | Load or save all settings in an `.ini` file |
 | **Parameters** (sliders icon) | | Shader parameters and post-processing (effects, color LUT); on Linux and macOS these are at the bottom of the settings card |
-| **About** | `F1` | Version, copyright, license, contact, website |
+| **Help** (`?` icon) | `F1` | The help of the window you are in (also `F1` inside the Output, Parameters, Editor and Examples windows): topics, glossary, troubleshooting |
+| **Examples** (in the Shaders card) | | Gallery of sixty example shaders: pick a category, read the explanation, double-click or **Add to the list** |
+| **About** | | Version, copyright, license, contact, website |
 | **EN / FR** | | Switch the interface language |
+
+**Help, tour and error explanations.** `F1` opens the built-in help (no web page) on the topic of the window you are in; it holds a glossary (shader, channel, pass, part, loop, HDR, supersampling…) and a troubleshooting page, and it is available in the nine languages. The tooltips of the size, frame rate, smoothing, start, bitrate, loop, fade, sound, folder and bit-depth fields end with an example value. A short guided tour (five steps, never blocking) appears the first time the program starts; it is shown again with the button at the bottom left of the help window, and `tour=0` in `window.ini` (written when the tour is skipped, finished or closed) keeps it away. When a shader does not compile, the log gives `file:line: message` as before and, under it, a sentence that explains the usual causes (undeclared name, mixed types, wrong arguments, missing `mainImage`, syntax, redefinition…) and a suggested fix; the shader file is never modified, and the quality check gives a hint under its NaN report. Languages beyond the nine shipped ones are not done yet.
 
 `Tab` moves from one setting to the next. All text of the interface has a contrast of at least 4.5:1 against its background (WCAG AA), checked automatically for both interfaces.
 
