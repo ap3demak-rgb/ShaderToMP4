@@ -90,6 +90,10 @@ std::vector<std::wstring> splitCommand(const std::wstring& command);
 bool httpGet(const std::wstring& url, const std::function<bool(const uint8_t*, size_t, unsigned long long)>& sink, std::wstring& err);
 bool sha256File(const std::wstring& path, std::string& hexLower);
 
+// --- Rapport de plantage local (core/crashinfo) : en cas d'arret anormal, ecrit reportPath (version, systeme, cartes graphiques, pile, texte rendu par
+// `context`) ; rien n'est envoye. Windows seulement : ne fait rien ailleurs.
+void installCrashReporter(const std::wstring& reportPath, const std::function<std::string()>& context);
+
 // --- OpenGL --------------------------------------------------------------------------------------------------------
 // Contexte OpenGL 3.3 core caché, rendu courant dans le thread appelant. À détruire dans le même thread.
 // ctx reçoit un identifiant opaque (nul si échec).

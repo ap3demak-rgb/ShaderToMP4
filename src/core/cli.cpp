@@ -22,6 +22,7 @@
 #include "vr.h"
 #include "render.h"
 #include "shadertoy_import.h"
+#include "updatecheck.h"
 #include "util.h"
 #include "platform/platform.h"
 #include <cwctype>
@@ -62,9 +63,34 @@ std::string num(double v) {
 std::string renderHelpText() {
     std::string t = "\n" + i18n::tr8("cli.render_title") + "\n\n";
     for (const char* k : {"cli.render.opt_set", "cli.render.opt_profile", "cli.render.opt_progress", "cli.render.opt_png", "cli.render.opt_thumb", "cli.render.opt_verify", "cli.render.opt_beats", "cli.render.opt_farm", "cli.render.opt_source", "cli.render.opt_exr", "cli.render.opt_reproduce", "cli.render.opt_exporthtml", "cli.render.opt_cachepurge", "cli.render.opt_check", "cli.render.opt_compare", "cli.render.opt_golden", "cli.render.opt_dryrun", "cli.render.opt_best", "cli.render.opt_cubefaces", "cli.render.opt_heatmap", "cli.render.opt_samples", "cli.render.opt_findloop", "cli.render.opt_sheet", "cli.render.opt_param", "cli.render.opt_watch", "cli.render.opt_watch_move", "cli.render.opt_log", "cli.render.opt_report",
-                          "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark", "cli.opt.licenseinfo"})
+                          "cli.render.exit_codes", "cli.opt.import", "cli.opt.diagnostic", "cli.opt.benchmark", "cli.opt.licenseinfo", "cli.opt.checkupdate"})
         t += "  " + i18n::tr8(k) + "\n";
     return t;
+}
+
+int runUpdateCli(const std::wstring& exeDir, const std::wstring& apiUrl, bool download, const std::function<void(const std::string&, bool)>& write) {
+    const UpdateInfo info = checkForUpdate(apiUrl.empty() ? std::wstring(defaultUpdateUrl()) : apiUrl);
+    if (!info.ok) {
+        write(U8(TXF("log.error", info.err.c_str())) + "\n", true);
+        return kExitRenderFailed;
+    }
+    if (!info.newer) {
+        write(U8(TXF("update.uptodate", W(info.current).c_str())) + "\n", false);
+        return kExitOk;
+    }
+    write(U8(TXF("update.available", W(info.latest).c_str(), W(info.current).c_str())) + "\n", false);
+    if (!info.pageUrl.empty()) write("  " + U8(info.pageUrl) + "\n", false);
+    if (!download) {
+        if (!info.assetName.empty()) write("  " + U8(TXF("update.file", info.assetName.c_str())) + "\n", false);
+        return kExitUpdateAvailable;
+    }
+    std::wstring saved, err;
+    if (!downloadUpdate(info, exeDir + L"updates", nullptr, saved, err)) {
+        write(U8(TXF("log.error", err.c_str())) + "\n", true);
+        return kExitRenderFailed;
+    }
+    write(U8(TXF("update.saved", saved.c_str())) + "\n", false);
+    return kExitUpdateAvailable;
 }
 
 int runLicenseInfoCli(const std::wstring& exeDir, const std::function<void(const std::string&, bool)>& write) {

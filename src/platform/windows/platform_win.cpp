@@ -6,6 +6,7 @@
 #include "core/util.h"
 #include "core/i18n.h"
 #include "app_info.h"
+#include <intrin.h>
 #include <wininet.h>
 #include <wincrypt.h>
 #pragma comment(lib, "wininet.lib")
@@ -386,6 +387,114 @@ bool httpGet(const std::wstring& url, const std::function<bool(const uint8_t*, s
     InternetCloseHandle(req);
     InternetCloseHandle(net);
     return ok;
+}
+
+// --- Rapport de plantage local ---------------------------------------------------------------------------------------
+namespace {
+std::wstring g_crashPath;
+std::function<std::string()> g_crashContext;
+
+std::string moduleAndOffset(const void* addr) {
+    char buf[200];
+    HMODULE m = nullptr;
+    if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCWSTR)addr, &m) && m) {
+        wchar_t path[MAX_PATH] = L"";
+        GetModuleFileNameW(m, path, MAX_PATH);
+        const wchar_t* base = wcsrchr(path, L'\\');  // le nom du module seulement : jamais le chemin
+        snprintf(buf, sizeof(buf), "%s+0x%llX", U8(base ? base + 1 : path).c_str(), (unsigned long long)((const char*)addr - (const char*)m));
+    } else {
+        snprintf(buf, sizeof(buf), "0x%llX", (unsigned long long)(uintptr_t)addr);
+    }
+    return buf;
+}
+
+const char* exceptionName(DWORD code) {
+    switch (code) {
+        case EXCEPTION_ACCESS_VIOLATION: return "access violation";
+        case EXCEPTION_STACK_OVERFLOW: return "stack overflow";
+        case EXCEPTION_INT_DIVIDE_BY_ZERO: return "integer division by zero";
+        case EXCEPTION_ILLEGAL_INSTRUCTION: return "illegal instruction";
+        case EXCEPTION_IN_PAGE_ERROR: return "page error";
+        case EXCEPTION_ARRAY_BOUNDS_EXCEEDED: return "array bounds exceeded";
+        case EXCEPTION_FLT_INVALID_OPERATION: return "invalid floating-point operation";
+        case 0xE0000001: return "terminate called (uncaught C++ exception)";
+        default: return "exception";
+    }
+}
+
+void writeCrashReport(DWORD code, const void* addr) {
+    if (g_crashPath.empty()) return;
+    std::string r = "ShaderToMP4 crash report\r\n";
+    r += std::string("Version: ") + APP_VER_STR + "\r\n";
+    SYSTEMTIME t;
+    GetSystemTime(&t);
+    char b[300];
+    snprintf(b, sizeof(b), "Time (UTC): %04d-%02d-%02d %02d:%02d:%02d\r\n", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+    r += b;
+    {  // version de Windows (RtlGetVersion : GetVersionEx ment sans manifeste)
+        using Fn = LONG(WINAPI*)(OSVERSIONINFOW*);
+        OSVERSIONINFOW v{};
+        v.dwOSVersionInfoSize = sizeof(v);
+        if (HMODULE nt = GetModuleHandleW(L"ntdll.dll"))
+            if (Fn f = (Fn)GetProcAddress(nt, "RtlGetVersion"))
+                if (f(&v) == 0) {
+                    snprintf(b, sizeof(b), "Windows: %lu.%lu build %lu\r\n", v.dwMajorVersion, v.dwMinorVersion, v.dwBuildNumber);
+                    r += b;
+                }
+    }
+    {
+        MEMORYSTATUSEX ms{};
+        ms.dwLength = sizeof(ms);
+        if (GlobalMemoryStatusEx(&ms)) {
+            snprintf(b, sizeof(b), "Memory: %llu MB total, %llu MB free\r\n", ms.ullTotalPhys >> 20, ms.ullAvailPhys >> 20);
+            r += b;
+        }
+    }
+    {  // cartes graphiques (noms seulement)
+        DISPLAY_DEVICEW dd{};
+        dd.cb = sizeof(dd);
+        std::string names;
+        for (DWORD i = 0; EnumDisplayDevicesW(nullptr, i, &dd, 0); i++) {
+            const std::string n = U8(dd.DeviceString);
+            if (names.find(n) == std::string::npos) names += (names.empty() ? "" : "; ") + n;
+        }
+        if (!names.empty()) r += "Graphics: " + names + "\r\n";
+    }
+    snprintf(b, sizeof(b), "Exception: 0x%08lX (%s)\r\nAt: %s\r\n", (unsigned long)code, exceptionName(code), moduleAndOffset(addr).c_str());
+    r += b;
+    void* frames[24];
+    const USHORT n = CaptureStackBackTrace(0, 24, frames, nullptr);
+    r += "Stack:\r\n";
+    for (USHORT i = 0; i < n; i++) r += "  " + moduleAndOffset(frames[i]) + "\r\n";
+    r += "\r\n";
+    if (g_crashContext) r += g_crashContext();
+    r += "\r\nThis file stays on your computer: nothing was sent. Attach it to a bug report if you wish; paths and shader text are not recorded.\r\n";
+    HANDLE f = CreateFileW(g_crashPath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f != INVALID_HANDLE_VALUE) {
+        DWORD w = 0;
+        WriteFile(f, r.data(), (DWORD)r.size(), &w, nullptr);
+        CloseHandle(f);
+    }
+}
+
+LONG WINAPI crashFilter(EXCEPTION_POINTERS* ep) {
+    static volatile LONG once = 0;
+    if (InterlockedExchange(&once, 1) == 0) writeCrashReport(ep->ExceptionRecord->ExceptionCode, ep->ExceptionRecord->ExceptionAddress);
+    return EXCEPTION_EXECUTE_HANDLER;  // fin du processus, sans la fenetre de Windows
+}
+
+void crashTerminate() {
+    static volatile LONG once = 0;
+    if (InterlockedExchange(&once, 1) == 0) writeCrashReport(0xE0000001, _ReturnAddress());
+    TerminateProcess(GetCurrentProcess(), 3);
+}
+}  // namespace
+
+void installCrashReporter(const std::wstring& reportPath, const std::function<std::string()>& context) {
+    g_crashPath = reportPath;
+    g_crashContext = context;
+    SetUnhandledExceptionFilter(crashFilter);
+    std::set_terminate(crashTerminate);
 }
 
 // --- OpenGL --------------------------------------------------------------------------------------------------------

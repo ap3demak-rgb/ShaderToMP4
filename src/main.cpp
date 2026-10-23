@@ -5,6 +5,8 @@
 // Point d'entrée : ligne de commande, langue, fenêtre principale. Le moteur est dans src/core, l'interface dans src/gui.
 #include "gui/app.h"
 #include "core/cli.h"
+#include "core/crashinfo.h"
+#include "platform/platform.h"
 #include "core/ffmpeg_download.h"
 #include "core/i18n.h"
 #include "core/prolicense.h"
@@ -75,6 +77,8 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     g.exeDir = exePath;
     g.exeDir.erase(g.exeDir.find_last_of(L"\\/") + 1);
 
+    platform::installCrashReporter(g.exeDir + L"crash-report.txt", [] { return crashContext(); });  // rapport de plantage LOCAL, rien n'est envoye
+
     // Langue : celle mémorisée dans window.ini, sinon celle du système ; l'anglais embarqué sert de repli
     if (!i18n::init(g.exeDir, readSavedLanguage())) {
         // Erreur d'amorçage : les textes eux-mêmes sont inaccessibles, ce message est donc le seul qui ne vient pas d'un fichier de langue.
@@ -90,7 +94,8 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     std::vector<std::wstring> files;
     bool selftest = false, update = false, quiet = false, getFfmpeg = false, version = false, help = false, render = false,
-         diagnostic = false, benchmark = false, licenseInfo = false;
+         diagnostic = false, benchmark = false, licenseInfo = false, crashTest = false, checkUpdate = false, downloadUpdate_ = false;
+    std::wstring updateUrl;
     for (int i = 1; argv && i < argc; i++) {
         std::wstring a = argv[i];
         if (a == L"--selftest") selftest = true;
@@ -99,6 +104,12 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         else if (a == L"--diagnostic") diagnostic = true;
         else if (a == L"--benchmark") benchmark = true;
         else if (a == L"--license-info") licenseInfo = true;
+        else if (a == L"--crash-test") crashTest = true;  // verification du rapport de plantage (auto-test) : plante a dessein
+        else if (a == L"--check-update" || a.compare(0, 15, L"--check-update=") == 0) {  // sur demande seulement : jamais au demarrage
+            checkUpdate = true;
+            if (a.size() > 15) updateUrl = a.substr(15);
+        }
+        else if (a == L"--download" && checkUpdate) downloadUpdate_ = true;
         else if (a == L"--update") update = true;
         else if (a == L"--quiet") quiet = true;
         else if (a == L"--get-ffmpeg") getFfmpeg = true;
@@ -113,6 +124,12 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         writeConsole(help ? helpText() : versionText());
         return 0;
     }
+    if (crashTest) {
+        crashLog(L"opening C:\\Users\\Jean Dupont\\Desktop\\secret_shader.glsl: simulated failure");  // nom-technique
+        crashSet("test", "crash-test");
+        *(volatile int*)nullptr = 1;
+    }
+    if (checkUpdate) return runUpdateCli(g.exeDir, updateUrl, downloadUpdate_, [](const std::string& s, bool) { writeConsole(s); });
     if (licenseInfo) return runLicenseInfoCli(g.exeDir, [](const std::string& s, bool) { writeConsole(s); });
     if (diagnostic) return runDiagnosticCli(g.exeDir, [](const std::string& s, bool) { writeConsole(s); });
     if (benchmark) return runBenchmarkCli(g.exeDir, files, [](const std::string& s, bool) { writeConsole(s); });
@@ -209,6 +226,13 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     }
 
     toolsChanged();  // etat de depart de l'annulation (edition Pro)
+    {  // arret anormal de la derniere fois : le rapport local est annonce une fois puis range sous un autre nom
+        const std::wstring rep = g.exeDir + L"crash-report.txt", prev = g.exeDir + L"crash-report-previous.txt";
+        if (fileExists(rep)) {
+            platform::moveFile(rep, prev, true);
+            appendLog(TXF("crash.found", prev.c_str()));
+        }
+    }
     installHelpKey();  // F1 : aide de la fenetre en cours
     g.tourEnabled = readSavedTour();
     if (files.empty()) showTour(wnd, false);  // visite guidee du premier lancement, jamais bloquante

@@ -4,6 +4,9 @@
 #include "selftest.h"
 #include "formats.h"
 #include "gallery.h"
+#include "updatecheck.h"
+#include "crashinfo.h"
+#include "process.h"
 #include "explain.h"
 #include "gl.h"
 #include "locate.h"
@@ -4416,6 +4419,69 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
                 report += L"FAIL    " + TX("selftest.explain") + L": " + W(problem) + L"\r\n";
             }
         }
+        {  // update : comparaison des versions, description de version, somme retrouvee, adresses non securisees refusees (l'essai avec un vrai serveur local est dans la documentation)
+            total++;
+            std::string problem;
+            if (compareVersions("2.1.1", "2.2.0") >= 0 || compareVersions("v2.10.0", "2.9.9") <= 0 || compareVersions("2.2", "2.2.0") != 0 || compareVersions("3.0.0-rc1", "2.9.9") <= 0) problem = "version comparison";
+            const std::string hex(64, 'a');
+            const std::string release =
+                "{\"tag_name\":\"v9.0.1\",\"html_url\":\"https://example.org/r\",\"assets\":[{\"name\":\"SHA256SUMS.txt\",\"browser_download_url\":\"https://example.org/s\"},"
+                "{\"name\":\"ShaderToMP4-9.0.1-win64.zip\",\"browser_download_url\":\"https://example.org/z\"},"
+                "{\"name\":\"ShaderToMP4-9.0.1-win64-setup.exe\",\"browser_download_url\":\"https://example.org/i\"}]}";
+            UpdateInfo info;
+            if (problem.empty() && (!parseRelease(release, "9.0.0", info) || !info.newer || info.latest != "9.0.1" || info.assetName != L"ShaderToMP4-9.0.1-win64-setup.exe" || info.sumsUrl != L"https://example.org/s"))
+                problem = "release description";
+            UpdateInfo same;
+            if (problem.empty() && (!parseRelease(release, "9.0.1", same) || same.newer)) problem = "same version";
+            UpdateInfo junk;
+            if (problem.empty() && (parseRelease("<html>", "9.0.0", junk) || parseRelease("{\"x\":1}", "9.0.0", junk))) problem = "junk answer";
+            if (problem.empty() && findChecksum(hex + "  ShaderToMP4-9.0.1-win64-setup.exe\n" + std::string(64, 'b') + " *other.zip\n", L"ShaderToMP4-9.0.1-win64-setup.exe") != hex) problem = "checksum line";
+            if (problem.empty() && (!findChecksum(hex + "  a.zip\n", L"b.zip").empty() || !findChecksum("short  b.zip\n", L"b.zip").empty())) problem = "checksum missing";
+            if (problem.empty() && (!updateUrlAllowed(L"https://api.github.com/x") || !updateUrlAllowed(L"http://127.0.0.1:8765/x") || !updateUrlAllowed(L"http://localhost/x") || updateUrlAllowed(L"http://example.com/x") ||
+                                    updateUrlAllowed(L"http://127.0.0.1.evil.org/x") || updateUrlAllowed(L"ftp://x") || updateUrlAllowed(L"file:///c:/x")))
+                problem = "address filter";
+            if (problem.empty()) {  // une adresse non securisee n'est meme pas contactee, un telechargement sans somme est refuse
+                const UpdateInfo bad = checkForUpdate(L"http://example.com/latest");
+                UpdateInfo nosum = info;
+                nosum.sha256.clear();
+                std::wstring saved, e;
+                if (bad.ok || bad.err.empty()) problem = "insecure address";
+                else if (downloadUpdate(nosum, dir + L"updates_test", nullptr, saved, e) || e.empty()) problem = "download without checksum";
+            }
+            if (problem.empty()) report += L"PASS    " + TX("selftest.update") + L"\r\n";
+            else {
+                fails++;
+                report += L"FAIL    " + TX("selftest.update") + L": " + W(problem) + L"\r\n";
+            }
+        }
+#ifdef _WIN32
+        {  // rapport de plantage local : le programme plante a dessein (--crash-test) et le rapport est lu, sans chemin ni nom de shader
+            total++;
+            std::string problem;
+            const std::wstring rep = exeDir + L"crash-report.txt";
+            platform::removeFile(rep);
+            runProcess(L"\"" + exeDir + platform::exeFileName(L"ShaderToMP4") + L"\" --crash-test", [](const std::wstring&) {});
+            std::string text;
+            if (!readFile(rep, text)) problem = "no report written";
+            else if (text.find(std::string("Version: ") + APP_VER_STR) == std::string::npos || text.find("0xC0000005") == std::string::npos || text.find("access violation") == std::string::npos ||
+                     text.find("Stack:") == std::string::npos || text.find("Windows: ") == std::string::npos || text.find("Memory: ") == std::string::npos || text.find("test: crash-test") == std::string::npos ||
+                     text.find("opening <path>") == std::string::npos)
+                problem = "report content: " + text.substr(0, 200);
+            else if (text.find("Jean") != std::string::npos || text.find("secret_shader") != std::string::npos || text.find("C:\\Users") != std::string::npos || text.find(U8(exeDir)) != std::string::npos)
+                problem = "the report holds a personal path";
+            platform::removeFile(rep);
+            if (problem.empty()) {  // remplacement des chemins
+                if (scrubPaths("a C:\\Users\\Jean Dupont\\x.glsl:12: error") != "a <path>:12: error" || scrubPaths("see D:/videos/out.mp4.") != "see <path>." || scrubPaths("no path here: 12:30") != "no path here: 12:30" ||
+                    scrubPaths("\\\\server\\share\\a.glsl") != "<path>")
+                    problem = "path scrubbing: " + scrubPaths("a C:\\Users\\Jean Dupont\\x.glsl:12: error");
+            }
+            if (problem.empty()) report += L"PASS    " + TX("selftest.crash") + L"\r\n";
+            else {
+                fails++;
+                report += L"FAIL    " + TX("selftest.crash") + L": " + W(problem) + L"\r\n";
+            }
+        }
+#endif
         if (const ProExt* px = proExt(); px && px->selfTest) px->selfTest(exeDir, dir, report, total, fails);  // cas de l'edition Pro, s'il y en a
         destroyGLContext(gl);
     }

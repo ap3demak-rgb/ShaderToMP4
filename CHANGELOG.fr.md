@@ -14,6 +14,9 @@ Format : une section par version, la plus récente en premier. La section d'une 
 
 ### Ajouté
 
+- **Mises à jour sur demande** : **Vérifier les mises à jour** dans la fenêtre À propos et `--check-update[=url] [--download]` (code de sortie 8 si une version plus récente existe) ; l'installeur n'est enregistré dans `updates/` qu'une fois sa somme SHA-256 égale à celle de `SHA256SUMS.txt`, rien n'est installé, seules les adresses https sont suivies (et http vers la machine locale, pour les essais). Jamais en arrière-plan.
+- **Rapport de plantage local** (`crash-report.txt`, chemins remplacés par `<path>`, aucun texte de shader, rien d'envoyé) et `--crash-test` pour l'auto-test.
+- **Fichiers de confiance avec chaque version** : nomenclature logicielle SPDX, rapport des vulnérabilités connues des composants tiers (NVD), manifestes winget et Scoop (`scripts/package-manifests.ps1`, pas encore installés par winget ou Scoop), construction Windows reproductible (`/Brepro`, `scripts/verify-reproducible.ps1`).
 - **Aide intégrée** (`F1`, bouton `?`) : rubriques de chaque fenêtre, glossaire et page de dépannage, dans les neuf langues ; `F1` dans les fenêtres Sortie, Paramètres, Éditeur et Exemples ouvre la rubrique de cette fenêtre. Les info-bulles de douze champs se terminent par un exemple de valeur.
 - **Galerie d'exemples** : soixante shaders originaux en dix catégories (`examples/gallery`), chacun avec une vignette et une explication en français et en anglais ; le bouton **Exemples** les ouvre, un cas d'auto-test les rend tous.
 - **Visite guidée** au premier lancement (cinq étapes, jamais bloquante ; `tour=0` dans `window.ini`) ; on peut la revoir depuis l'aide.

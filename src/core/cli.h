@@ -13,6 +13,7 @@ constexpr int kExitNoGL = 3;         // contexte OpenGL 3.3 impossible a creer
 constexpr int kExitNoFfmpeg = 4;     // ffmpeg introuvable (voir --get-ffmpeg)
 constexpr int kExitCheckWarn = 6;       // --check : le controle qualite a releve au moins un avertissement
 constexpr int kExitDiff = 7;            // --compare ou --golden=verify : les images different au-dela de la tolerance
+constexpr int kExitUpdateAvailable = 8;  // --check-update : une version plus recente est publiee
 constexpr int kExitBenchRegression = 5;  // --benchmark --compare : une cadence a baisse de plus de --max-drop %
 
 // args : arguments apres --render (fichiers et options). write(texte UTF-8, erreur) : sortie standard ou d'erreur.
@@ -22,6 +23,8 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
 // --diagnostic : systeme, carte graphique, OpenGL, ffmpeg et encodeurs, sans chemin ni donnee personnelle (a joindre a un ticket).
 int runDiagnosticCli(const std::wstring& exeDir, const std::function<void(const std::string&, bool isError)>& write);
 // --license-info : etat de la licence (version d'essai ou enregistree) et fichier attendu a cote du programme.
+// --check-update[=adresse] [--download] : lit la derniere version publiee (uniquement sur demande), la compare, et avec --download telecharge l'installeur controle par SHA-256 dans updates/
+int runUpdateCli(const std::wstring& exeDir, const std::wstring& apiUrl, bool download, const std::function<void(const std::string&, bool isError)>& write);
 int runLicenseInfoCli(const std::wstring& exeDir, const std::function<void(const std::string&, bool isError)>& write);
 // --benchmark [--seconds=N] [--json] [--compare=precedent.json --max-drop=N] : images par seconde par resolution et par encodeur (rendu reel
 // puis encodage) ; avec --compare, code de sortie 5 si une cadence a baisse de plus de N % (15 par defaut) par rapport au resultat precedent.

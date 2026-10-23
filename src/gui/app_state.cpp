@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "app.h"
+#include "core/crashinfo.h"
 #include "core/i18n.h"
 #include "core/util.h"
 #include "ui_controls.h"
@@ -53,6 +54,7 @@ static COLORREF logColor(const std::wstring& s) {
 }
 
 void appendLog(const std::wstring& text) {
+    crashLog(text);  // les dernieres lignes du journal iraient dans un rapport de plantage local
     std::wstring t;
     t.reserve(text.size() + 8);
     for (size_t i = 0; i < text.size(); i++) {

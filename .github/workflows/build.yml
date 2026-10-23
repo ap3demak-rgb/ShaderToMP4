@@ -79,12 +79,29 @@ jobs:
           choco install nsis --version=3.11 -y --no-progress
           ./scripts/package-installer.ps1
           ./scripts/verify-installer.ps1 -SkipRender
+      # Trust files published with the version: software bill of materials (SPDX), known vulnerabilities of the third-party components (NVD),
+      # winget and Scoop manifests built from the files of the version
+      - name: SBOM, vulnerability check, winget and Scoop manifests
+        shell: pwsh
+        run: |
+          ./scripts/make-sbom.ps1
+          ./scripts/check-vulnerabilities.ps1   # the report is published as it is; a base that cannot be reached must not stop a release
+          if ($LASTEXITCODE -ne 0) { Write-Warning "vulnerability base not reachable (exit $LASTEXITCODE): see the report"; $global:LASTEXITCODE = 0 }
+          ./scripts/package-manifests.ps1
+          $v = (Select-String -Path src\app_info.h -Pattern '^#define APP_VER_STR "(.*)"').Matches[0].Groups[1].Value
+          Compress-Archive -Path dist\manifests\* -DestinationPath "dist\ShaderToMP4-$v-manifests.zip"
+      # Two builds of the same commit in the same folder must give the same bytes (linker option /Brepro); this step rebuilds bin\ShaderToMP4.exe, so it comes last
+      - name: Reproducible build
+        shell: pwsh
+        run: ./scripts/verify-reproducible.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: package-windows
           path: |
             dist/*.zip
             dist/*-setup.exe
+            dist/*-sbom.spdx.json
+            dist/*-vulnerabilities.txt
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -119,5 +136,5 @@ jobs:
           for f in CHANGELOG.md CHANGELOG.fr.md; do
             awk -v v="$version" '/^## /{p=index($0,"## " v)==1; next} p' "$f" >> notes.md || true
           done
-          gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/*-setup.exe dist/SHA256SUMS.txt \
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/*-setup.exe dist/SHA256SUMS.txt dist/*-sbom.spdx.json dist/*-vulnerabilities.txt \
             --title "ShaderToMP4 ${GITHUB_REF_NAME#v}" --notes-file notes.md

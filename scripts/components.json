@@ -1,0 +1,48 @@
+{
+  "_comment": "Composants livres avec la version Windows (source commune de make-sbom.ps1 et check-vulnerabilities.ps1). La version et la somme de ffmpeg viennent de scripts/package-installer.ps1 ($ffVersion, $ffSha256). Mettre ce fichier a jour avec THIRD_PARTY_NOTICES.md.",
+  "components": [
+    {
+      "id": "ffmpeg",
+      "name": "FFmpeg (essentials build, gyan.dev)",
+      "supplier": "Organization: gyan.dev (Gyan Doshi)",
+      "license": "GPL-3.0-or-later",
+      "shippedIn": "installer",
+      "cpe": "cpe:2.3:a:ffmpeg:ffmpeg:{version}:*:*:*:*:*:*:*",
+      "downloadLocation": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-{version}-essentials_build.zip",
+      "comment": "ffmpeg.exe is installed next to the program by the installer (and downloaded on request by the portable archive after a SHA-256 check)."
+    },
+    {
+      "id": "nsis-stub",
+      "name": "NSIS run-time (installer stub)",
+      "version": "3.11",
+      "supplier": "Organization: Nullsoft Scriptable Install System",
+      "license": "Zlib",
+      "shippedIn": "installer",
+      "cpe": "cpe:2.3:a:nsis:nsis:3.11:*:*:*:*:*:*:*",
+      "downloadLocation": "https://nsis.sourceforge.io",
+      "comment": "Small run-time contained in ShaderToMP4-<version>-win64-setup.exe."
+    },
+    {
+      "id": "tweetnacl",
+      "name": "TweetNaCl (adapted: Ed25519 and SHA-512 in src/core/ed25519.cpp)",
+      "version": "20140427",
+      "supplier": "Person: Daniel J. Bernstein et al.",
+      "license": "LicenseRef-PublicDomain",
+      "shippedIn": "program",
+      "cpe": "",
+      "downloadLocation": "https://tweetnacl.cr.yp.to",
+      "comment": "Public domain; the code is compiled into ShaderToMP4.exe."
+    },
+    {
+      "id": "msvc-runtime",
+      "name": "Microsoft Visual C++ run-time library (statically linked, /MT)",
+      "version": "toolset of the build",
+      "supplier": "Organization: Microsoft",
+      "license": "LicenseRef-Microsoft-VC-Redistributable",
+      "shippedIn": "program",
+      "cpe": "",
+      "downloadLocation": "NOASSERTION",
+      "comment": "Redistributable under the Microsoft run-time license; linked into ShaderToMP4.exe."
+    }
+  ]
+}

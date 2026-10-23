@@ -14,6 +14,9 @@ Format: one section per version, newest first. The section of a tagged version i
 
 ### Added
 
+- **Updates on request**: **Check for updates** in the About window and `--check-update[=url] [--download]` (exit code 8 when a newer version exists); the installer is downloaded to `updates/` only after its SHA-256 matches `SHA256SUMS.txt`, nothing is installed, only https addresses are followed (and http towards the local machine, for tests). Never in the background.
+- **Local crash report** (`crash-report.txt`, paths replaced by `<path>`, no shader text, nothing sent) and `--crash-test` for the self-test.
+- **Trust files with every version**: SPDX software bill of materials, known-vulnerability report of the third-party components (NVD), winget and Scoop manifests (`scripts/package-manifests.ps1`, not yet installed through winget or Scoop), reproducible Windows build (`/Brepro`, `scripts/verify-reproducible.ps1`).
 - **Built-in help** (`F1`, `?` button): topics for each window, a glossary and a troubleshooting page, in the nine languages; `F1` in the Output, Parameters, Editor and Examples windows opens the topic of that window. Tooltips of twelve fields end with an example value.
 - **Example gallery**: sixty original shaders in ten categories (`examples/gallery`), each with a thumbnail and an explanation in French and English; the **Examples** button opens them, a self-test case renders every one.
 - **Guided tour** at the first start (five steps, never blocking; `tour=0` in `window.ini`); it can be shown again from the help.

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Patrick JAILLET
 
 #include "gl.h"
+#include "crashinfo.h"
 #include "i18n.h"
 #include "proext.h"
 #include "util.h"
@@ -40,6 +41,11 @@ void destroyGLContext(GLContext& c) { platform::destroyGLContext(c.impl); }
 bool createGLContext(GLContext& c, std::wstring& err) {
     if (!platform::createGLContext(c.impl, err)) return false;
     if (!ogl::load()) { err = TX("error.gl_functions"); return false; }
+    {  // carte graphique et pilote pour le rapport de plantage local
+        const char* r = (const char*)glGetString(0x1F01);
+        const char* v = (const char*)glGetString(0x1F02);
+        crashSet("opengl", std::string(r ? r : "?") + " / " + (v ? v : "?"));
+    }
     return true;
 }
 

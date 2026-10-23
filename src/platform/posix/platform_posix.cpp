@@ -192,6 +192,7 @@ std::string systemLanguage() {
 }
 
 std::wstring exeFileName(const std::wstring& baseName) { return baseName; }
+void installCrashReporter(const std::wstring&, const std::function<std::string()>&) {}  // rapport de plantage : Windows seulement
 
 std::wstring findInPath(const std::wstring& fileName) {
     const char* p = getenv("PATH");

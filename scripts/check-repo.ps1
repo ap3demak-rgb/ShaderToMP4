@@ -172,7 +172,7 @@ $srcFiles = Get-ChildItem src -Recurse -Include *.cpp, *.h
 $used = @{}
 foreach ($f in $srcFiles) {
   $text = Get-Content $f.FullName -Raw -Encoding UTF8
-  foreach ($m in [regex]::Matches($text, '"((?:ui|log|error|dialog|status|dl|selftest|ini|about|cli|diag|expr|rhythm|farm|lic|buy|meta|explain|help|tour|gallery)\.[a-z0-9_.]+)"')) { $used[$m.Groups[1].Value] = $f.Name }
+  foreach ($m in [regex]::Matches($text, '"((?:ui|log|error|dialog|status|dl|selftest|ini|about|cli|diag|expr|rhythm|farm|lic|buy|meta|explain|help|tour|gallery|update|crash)\.[a-z0-9_.]+)"')) { $used[$m.Groups[1].Value] = $f.Name }
 }
 # Textes de l'installeur Windows : les cles installer.* sont lues par scripts/package-installer.ps1 (pas par le code du programme)
 foreach ($f in "scripts/package-installer.ps1") {

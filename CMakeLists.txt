@@ -24,7 +24,7 @@ if(WIN32)
         src/platform/shared.cpp src/platform/windows/platform_win.cpp res/app.rc)
     target_include_directories(ShaderToMP4 PRIVATE src res)
     target_compile_options(ShaderToMP4 PRIVATE /utf-8 /MP /EHsc)
-    target_link_options(ShaderToMP4 PRIVATE /MANIFEST:NO)
+    target_link_options(ShaderToMP4 PRIVATE /MANIFEST:NO /Brepro)  # sortie reproductible : pas d horodatage dans l entete
     target_link_libraries(ShaderToMP4 PRIVATE opengl32 gdi32 user32 comctl32 comdlg32 shell32)
 else()
     include(FetchContent)
