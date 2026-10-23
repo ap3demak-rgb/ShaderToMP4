@@ -10,6 +10,8 @@
 #include "util.h"
 #include "platform/platform.h"
 #include <cctype>
+#include <condition_variable>
+#include <deque>
 #include <cmath>
 #include <complex>
 #include <cwctype>
@@ -392,9 +394,10 @@ private:
 // --- Video : images decodees par ffmpeg au rythme du rendu, bouclee, relancee a la position voulue apres un saut --------
 class VideoChannel : public DynamicChannel {
 public:
-    VideoChannel(GLuint tex, std::wstring ffmpeg, std::wstring path, int w, int h, double fps, bool vflip)
-        : tex_(tex), ffmpeg_(std::move(ffmpeg)), path_(std::move(path)), w_(w), h_(h), fps_(fps), vflip_(vflip), frame_((size_t)w * h * 4) {}
-    ~VideoChannel() override { proc_.reset(); }
+    VideoChannel(GLuint tex, std::wstring ffmpeg, std::wstring path, int w, int h, double fps, bool vflip, std::wstring decodeArgs = std::wstring(), int readAhead = 0)
+        : tex_(tex), ffmpeg_(std::move(ffmpeg)), path_(std::move(path)), w_(w), h_(h), fps_(fps), vflip_(vflip), decodeArgs_(std::move(decodeArgs)), ahead_(std::max(0, std::min(64, readAhead))),
+          frame_((size_t)w * h * 4) {}
+    ~VideoChannel() override { stopReader(); }
 
     bool timed() const override { return true; }
     void update(double t, long long idx) override {
@@ -417,15 +420,65 @@ public:
     }
 
 private:
-    bool start(double t0) {
+    // Lecture a l'avance : un fil lit les images du tube dans une file bornee ; l'ordre des images est celui du flux, rien ne change pour l'appelant
+    void stopReader() {
+        if (proc_) proc_->terminate();  // debloque la lecture du fil
+        {
+            std::lock_guard<std::mutex> lk(qm_);
+            stop_ = true;
+        }
+        qcv_.notify_all();
+        if (reader_.joinable()) reader_.join();
         proc_.reset();
-        const std::wstring cmd = L"\"" + ffmpeg_ + L"\" -hide_banner -loglevel quiet -nostdin -stream_loop -1 -ss " + wfmt(L"%.3f", std::max(0.0, t0)) +
+        std::lock_guard<std::mutex> lk(qm_);
+        queue_.clear();
+        eof_ = false;
+        stop_ = false;
+    }
+    void startReader() {
+        platform::Process* p = proc_.get();
+        const size_t bytes = frame_.size();
+        reader_ = std::thread([this, p, bytes] {
+            for (;;) {
+                std::vector<uint8_t> f(bytes);
+                size_t have = 0;
+                while (have < bytes) {
+                    const size_t got = p->readOutput((char*)f.data() + have, bytes - have);
+                    if (got == 0) break;
+                    have += got;
+                }
+                std::unique_lock<std::mutex> lk(qm_);
+                if (have < bytes || stop_) {
+                    eof_ = true;
+                    qcv_.notify_all();
+                    return;
+                }
+                qcv_.wait(lk, [&] { return stop_ || (int)queue_.size() < ahead_; });
+                if (stop_) return;
+                queue_.push_back(std::move(f));
+                qcv_.notify_all();
+            }
+        });
+    }
+    bool start(double t0) {
+        stopReader();
+        const std::wstring cmd = L"\"" + ffmpeg_ + L"\" -hide_banner -loglevel quiet -nostdin" + decodeArgs_ + L" -stream_loop -1 -ss " + wfmt(L"%.3f", std::max(0.0, t0)) +
                                  L" -i \"" + path_ + L"\" -an -vf \"" + (vflip_ ? L"vflip," : L"") + wfmt(L"fps=%g,scale=%d:%d:flags=bilinear", fps_, w_, h_) +
                                  L"\" -f rawvideo -pix_fmt rgba -";
         proc_ = platform::Process::start(platform::splitCommand(cmd), false, true);
+        if (proc_ && ahead_ > 0) startReader();
         return (bool)proc_;
     }
     bool readFrame() {
+        if (ahead_ > 0) {
+            std::unique_lock<std::mutex> lk(qm_);
+            qcv_.wait(lk, [&] { return !queue_.empty() || eof_; });
+            if (queue_.empty()) return false;  // fin du flux : on garde l'image precedente
+            frame_ = std::move(queue_.front());
+            queue_.pop_front();
+            qcv_.notify_all();
+            return true;
+        }
         size_t have = 0;
         while (have < frame_.size()) {
             const size_t got = proc_->readOutput((char*)frame_.data() + have, frame_.size() - have);
@@ -439,8 +492,15 @@ private:
     int w_, h_;
     double fps_;
     bool vflip_;
+    std::wstring decodeArgs_;  // arguments ffmpeg avant l'entree (decodage materiel, edition Pro)
+    int ahead_ = 0;            // images lues a l'avance par un fil (0 = lecture synchrone)
     std::vector<uint8_t> frame_;
     std::unique_ptr<platform::Process> proc_;
+    std::thread reader_;
+    std::mutex qm_;
+    std::condition_variable qcv_;
+    std::deque<std::vector<uint8_t>> queue_;
+    bool eof_ = false, stop_ = false;
     long long cur_ = -1, next_ = 0;
 };
 
@@ -739,7 +799,9 @@ bool loadChannels(const Settings& s, const std::wstring& shaderDir, const std::w
             const GLint mode = s.chWrap[i] == "repeat" ? K_REPEAT : K_CLAMP_TO_EDGE;
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, mode);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, mode);
-            out.dyn[i] = std::make_shared<VideoChannel>(out.tex[i], ffmpeg, path, vw, vh, fps, s.chVflip[i]);
+            ProVideoDecode vd;  // decodage materiel et lecture a l'avance (edition Pro)
+            if (proExt() && proExt()->videoDecode) vd = proExt()->videoDecode(s);
+            out.dyn[i] = std::make_shared<VideoChannel>(out.tex[i], ffmpeg, path, vw, vh, fps, s.chVflip[i], vd.inputArgs, vd.readAhead);
             out.w[i] = vw;
             out.h[i] = vh;
             H.log(L"  " + TXF("log.channel_loaded", i, path.c_str(), vw, vh));

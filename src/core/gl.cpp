@@ -3,6 +3,7 @@
 
 #include "gl.h"
 #include "i18n.h"
+#include "proext.h"
 #include "util.h"
 #include "platform/platform.h"
 
@@ -151,6 +152,20 @@ GLuint buildProgram(const std::string& userCode, std::wstring& err, bool bufferO
 
 GLuint buildProgramFromSources(const std::string& vs, const std::string& fs, std::wstring& err, bool* vertexFailed) {
     if (vertexFailed) *vertexFailed = false;
+    const ProExt* px = proExt();
+    const bool binaries = px && px->programLoad && px->programStore && ogl::GetProgramBinary && ogl::ProgramBinary && ogl::ProgramParameteri;
+    if (binaries) {  // programme deja compile avec ces sources par ce pilote (cache de l'edition Pro)
+        unsigned format = 0;
+        std::vector<char> bin;
+        if (px->programLoad(vs, fs, format, bin) && !bin.empty()) {
+            GLuint cached = ogl::CreateProgram();
+            ogl::ProgramBinary(cached, format, bin.data(), (GLsizei)bin.size());
+            GLint linked = 0;
+            ogl::GetProgramiv(cached, ogl::K_LINK_STATUS, &linked);
+            if (linked) return cached;
+            ogl::DeleteProgram(cached);  // le pilote n'en veut plus : compilation normale
+        }
+    }
     GLuint v = compileShader(ogl::K_VERTEX_SHADER, vs, err);
     if (!v) {
         if (vertexFailed) *vertexFailed = true;
@@ -164,11 +179,26 @@ GLuint buildProgramFromSources(const std::string& vs, const std::string& fs, std
     GLuint prog = ogl::CreateProgram();
     ogl::AttachShader(prog, v);
     ogl::AttachShader(prog, f);
+    if (binaries) ogl::ProgramParameteri(prog, ogl::K_PROGRAM_BINARY_RETRIEVABLE_HINT, 1);
     ogl::LinkProgram(prog);
     ogl::DeleteShader(v);
     ogl::DeleteShader(f);
     GLint ok = 0;
     ogl::GetProgramiv(prog, ogl::K_LINK_STATUS, &ok);
+    if (ok && binaries) {
+        GLint len = 0;
+        ogl::GetProgramiv(prog, ogl::K_PROGRAM_BINARY_LENGTH, &len);
+        if (len > 0) {
+            std::vector<char> bin((size_t)len);
+            GLsizei got = 0;
+            GLenum format = 0;
+            ogl::GetProgramBinary(prog, len, &got, &format, bin.data());
+            if (got > 0) {
+                bin.resize((size_t)got);
+                px->programStore(vs, fs, (unsigned)format, bin);
+            }
+        }
+    }
     if (!ok) {
         char log[4096] = {0};
         ogl::GetProgramInfoLog(prog, sizeof(log) - 1, nullptr, log);
@@ -207,29 +237,7 @@ GLuint buildFullscreenProgram(const std::string& fs, std::wstring& err) {
         "#version 330 core\n"
         "void main(){ vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);"
         " gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n";
-    GLuint v = compileShader(ogl::K_VERTEX_SHADER, vs, err);
-    if (!v) return 0;
-    GLuint f = compileShader(ogl::K_FRAGMENT_SHADER, fs, err);
-    if (!f) {
-        ogl::DeleteShader(v);
-        return 0;
-    }
-    GLuint prog = ogl::CreateProgram();
-    ogl::AttachShader(prog, v);
-    ogl::AttachShader(prog, f);
-    ogl::LinkProgram(prog);
-    ogl::DeleteShader(v);
-    ogl::DeleteShader(f);
-    GLint ok = 0;
-    ogl::GetProgramiv(prog, ogl::K_LINK_STATUS, &ok);
-    if (!ok) {
-        char log[4096] = {0};
-        ogl::GetProgramInfoLog(prog, sizeof(log) - 1, nullptr, log);
-        err = TX("error.shader_link") + L"\n" + W(log);
-        ogl::DeleteProgram(prog);
-        return 0;
-    }
-    return prog;
+    return buildProgramFromSources(vs, fs, err);  // memes etapes, et le cache de programmes compiles de l'edition Pro
 }
 
 GLuint buildPresentProgram(std::wstring& err, bool alpha) {

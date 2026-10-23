@@ -57,6 +57,15 @@ jobs:
           if (-not (Test-Path (Join-Path $out "circle.gif"))) { throw "no output" }
           $p = Start-Process bin\ShaderToMP4.exe -ArgumentList '--render','--bogus=1','tests\circle.glsl' -Wait -PassThru -NoNewWindow
           if ($p.ExitCode -ne 2) { throw "usage exit code $($p.ExitCode)" }
+      - name: Benchmark (every case, then comparison with the first run, drop limit 40 %)
+        shell: pwsh
+        run: |
+          $p = Start-Process bin\ShaderToMP4.exe -ArgumentList '--benchmark','--quick','--full','--seconds=1','--json' -Wait -PassThru -NoNewWindow -RedirectStandardOutput bench-ref.json
+          if ($p.ExitCode -ne 0) { throw "benchmark exit code $($p.ExitCode)" }
+          Get-Content bench-ref.json
+          $p = Start-Process bin\ShaderToMP4.exe -ArgumentList '--benchmark','--quick','--full','--seconds=1','--compare=bench-ref.json','--max-drop=40' -Wait -PassThru -NoNewWindow -RedirectStandardOutput bench-cmp.txt
+          Get-Content bench-cmp.txt
+          if ($p.ExitCode -ne 0) { throw "benchmark regression or error, exit code $($p.ExitCode)" }
       - name: Repository checks
         shell: pwsh
         run: ./scripts/check-repo.ps1

@@ -76,6 +76,13 @@ struct ProChannelImage {
     std::vector<float> rgba;
 };
 
+// Lecture d'un canal video (`iChannelN=video:fichier`) : arguments ffmpeg ajoutes avant l'entree (decodage materiel : `-hwaccel auto`) et nombre d'images lues a
+// l'avance par un fil dedie (0 = lecture synchrone). Le resultat ne change pas : les images sont celles de la lecture logicielle, a l'arrondi pres.
+struct ProVideoDecode {
+    std::wstring inputArgs;
+    int readAhead = 0;
+};
+
 // Calques de l'edition Pro (logos, textes animes, sous-titres incrustes, barre de progression) : dessines sur la couleur de l'image, apres le post-traitement,
 // avec le meme sur-echantillonnage que le reste et uniquement en fonction de l'indice d'image (donc identiques dans un rendu d'un seul tenant et par parties).
 struct LayerRequest {
@@ -123,7 +130,7 @@ struct ProExt {
     std::function<std::shared_ptr<const ProSignals>(const Settings&, const std::wstring& shaderPath, std::wstring& err)> makeSignals;
     // Reglages calcules par l'extension avant le rendu, l'apercu et la lecture (ex. une chaine de LUT cuite en un seul fichier, le son d'un canal video) :
     // modifie s ; faux + err si un reglage de l'extension est invalide.
-    std::function<bool(Settings& s, const std::wstring& shaderPath, const std::wstring& exeDir, std::wstring& err)> prepareSettings;
+    std::function<bool(Settings& s, const std::wstring& shaderPath, const std::wstring& exeDir, const Hooks& H, std::wstring& err)> prepareSettings;
     // Etage de couleur du programme image : code GLSL qui definit `vec3 st_color(vec3 c)`, applique a la couleur de l'image avant le fondu et l'ecriture
     // (courbe de tons, exposition). "" = aucun : le programme reste identique a celui de l'edition libre.
     std::function<std::string(const Settings&)> colorStage;
@@ -138,11 +145,19 @@ struct ProExt {
     // Debruitage : halfA et halfB sont les moyennes (RGBA flottant, w x h, premiere ligne en bas) des nA et nB tirages de chaque moitie ; out recoit l'image debruitee
     // (moyenne de tous les tirages, meme disposition). Appelee dans le thread de rendu.
     std::function<void(const Settings&, int w, int h, int nA, int nB, const std::vector<float>& halfA, const std::vector<float>& halfB, std::vector<float>& out)> denoise;
+    std::function<ProVideoDecode(const Settings&)> videoDecode;
+    // Apercu d'une image a echantillons (`samples=N`) : vrai = l'apercu accumule les N tirages et renvoie la moyenne en cours (previewFrame appele plusieurs fois, la
+    // derniere image etant la plus nette) ; l'arret garde le resultat partiel.
+    std::function<bool(const Settings&)> progressivePreview;
     // Calques : nullptr sans erreur s'il n'y en a pas ; nullptr avec err si un reglage est invalide. Contexte OpenGL courant.
     std::function<std::unique_ptr<ProLayers>(const LayerRequest&, std::wstring& err)> makeLayers;
     // Video finie (apres le dernier controle du programme) : l'extension peut la completer (carte de debut / de fin, piste de sous-titres, livrables multiples).
     // Faux + err : le rendu est signale en echec, la video reste.
     std::function<bool(const Settings& s, const std::wstring& file, const std::wstring& shaderPath, const std::wstring& exeDir, const Hooks& H, std::wstring& err)> finishVideo;
+    // Cache de programmes compiles (glGetProgramBinary) : load rend le binaire garde pour ces deux sources (et ce pilote : l'extension le reconnait), store en garde un
+    // nouveau. Appeles dans le thread de rendu, contexte OpenGL courant ; un binaire que le pilote refuse est ignore et le programme est compile normalement.
+    std::function<bool(const std::string& vs, const std::string& fs, unsigned& format, std::vector<char>& binary)> programLoad;
+    std::function<void(const std::string& vs, const std::string& fs, unsigned format, const std::vector<char>& binary)> programStore;
     // Canal d'entree d'une extension : vrai si `spec` (« data:serie ») est a elle ; faux + err si la source est invalide. Rendu en virgule flottante, lu en 1 x N ou W x H.
     std::function<bool(const Settings&, const std::wstring& spec, const std::wstring& shaderDir, ProChannelImage& out, std::wstring& err, bool& handled)> channelImage;
     // Canal image decode (fichier) : l'extension peut le convertir (espace de couleur) ; vrai si elle a change `rgba8` (w x h x 4 octets) en `out` (flottants, premiere ligne en haut).

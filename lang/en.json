@@ -763,7 +763,7 @@
   "cli.file_missing": "File not found: %ls",
   "cli.no_ffmpeg": "ffmpeg not found: run ShaderToMP4 --get-ffmpeg or put ffmpeg next to the program.",
   "cli.opt.diagnostic": "--diagnostic   Print system, graphics card, OpenGL, ffmpeg and encoders (no path, no personal data) for a bug report",
-  "cli.opt.benchmark": "--benchmark    Measure frames per second by resolution and encoder (--seconds=N, --quick, --json, --compare=file, --max-drop=N)",
+  "cli.opt.benchmark": "--benchmark    Measure frames per second by resolution and encoder (--seconds=N, --quick, --full, --json, --compare=file, --max-drop=N)",
   "diag.system": "System",
   "diag.threads": "CPU threads",
   "diag.language": "Language",

@@ -812,7 +812,7 @@ int runDiagnosticCli(const std::wstring& exeDir, const std::function<void(const 
 int runBenchmarkCli(const std::wstring& exeDir, const std::vector<std::wstring>& args,
                     const std::function<void(const std::string&, bool)>& write) {
     double seconds = 2.0, maxDrop = 15.0;
-    bool json = false, quick = false, parallelBench = false;
+    bool json = false, quick = false, parallelBench = false, full = false;
     int parallelWorkers = 0;
     std::wstring comparePath;  // --compare=fichier.json : resultat d'un --benchmark --json precedent
     for (const auto& a : args) {
@@ -822,6 +822,7 @@ int runBenchmarkCli(const std::wstring& exeDir, const std::vector<std::wstring>&
             parallelBench = true;
             parallelWorkers = s.size() > 11 ? std::max(2, std::min(16, atoi(s.c_str() + 11))) : 0;
         }
+        else if (s == "--full") full = true;  // + chaque encodeur materiel, rendu par parties, canal video
         else if (s == "--quick") quick = true;  // sans le 4K (machines lentes, integration continue)
         else if (s.compare(0, 10, "--seconds=") == 0) seconds = std::max(0.5, std::min(30.0, atof(s.c_str() + 10)));
         else if (s.compare(0, 10, "--compare=") == 0) comparePath = W(s.substr(10));
@@ -874,8 +875,15 @@ int runBenchmarkCli(const std::wstring& exeDir, const std::vector<std::wstring>&
         fwrite(src.data(), 1, src.size(), f);
         fclose(f);
     }
-    struct Case { int w, h; const char* encoder; };
-    const Case cases[] = {{1280, 720, "cpu"}, {1920, 1080, "cpu"}, {1920, 1080, "auto"}, {3840, 2160, "cpu"}};
+    struct Case { int w, h; const char* encoder; const char* kind; };  // kind : "" simple, "chunk" par parties, "video" avec un canal video, "hw" encodeur materiel facultatif
+    std::vector<Case> cases = {{1280, 720, "cpu", ""}, {1920, 1080, "cpu", ""}, {1920, 1080, "auto", ""}, {3840, 2160, "cpu", ""}};
+    if (full) {
+        for (const char* hw : {"nvenc", "amf", "qsv"}) cases.push_back({1920, 1080, hw, "hw"});
+        cases.push_back({1920, 1080, "cpu", "chunk"});
+        cases.push_back({1920, 1080, "cpu", "video"});
+    }
+    const std::wstring videoIn = dir + platform::pathSeparator() + L"bench_in.mp4";
+    const std::wstring videoShader = dir + platform::pathSeparator() + L"bench_video.glsl";
     const std::string hwPrefix = U8(TX("log.hw_encoder")).substr(0, U8(TX("log.hw_encoder")).find('%'));
     std::string text, js = "{\"version\":\"" + std::string(APP_VER_STR) + "\",\"results\":[";
     std::string cmpText, cmpJs;
@@ -893,9 +901,38 @@ int runBenchmarkCli(const std::wstring& exeDir, const std::vector<std::wstring>&
         s.encoder = c.encoder;
         s.outdir = dir;
         s.exists = "overwrite";
-        s.chunk = 0;
+        s.chunk = std::string(c.kind) == "chunk" ? seconds / 4 : 0;
+        const bool optional = std::string(c.kind) == "hw";
+        std::wstring target = shader;
+        if (std::string(c.kind) == "video") {  // le canal lit une courte video produite par ce meme programme
+            if (!fileExists(videoIn)) {
+                Settings mk = s;
+                mk.width = 640;
+                mk.height = 360;
+                mk.duration = 2;
+                mk.encoder = "cpu";
+                mk.chunk = 0;
+                mk.outdir = dir;
+                Hooks M;
+                M.log = [](const std::wstring&) {};
+                std::wstring me;
+                std::wstring made;
+                M.output = [&](const std::wstring& f) { made = f; };
+                if (convertFile(shader, exeDir, mk, M, me) != Result::Ok || made.empty() || !platform::moveFile(made, videoIn, true)) continue;
+            }
+            const std::string vs = "// iChannel0=video:" + U8(videoIn) + "\n"
+                                   "void mainImage(out vec4 o, in vec2 p){ vec2 uv = p / iResolution.xy;"
+                                   " o = vec4(texture(iChannel0, uv).rgb * (0.8 + 0.2 * sin(iTime)), 1.0); }\n";
+            if (FILE* f = platform::openFile(videoShader, "wb")) {
+                fwrite(vs.data(), 1, vs.size(), f);
+                fclose(f);
+            }
+            target = videoShader;
+        }
         double speed = 0;
         std::string used = c.encoder;
+        if (std::string(c.kind) == "chunk") used = "cpu-chunk";
+        else if (std::string(c.kind) == "video") used = "cpu-video";
         Hooks H;
         H.log = [&](const std::wstring& l) {
             const std::string u = U8(l);
@@ -904,7 +941,16 @@ int runBenchmarkCli(const std::wstring& exeDir, const std::vector<std::wstring>&
         };
         H.progress = [&](long long, long long, double sp, double) { speed = sp; };
         std::wstring e;
-        const bool ok = convertFile(shader, exeDir, s, H, e) == Result::Ok;
+        bool hwSeen = false;
+        if (optional) {  // encodeur materiel absent de ce poste : le cas est omis, pas compte comme une regression
+            const auto log = H.log;
+            H.log = [&, log](const std::wstring& l) {
+                log(l);
+                if (!hwPrefix.empty() && U8(l).find(hwPrefix) != std::string::npos) hwSeen = true;
+            };
+        }
+        const bool ok = convertFile(target, exeDir, s, H, e) == Result::Ok;
+        if (optional && (!ok || !hwSeen)) continue;
         char b[160];
         snprintf(b, sizeof(b), "%dx%d  %-14s  %8.1f %s\n", c.w, c.h, used.c_str(), ok ? speed : 0.0, ok ? "fps" : U8(e).c_str());
         text += b;

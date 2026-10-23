@@ -109,7 +109,11 @@ bool buildRig(Rig& r, const std::wstring& shaderPath, const std::wstring& exeDir
     }
     s.width = std::max(16, s.width & ~1);
     s.height = std::max(16, s.height & ~1);
-    if (proExt() && proExt()->prepareSettings && !proExt()->prepareSettings(s, shaderPath, exeDir, err)) return false;  // reglages calcules par l'edition Pro
+    if (proExt() && proExt()->prepareSettings) {  // reglages calcules par l'edition Pro (un apercu : pas de sur-echantillonnage ni de rendu final)
+        Hooks asPreview = quiet;
+        asPreview.previewFrame = [](int, int, std::vector<uint8_t>&&) {};
+        if (!proExt()->prepareSettings(s, shaderPath, exeDir, asPreview, err)) return false;
+    }
     if (s.fps <= 0) s.fps = 60;
     if (s.duration <= 0) s.duration = 10;
     // image reduite : 640 pixels au plus sur le grand cote (moins pour les sondes)

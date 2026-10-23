@@ -262,7 +262,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     s.height = std::max(16, s.height & ~1);
     if (proExt() && proExt()->prepareSettings) {  // reglages calcules par l'edition Pro (chaine de LUT, son d'un canal video)
         std::wstring prepErr;
-        if (!proExt()->prepareSettings(s, shaderPath, exeDir, prepErr)) {
+        if (!proExt()->prepareSettings(s, shaderPath, exeDir, H, prepErr)) {
             err = prepErr;
             return Result::Failed;
         }
@@ -281,7 +281,8 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     const bool videoMode = !preview && !H.snapshot && !sheet;
     const bool partMode = videoMode && H.partLast > H.partFirst;  // une seule partie d'un rendu parallele ou d'une ferme : ni fichier final ni annexe
     if (partMode) s.exists = "overwrite";
-    const int SMP = (!preview && H.snapshot && !thumb) ? std::min(100000, std::max(1, s.samples)) : 1;  // image fixe : echantillons moyennes
+    const bool progressive = preview && s.samples > 1 && proExt() && proExt()->progressivePreview && proExt()->progressivePreview(s);  // apercu progressif (edition Pro)
+    const int SMP = ((!preview && H.snapshot && !thumb) || progressive) ? std::min(100000, std::max(1, s.samples)) : 1;  // image fixe : echantillons moyennes
     const OutKind kind = outKind(s.container);
     const bool still = !preview && H.snapshot && !thumb;  // image PNG (16 bits par composante possibles)
     if (videoMode ? (kind == OutKind::Gif || kind == OutKind::Webp) : !still) s.depth = 8;  // 10 bits : video, sequences et image fixe seulement
@@ -973,6 +974,7 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
     };
     // Plusieurs echantillons d'un meme instant (image fixe) : iFrame different a chaque tirage, moyenne en virgule flottante ;
     // une interruption garde ce qui est deja accumule (la moyenne est remise a l'echelle)
+    std::function<void()> onPartial;  // apercu progressif : appele avec la moyenne en cours dans la cible (image presentee et terminee)
     auto renderSamples = [&](long long n, double t, float fade) {
         prepareFrame(n, t);
         const bool pp = post.active();
@@ -990,10 +992,29 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
         setWeight(weight / SMP);
         setPremul(s.alpha ? 1 : 0);
         const auto t0 = std::chrono::steady_clock::now();
-        auto tLog = t0;
+        auto tLog = t0, tPartial = t0;
         int done = 0;
         for (int k = 0; k < SMP; k++) {
             if (k > 0 && H.cancelled()) break;
+            if (onPartial && done >= 1 && std::chrono::steady_clock::now() - tPartial > std::chrono::milliseconds(250)) {  // la moyenne en cours est montree
+                tPartial = std::chrono::steady_clock::now();
+                glDisable(GL_BLEND);
+                setPremul(0);
+                setWeight(1.0f);
+                ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, imgFbo);
+                ogl::UseProgram(present);
+                ogl::Uniform1f(ogl::GetUniformLocation(present, "st_scale"), (float)SMP / (float)done);
+                glBindTexture(GL_TEXTURE_2D, accTex);
+                glDrawArrays(GL_TRIANGLES, 0, 3);
+                ogl::UseProgram(prog);
+                finishFrame(n, t, fade);
+                onPartial();
+                ogl::UseProgram(prog);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_ONE, GL_ONE);
+                setWeight(weight / SMP);
+                setPremul(s.alpha ? 1 : 0);
+            }
             ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, halfBuffers && (k & 1) ? accFbo2 : accFbo);  // tirages pairs et impairs : deux moyennes independantes
             drawAt(t, n, k);
             done++;
@@ -1104,10 +1125,22 @@ static Result convertOneImpl(const std::wstring& shaderPath, const std::wstring&
             pt = s.start + (double)pf / s.fps;
             advanceBuffers(pf);
         }
+        auto deliver = [&]() {
+            std::vector<uint8_t> px(frameBytes);
+            ogl::BindFramebuffer(ogl::K_FRAMEBUFFER, fbo);
+            glReadPixels(0, 0, RW, RH, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+            return previewBgra(px.data(), RW, RH, s.alpha);  // haut en bas, BGRA ; transparence sur un damier
+        };
+        if (progressive) {  // images partielles pendant l'accumulation, puis l'image finale (ou ce qui est deja accumule si l'arret est demande)
+            onPartial = [&]() { H.previewFrame(RW, RH, deliver()); };
+            renderSamples(pf, pt, 1.0f);
+            std::vector<uint8_t> last = deliver();
+            cleanupGL();
+            H.previewFrame(RW, RH, std::move(last));
+            return Result::Ok;
+        }
         renderFrame(pf, pt, 1.0f);
-        std::vector<uint8_t> px(frameBytes);
-        glReadPixels(0, 0, RW, RH, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-        std::vector<uint8_t> flipped = previewBgra(px.data(), RW, RH, s.alpha);  // haut en bas, BGRA ; transparence sur un damier
+        std::vector<uint8_t> flipped = deliver();
         cleanupGL();
         H.previewFrame(RW, RH, std::move(flipped));
         return Result::Ok;

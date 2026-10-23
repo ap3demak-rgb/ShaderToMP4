@@ -60,7 +60,7 @@ namespace ogl {
 // Fonctions facultatives (OpenGL 4.3 : passes de calcul) : chargees sans faire echouer le chargement ; computeAvailable() dit si le contexte les offre.
 #define GL_FUNCS_OPT(F)                                                              \
     F(void, DispatchCompute, (GLuint, GLuint, GLuint))                               \
-    F(void, MemoryBarrier, (GLbitfield))
+    F(void, MemoryBarrier, (GLbitfield))                                                 F(void, GetProgramBinary, (GLuint, GLsizei, GLsizei*, GLenum*, void*))               F(void, ProgramBinary, (GLuint, GLenum, const void*, GLsizei))                       F(void, ProgramParameteri, (GLuint, GLenum, GLint))
 
 #define F(r, n, a)                                \
     typedef r(APIENTRY* PFN_##n) a;               \
@@ -78,6 +78,8 @@ constexpr GLenum K_FRAGMENT_SHADER = 0x8B30;
 constexpr GLenum K_VERTEX_SHADER = 0x8B31;
 constexpr GLenum K_COMPILE_STATUS = 0x8B81;
 constexpr GLenum K_LINK_STATUS = 0x8B82;
+constexpr GLenum K_PROGRAM_BINARY_LENGTH = 0x8741;
+constexpr GLenum K_PROGRAM_BINARY_RETRIEVABLE_HINT = 0x8257;
 constexpr GLenum K_FRAMEBUFFER = 0x8D40;
 constexpr GLenum K_COLOR_ATTACHMENT0 = 0x8CE0;
 constexpr GLenum K_FRAMEBUFFER_COMPLETE = 0x8CD5;

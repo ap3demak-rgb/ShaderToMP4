@@ -763,7 +763,7 @@
   "cli.file_missing": "Fichier introuvable : %ls",
   "cli.no_ffmpeg": "ffmpeg introuvable : lancez ShaderToMP4 --get-ffmpeg ou placez ffmpeg à côté du programme.",
   "cli.opt.diagnostic": "--diagnostic   Affiche système, carte graphique, OpenGL, ffmpeg et encodeurs (sans chemin ni donnée personnelle) pour un rapport de bug",
-  "cli.opt.benchmark": "--benchmark    Mesure les images par seconde par résolution et par encodeur (--seconds=N, --quick, --json, --compare=file, --max-drop=N)",
+  "cli.opt.benchmark": "--benchmark    Mesure les images par seconde par résolution et par encodeur (--seconds=N, --quick, --full, --json, --compare=file, --max-drop=N)",
   "diag.system": "Système",
   "diag.threads": "Threads du processeur",
   "diag.language": "Langue",
