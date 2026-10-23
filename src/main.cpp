@@ -145,7 +145,14 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         return runRenderCli(g.exeDir, files, [](const std::string& s, bool) { writeConsole(s); });
     std::string iniText;
     const std::wstring ini = g.exeDir + L"config.ini";
-    if (selftest) return runSelfTest(g.exeDir, update, quiet);
+    if (selftest) {
+        try {
+            return runSelfTest(g.exeDir, update, quiet);
+        } catch (const std::exception& e) {  // un cas qui leve une exception : le message, pas un arret muet
+            writeConsole(std::string("selftest: uncaught exception: ") + e.what() + "\n");
+            return 99;
+        }
+    }
     if (getFfmpeg) {  // téléchargement sans fenêtre : ShaderToMP4.exe --get-ffmpeg [--quiet]
         std::wstring e;
         bool ok = downloadFfmpeg(g.exeDir, [](int, const std::wstring&) {}, nullptr, e);

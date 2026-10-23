@@ -13,5 +13,5 @@ cd /d "%~dp0.."
 if not exist build-cov mkdir build-cov
 if not exist bin-cov mkdir bin-cov
 rc /nologo /I src /I res /fo build-cov\app.res res\app.rc || exit /b 1
-cl /nologo /Od /Zi /Gy /hotpatch /EHsc /std:c++17 /utf-8 /MP /MT /I src /Fe:bin-cov\ShaderToMP4.exe /Fo:build-cov\ /Fd:bin-cov\ShaderToMP4.pdb src\main.cpp src\core\*.cpp src\platform\*.cpp src\platform\windows\*.cpp src\gui\*.cpp build-cov\app.res opengl32.lib gdi32.lib user32.lib comctl32.lib comdlg32.lib shell32.lib /link /MANIFEST:NO /DEBUG /PROFILE /FUNCTIONPADMIN || exit /b 1
+cl /nologo /Od /Zi /EHsc /std:c++17 /utf-8 /MP /MT /I src /Fe:bin-cov\ShaderToMP4.exe /Fo:build-cov\ /Fd:bin-cov\ShaderToMP4.pdb src\main.cpp src\core\*.cpp src\platform\*.cpp src\platform\windows\*.cpp src\gui\*.cpp build-cov\app.res opengl32.lib gdi32.lib user32.lib comctl32.lib comdlg32.lib shell32.lib /link /MANIFEST:NO /DEBUG /MAP:bin-cov\ShaderToMP4.map || exit /b 1
 echo bin-cov\ShaderToMP4.exe pret

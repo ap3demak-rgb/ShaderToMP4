@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-2.1.1-FF5A96?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-3.0.0-FF5A96?style=flat-square">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20(Linux%20and%20macOS%20frozen)-0078D4?style=flat-square">
   <img alt="Portable" src="https://img.shields.io/badge/portable-installer%20optional-3DDC97?style=flat-square">
   <img alt="Languages" src="https://img.shields.io/badge/languages-6-7C6CFF?style=flat-square">
@@ -425,7 +425,7 @@ Taken from [CHANGELOG.md](CHANGELOG.md), which has the details; the list is chec
 
 | Version | Main additions |
 |---|---|
-| Unreleased | Pro edition: 3D scenes (OBJ / PLY / glTF meshes, camera, depth, instances, shadows, reflections, GPU compute, preview with mouse orbit); Linux and macOS frozen (2.1.1 is the last version with them), Windows only continuous integration; Pro edition infrastructure (nothing locked in the free edition): signed `ShaderToMP4.license` checked offline, trial watermark on Pro outputs without a license, “Buy Pro” (5, 10 or 15 € by PayPal) and license status in “About”, `--license-info` |
+| 3.0.0 | Pro edition: 3D scenes (OBJ / PLY / glTF meshes, camera, depth, instances, shadows, reflections, GPU compute, preview with mouse orbit); Linux and macOS frozen (2.1.1 is the last version with them), Windows only continuous integration; Pro edition infrastructure (nothing locked in the free edition): signed `ShaderToMP4.license` checked offline, trial watermark on Pro outputs without a license, “Buy Pro” (5, 10 or 15 € by PayPal) and license status in “About”, `--license-info` |
 | 2.1.1 | Sound normalization with a constant gain (the volume no longer rises and falls); Multilayer OpenEXR written by the program (HDR colour, depth, normal, id, alpha, estimated motion), straight or premultiplied alpha, floating-point TIFF, DPX, 16-bit depth map; effect mode: the shader applied to videos, images, sequences and folders (size, rate, duration, sound, subtitles and chapters follow the source), playing backwards, 25 transitions between two sources with `iProgress`, chroma / luma / difference keys |
 | 2.1.0 | Windows installer (NSIS, per user, ffmpeg included, optional) |
 | 2.0.0 | Quality check (flashes, NaN, flicker, aliasing, precision), shader comparison and reference frames, render time estimate with alert; seamless loops (crossfade, ping-pong), time curve and real slow motion, loop period search, seam check, smart thumbnail, averaged still image; posters by tiles up to 65536 pixels, GPU cost map and GPU time per pass, side-by-side / anaglyph / fulldome VR, cubemap faces; publication targets, target file size, master cache, reproducible video, standalone HTML page; sound and rhythm (tempo, beat variables, markers, beat editor); parts rendered in parallel and a render farm without a server |

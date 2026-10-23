@@ -49,6 +49,13 @@
 #include "util.h"
 #include "platform/platform.h"
 
+// Sous le detecteur de memoire tout est plusieurs fois plus lent : les cas qui comptent sur des delais courts (rechargement de l'apercu, partie lente) n'ont pas de sens
+#ifdef __SANITIZE_ADDRESS__
+static constexpr bool kTimingSensitiveOk = false;
+#else
+static constexpr bool kTimingSensitiveOk = true;
+#endif
+
 // ---------------------------------------------------------------------------
 //  Formats de sortie : chaque combinaison est rendue (64x64, 5 images) puis relue avec ffmpeg
 // ---------------------------------------------------------------------------
@@ -424,7 +431,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             const int first = lastRed;
             write("void mainImage(out vec4 o, in vec2 p){ o = vec4(0.0, 0.0, 1.0, 1.0); }\n");
             for (int i = 0; i < 120 && lastRed > 128; i++) platform::sleepMs(25);
-            if (first < 200 || lastRed > 50 || logs < 1) problem = TXF("selftest.fmt_bad", W("reload").c_str());
+            if (kTimingSensitiveOk && (first < 200 || lastRed > 50 || logs < 1)) problem = TXF("selftest.fmt_bad", W("reload").c_str());
         }
         platform::releaseOffThreadContexts();
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX("selftest.fmt_player") + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
@@ -2555,13 +2562,13 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             std::atomic<int> hits{0};
             Hooks H;
             H.log = [&](const std::wstring& l) { logText += U8(l) + "\n"; };
-            H.injectFailure = [&](int worker, long long) { return worker == 1 && hits++ == 0; };
+            H.injectFailure = [&](int, long long) { return hits++ == 0; };  // le premier contexte qui prend une partie tombe en panne (lequel, cela depend de la vitesse de demarrage de chacun : machine lente, instrumentee)
             if (convertFile(heavy, exeDir, st, H, e) != Result::Ok) problem = e.empty() ? TX("selftest.render_failed") : e;
             else if (allFrames(outputFile(heavy, st, false)) != serialFrames) problem = bad("video differs after a context failure");
-            else if (logText.find(U8(TXF("log.parts_retired", 2, TX("log.parts_injected").c_str()))) == std::string::npos) problem = bad("no message about the removed context");
+            else if (logText.find(U8(TX("log.parts_injected"))) == std::string::npos || logText.find(U8(TXF("log.parts_retired", 1, TX("log.parts_injected").c_str()))) == std::string::npos && logText.find(U8(TXF("log.parts_retired", 2, TX("log.parts_injected").c_str()))) == std::string::npos && logText.find(U8(TXF("log.parts_retired", 3, TX("log.parts_injected").c_str()))) == std::string::npos) problem = bad("no message about the removed context");
             check("selftest.fmt_parallel_fail", problem);
         }
-        if (h264 && platform::multiContext()) {  // une partie lente est rendue aussi par un contexte libre : la plus rapide gagne, la video est la meme
+        if (h264 && platform::multiContext() && kTimingSensitiveOk) {  // une partie lente est rendue aussi par un contexte libre : la plus rapide gagne, la video est la meme
             std::wstring problem;
             Settings st = settingsFor(L"p21_slow");
             st.parallel = 2;
@@ -4055,7 +4062,8 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             for (char c : good) crlf += c == '\n' ? std::string("\r\n") : std::string(1, c);
             std::string altered = good, majorEdit = good, truncated = good.substr(0, good.size() - 24);
             altered.replace(altered.find("Tester"), 6, "Hacker");
-            majorEdit.replace(majorEdit.find("major=2"), 7, "major=3");
+            const std::string curMajor = "major=" + std::to_string(APP_VER_MAJOR);  // la version du programme, pas un numero ecrit en dur
+            majorEdit.replace(majorEdit.find(curMajor), curMajor.size(), "major=" + std::to_string(APP_VER_MAJOR + 1));
             const struct {
                 const char* what;
                 std::string text;

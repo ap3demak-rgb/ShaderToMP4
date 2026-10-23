@@ -15,3 +15,5 @@ bin-cov/
 coverage/
 bin-soak/
 bin-llvm/
+bin-asan-llvm/
+*.map

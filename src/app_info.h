@@ -6,10 +6,10 @@
 #pragma once
 
 #define APP_NAME_STR "ShaderToMP4"
-#define APP_VER_MAJOR 2
-#define APP_VER_MINOR 1
-#define APP_VER_PATCH 1
-#define APP_VER_STR "2.1.1"
+#define APP_VER_MAJOR 3
+#define APP_VER_MINOR 0
+#define APP_VER_PATCH 0
+#define APP_VER_STR "3.0.0"
 #define APP_COPYRIGHT_YEAR "2026"
 #define APP_COPYRIGHT_OWNER "Patrick JAILLET"
 #define APP_LICENSE_ID "GPL-3.0-or-later"
