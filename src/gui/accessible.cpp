@@ -5,6 +5,7 @@
 // Automation minimal ne donne que le nom ; tout le reste (valeur, motifs, etat) vient du fournisseur systeme du controle.
 #include "accessible.h"
 #include "core/i18n.h"
+#include <map>
 #include <commctrl.h>
 #include <initguid.h>  // definit les GUID de oleacc.h (CLSID_AccPropServices, PROPID_ACC_*) dans ce fichier
 #include <oleacc.h>
@@ -19,9 +20,11 @@
 
 namespace {
 
-class NameProvider : public IRawElementProviderSimple {
+// Fournisseur de substitution d'un controle : son nom (cle de langue ou texte de la fenetre) et, pour un bouton dessine par le programme, son type
+// « bouton » avec le motif Invoke (le controle systeme BS_OWNERDRAW se presente sinon comme un simple panneau, non activable)
+class NameProvider : public IRawElementProviderSimple, public IInvokeProvider {
 public:
-    NameProvider(HWND h, const char* key) : hwnd_(h), key_(key) {}
+    NameProvider(HWND h, const char* key, bool button) : hwnd_(h), key_(key), button_(button) {}
     // IUnknown
     ULONG STDMETHODCALLTYPE AddRef() override { return (ULONG)InterlockedIncrement(&refs_); }
     ULONG STDMETHODCALLTYPE Release() override {
@@ -36,6 +39,11 @@ public:
             AddRef();
             return S_OK;
         }
+        if (riid == __uuidof(IInvokeProvider)) {
+            *ppv = static_cast<IInvokeProvider*>(this);
+            AddRef();
+            return S_OK;
+        }
         *ppv = nullptr;
         return E_NOINTERFACE;
     }
@@ -44,16 +52,44 @@ public:
         *o = (ProviderOptions)(ProviderOptions_ServerSideProvider | ProviderOptions_OverrideProvider);
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE GetPatternProvider(PATTERNID, IUnknown** p) override {
-        *p = nullptr;  // les motifs viennent du fournisseur systeme
+    HRESULT STDMETHODCALLTYPE GetPatternProvider(PATTERNID id, IUnknown** p) override {
+        *p = nullptr;  // les autres motifs viennent du fournisseur systeme
+        if (button_ && id == UIA_InvokePatternId) {
+            *p = static_cast<IInvokeProvider*>(this);
+            AddRef();
+        }
+        return S_OK;
+    }
+    // IInvokeProvider : un clic du bouton (le parent recoit BN_CLICKED comme pour un clic de souris)
+    HRESULT STDMETHODCALLTYPE Invoke() override {
+        if (!IsWindowEnabled(hwnd_)) return UIA_E_ELEMENTNOTENABLED;
+        PostMessageW(GetParent(hwnd_), WM_COMMAND, MAKEWPARAM(GetDlgCtrlID(hwnd_), BN_CLICKED), (LPARAM)hwnd_);
         return S_OK;
     }
     HRESULT STDMETHODCALLTYPE GetPropertyValue(PROPERTYID id, VARIANT* v) override {
         VariantInit(v);
         if (id == UIA_NamePropertyId) {
-            const std::wstring name = TX(key_);
-            v->vt = VT_BSTR;
-            v->bstrVal = SysAllocString(name.c_str());
+            std::wstring name;
+            if (key_) {
+                name = TX(key_);
+            } else {
+                wchar_t buf[256] = L"";
+                GetWindowTextW(hwnd_, buf, 256);
+                name = buf;
+            }
+            if (!name.empty()) {
+                v->vt = VT_BSTR;
+                v->bstrVal = SysAllocString(name.c_str());
+            }
+        } else if (id == UIA_ControlTypePropertyId) {  // le fournisseur de substitution doit dire le type : sinon l'element n'est qu'un panneau
+            const int type = controlType();
+            if (type) {
+                v->vt = VT_I4;
+                v->lVal = type;
+            }
+        } else if (id == UIA_IsKeyboardFocusablePropertyId && controlType() && controlType() != UIA_TextControlTypeId) {
+            v->vt = VT_BOOL;
+            v->boolVal = (GetWindowLongW(hwnd_, GWL_STYLE) & WS_TABSTOP) ? VARIANT_TRUE : VARIANT_FALSE;
         }
         return S_OK;  // VT_EMPTY : le fournisseur systeme repond
     }
@@ -62,20 +98,51 @@ public:
     }
 
 private:
+    // Type UI Automation d'apres la classe Windows du controle (0 : on laisse le systeme repondre)
+    int controlType() const {
+        if (button_) return UIA_ButtonControlTypeId;
+        wchar_t cls[48] = L"";
+        GetClassNameW(hwnd_, cls, 48);
+        const std::wstring c = cls;
+        if (c == L"Edit") return UIA_EditControlTypeId;
+        if (c == L"ComboBox") return UIA_ComboBoxControlTypeId;
+        if (c == L"ListBox" || c == L"SysListView32") return UIA_ListControlTypeId;
+        if (c == L"STSlider" || c == L"msctls_trackbar32") return UIA_SliderControlTypeId;
+        if (c == L"STProgress" || c == L"msctls_progress32") return UIA_ProgressBarControlTypeId;
+        if (c == L"RICHEDIT50W") return UIA_DocumentControlTypeId;
+        if (c == L"Static") return UIA_TextControlTypeId;
+        if (c == L"Button") return UIA_ButtonControlTypeId;
+        return 0;
+    }
     long refs_ = 1;
     HWND hwnd_;
     const char* key_;
+    bool button_;
 };
 
-LRESULT CALLBACK accProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR data) {
+struct Info {
+    const char* key = nullptr;  // nom donne par une cle de langue ; nullptr : texte de la fenetre
+    bool button = false;
+};
+std::map<HWND, Info> g_info;
+
+LRESULT CALLBACK accProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
     if (msg == WM_GETOBJECT && (LONG)lp == (LONG)UiaRootObjectId) {
-        NameProvider* p = new NameProvider(h, (const char*)data);
+        const auto it = g_info.find(h);
+        NameProvider* p = new NameProvider(h, it == g_info.end() ? nullptr : it->second.key, it != g_info.end() && it->second.button);
         const LRESULT r = UiaReturnRawElementProvider(h, wp, lp, p);
         p->Release();
         return r;
     }
-    if (msg == WM_NCDESTROY) RemoveWindowSubclass(h, accProc, 77);
+    if (msg == WM_NCDESTROY) {
+        RemoveWindowSubclass(h, accProc, 77);
+        g_info.erase(h);
+    }
     return DefSubclassProc(h, msg, wp, lp);
+}
+
+void ensureSubclass(HWND h) {
+    if (g_info.find(h) == g_info.end()) SetWindowSubclass(h, accProc, 77, 0);
 }
 
 IAccPropServices* propServices() {
@@ -97,7 +164,8 @@ void applyMsaaName(HWND h, const char* key) {
 
 void setAccessibleName(HWND control, const char* langKey) {
     if (!control) return;
-    SetWindowSubclass(control, accProc, 77, (DWORD_PTR)langKey);
+    ensureSubclass(control);
+    g_info[control].key = langKey;
     g_named.push_back({control, langKey});
     applyMsaaName(control, langKey);
 }
@@ -119,4 +187,10 @@ void setAccessibleRole(HWND control, long msaaRole) {
 
 void setAccessibleValue(HWND control, const std::wstring& value) {
     if (IAccPropServices* s = propServices()) s->SetHwndPropStr(control, OBJID_CLIENT, CHILDID_SELF, PROPID_ACC_VALUE, value.c_str());
+}
+
+void setAccessibleButton(HWND control) {
+    if (!control) return;
+    ensureSubclass(control);
+    g_info[control].button = true;
 }

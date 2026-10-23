@@ -6,6 +6,7 @@
 #include "gui/app.h"
 #include "core/cli.h"
 #include "core/crashinfo.h"
+#include "core/fuzz.h"
 #include "platform/platform.h"
 #include "core/ffmpeg_download.h"
 #include "core/i18n.h"
@@ -95,6 +96,9 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     std::vector<std::wstring> files;
     bool selftest = false, update = false, quiet = false, getFfmpeg = false, version = false, help = false, render = false,
          diagnostic = false, benchmark = false, licenseInfo = false, crashTest = false, checkUpdate = false, downloadUpdate_ = false;
+    std::string fuzzTarget;
+    int fuzzCount = 2000;
+    unsigned fuzzSeed = 1;
     std::wstring updateUrl;
     for (int i = 1; argv && i < argc; i++) {
         std::wstring a = argv[i];
@@ -104,6 +108,9 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         else if (a == L"--diagnostic") diagnostic = true;
         else if (a == L"--benchmark") benchmark = true;
         else if (a == L"--license-info") licenseInfo = true;
+        else if (a.compare(0, 7, L"--fuzz=") == 0) fuzzTarget = U8(a.substr(7));  // lecteurs de fichiers : voir core/fuzz.h
+        else if (a.compare(0, 13, L"--fuzz-count=") == 0) fuzzCount = std::max(1, _wtoi(a.c_str() + 13));
+        else if (a.compare(0, 12, L"--fuzz-seed=") == 0) fuzzSeed = (unsigned)_wtoi(a.c_str() + 12);
         else if (a == L"--crash-test") crashTest = true;  // verification du rapport de plantage (auto-test) : plante a dessein
         else if (a == L"--check-update" || a.compare(0, 15, L"--check-update=") == 0) {  // sur demande seulement : jamais au demarrage
             checkUpdate = true;
@@ -129,6 +136,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         crashSet("test", "crash-test");
         *(volatile int*)nullptr = 1;
     }
+    if (!fuzzTarget.empty()) return runFuzzCli(g.exeDir, fuzzTarget, fuzzCount, fuzzSeed, [](const std::string& s, bool) { writeConsole(s); });
     if (checkUpdate) return runUpdateCli(g.exeDir, updateUrl, downloadUpdate_, [](const std::string& s, bool) { writeConsole(s); });
     if (licenseInfo) return runLicenseInfoCli(g.exeDir, [](const std::string& s, bool) { writeConsole(s); });
     if (diagnostic) return runDiagnosticCli(g.exeDir, [](const std::string& s, bool) { writeConsole(s); });
@@ -241,6 +249,12 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
         const bool inMain = GetAncestor(m.hwnd, GA_ROOT) == wnd;  // l'éditeur et les autres fenêtres ont leurs propres touches
         if (inMain && TranslateAcceleratorW(wnd, haccel, &m)) continue;
         if (inMain && IsDialogMessageW(wnd, &m)) continue;  // Tab / Maj+Tab entre les contrôles
+        if (!inMain && m.hwnd) {  // aide, galerie et visite : Tab, Entree et Echap comme dans une boite de dialogue
+            HWND root = GetAncestor(m.hwnd, GA_ROOT);
+            wchar_t cls[48] = L"";
+            if (root) GetClassNameW(root, cls, 48);
+            if ((!wcscmp(cls, L"ShaderToMP4Help") || !wcscmp(cls, L"ShaderToMP4Gallery") || !wcscmp(cls, L"ShaderToMP4Tour")) && IsDialogMessageW(root, &m)) continue;
+        }
         TranslateMessage(&m);
         DispatchMessageW(&m);
     }

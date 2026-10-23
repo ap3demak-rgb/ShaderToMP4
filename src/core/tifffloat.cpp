@@ -86,7 +86,8 @@ bool read(const std::wstring& path, Image& img, std::wstring& err) {
             case 256: w = val; break;
             case 257: h = val; break;
             case 258:
-                for (uint32_t k = 0; k < n; k++) if (u16(val + k * 2) != 32) floatOk = false;
+                if (n > 8) floatOk = false;  // au plus quatre canaux : un compte enorme d'un fichier abime ne fait pas boucler
+                for (uint32_t k = 0; floatOk && k < n; k++) if (u16(val + k * 2) != 32) floatOk = false;
                 break;
             case 259: if (val != 1) plain = false; break;
             case 273: off = val; break;
@@ -94,11 +95,12 @@ bool read(const std::wstring& path, Image& img, std::wstring& err) {
             case 279: bytes = val; break;
             case 338: extra = (int)val; break;
             case 339:
-                for (uint32_t k = 0; k < n; k++) if (u16(val + k * 2) != 3) floatOk = false;
+                if (n > 8) floatOk = false;
+                for (uint32_t k = 0; floatOk && k < n; k++) if (u16(val + k * 2) != 3) floatOk = false;
                 break;
         }
     }
-    if (!floatOk || !plain || (spp != 3 && spp != 4) || w == 0 || h == 0 || bytes != w * h * spp * 4 || off + (size_t)bytes > f.size()) {
+    if (!floatOk || !plain || (spp != 3 && spp != 4) || w == 0 || h == 0 || (uint64_t)bytes != (uint64_t)w * h * spp * 4 || (uint64_t)off + bytes > f.size()) {  // 64 bits : sans debordement
         err = TXF("error.tiff_read", path.c_str());
         return false;
     }

@@ -14,6 +14,8 @@ Format: one section per version, newest first. The section of a tagged version i
 
 ### Added
 
+- **Fuzzing of the file and text readers** (`--fuzz=<target|all>`, 500 inputs per target in the self-test, cases found kept in `tests/fuzz/`); it found and fixed five defects (floating-point TIFF hang and size overflow, expression stack overflow, EXR window allocation, PLY and CSV hangs).
+- **AddressSanitizer build** (`scripts/build-asan.bat`, `scripts/test-asan.bat`) and its continuous-integration step; **reference images per driver** (`tests/ref/<driver>/`, `tests/tolerances.txt`, `DRIFT` alerts); **accessibility audit** by UI Automation (`scripts/audit-accessibility.ps1`) with real list, text and button controls in the help and the gallery and buttons that announce themselves as buttons; **performance journal** compared with the previous release (`scripts/perf-journal.ps1`); **long-run test** (`scripts/soak-test.ps1`).
 - **Updates on request**: **Check for updates** in the About window and `--check-update[=url] [--download]` (exit code 8 when a newer version exists); the installer is downloaded to `updates/` only after its SHA-256 matches `SHA256SUMS.txt`, nothing is installed, only https addresses are followed (and http towards the local machine, for tests). Never in the background.
 - **Local crash report** (`crash-report.txt`, paths replaced by `<path>`, no shader text, nothing sent) and `--crash-test` for the self-test.
 - **Trust files with every version**: SPDX software bill of materials, known-vulnerability report of the third-party components (NVD), winget and Scoop manifests (`scripts/package-manifests.ps1`, not yet installed through winget or Scoop), reproducible Windows build (`/Brepro`, `scripts/verify-reproducible.ps1`).

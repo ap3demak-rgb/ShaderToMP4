@@ -1,0 +1,27 @@
+# Tolerance of each test case: largest mean absolute difference (over 255) accepted against its reference image. One line: name tolerance justification.
+# A case not listed uses 2.0. Each tolerance covers the difference measured between the two reference sets the repository keeps (tests/ref/nvidia: GeForce GT 1030
+# with the NVIDIA driver; tests/ref/llvmpipe: Mesa llvmpipe, used by the continuous integration), with a margin: tolerance = max(1.0, 1.5 x measured + 0.5), rounded up
+# to 0.5. The floor of 1.0 is one grey level of rounding on every pixel. A difference above half of the tolerance is reported as DRIFT by the self-test.
+# A third driver (AMD, Intel...) uses the common reference tests/<name>.ref until its own set is recorded with `ShaderToMP4 --selftest --update` on that machine;
+# then revise this file from the new measures.
+buffers 1.0 measured nvidia/llvmpipe 0.01
+bufscale 1.0 measured nvidia/llvmpipe 0.00
+channels 1.0 measured nvidia/llvmpipe 0.08
+circle 1.0 measured nvidia/llvmpipe 0.32
+compat 1.0 measured nvidia/llvmpipe 0.05
+cube 1.0 measured nvidia/llvmpipe 0.00
+date 1.0 measured nvidia/llvmpipe 0.17
+gradient 1.0 measured nvidia/llvmpipe 0.00
+keyboard 1.0 measured nvidia/llvmpipe 0.17
+lut1 1.0 measured nvidia/llvmpipe 0.00
+lut3 1.0 measured nvidia/llvmpipe 0.00
+mouse 1.0 measured nvidia/llvmpipe 0.01
+params 1.0 measured nvidia/llvmpipe 0.17
+postcustom 1.0 measured nvidia/llvmpipe 0.00
+postfloat 1.0 measured nvidia/llvmpipe 0.00
+postfx 1.0 measured nvidia/llvmpipe 0.03
+time 1.0 measured nvidia/llvmpipe 0.05
+volume 1.0 measured nvidia/llvmpipe 0.00
+volumebin 1.0 measured nvidia/llvmpipe 0.00
+vr 1.0 measured nvidia/llvmpipe 0.03
+warmup 1.0 measured nvidia/llvmpipe 0.00

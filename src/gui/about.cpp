@@ -16,7 +16,7 @@ using namespace theme;
 
 namespace {
 
-enum { ID_ABOUT_LICENSE = 701, ID_ABOUT_NOTICES, ID_ABOUT_BUY, ID_ABOUT_UPDATE, ID_ABOUT_CLOSE = IDCANCEL };
+enum { ID_ABOUT_LICENSE = 701, ID_ABOUT_NOTICES, ID_ABOUT_BUY, ID_ABOUT_UPDATE, ID_ABOUT_LINK0, ID_ABOUT_LINK1, ID_ABOUT_CLOSE = IDCANCEL };
 constexpr UINT WM_UPDATE_DONE = WM_APP + 40;  // lParam = UpdateMsg* (a liberer), wParam : 0 a jour, 1 plus recente, 2 erreur, 3 telechargee
 
 struct Link {
@@ -34,9 +34,10 @@ struct Dialog {
     std::wstring updText;         // resultat de la derniere verification, affiche sous l'edition
     std::shared_ptr<UpdateInfo> upd;  // version plus recente trouvee (le bouton devient « Telecharger »)
     bool busy = false;
+    HWND linkBtn[2] = {nullptr, nullptr};  // adresse e-mail et site : boutons qui dessinent le lien (clavier : Tab, Entree ; lecteurs d'ecran : nom = adresse)
+    RECT linkRect[2] = {};
     UINT dpi = 96;
     std::vector<Link> links;
-    int hover = -1;
     bool done = false;
 } D;
 
@@ -112,11 +113,8 @@ void paint() {
         D2D1_RECT_F vr = ui::rectf(vx, cy, w - F(40), cy + F(26));
         if (target.empty()) {
             f.text(value, vr, F(14), false, ui::rgb(TEXT));
-        } else {
-            const bool hot = (int)D.links.size() == D.hover;
-            f.text(value, vr, F(14), false, ui::rgb(hot ? 0xFFFFFF : ACCENT));
+        } else {  // le lien est dessine par son bouton (voir drawLink) : ici on ne fait que reserver sa place
             const float tw = ui::measureText(value, F(14), false);
-            f.fillRound(ui::rectf(vx, cy + F(21), vx + tw, cy + F(22.2f)), 0.5f, ui::rgb(hot ? 0xFFFFFF : ACCENT, 0.8f));
             D.links.push_back({{(LONG)vx, (LONG)cy, (LONG)(vx + tw), (LONG)(cy + F(26))}, target});
         }
         cy += F(30);
@@ -144,13 +142,16 @@ void paint() {
     if (!D.updText.empty()) f.text(D.updText, ui::rectf(F(48), cy, w - F(48), cy + F(60)), F(12.5f), false, ui::rgb(D.upd ? ACCENT : MUTED), ui::Left, false, true);
     f.present(hdc);
     EndPaint(D.wnd, &ps);
+    for (size_t i = 0; i < D.links.size() && i < 2; i++) {  // les boutons des liens suivent la mise en page
+        const RECT& r = D.links[i].r;
+        if (memcmp(&r, &D.linkRect[i], sizeof(RECT)) != 0) {
+            D.linkRect[i] = r;
+            MoveWindow(D.linkBtn[i], r.left - S(2), r.top, r.right - r.left + S(4), r.bottom - r.top, TRUE);
+            ShowWindow(D.linkBtn[i], SW_SHOW);
+        }
+    }
 }
 
-int hitLink(POINT p) {
-    for (size_t i = 0; i < D.links.size(); i++)
-        if (PtInRect(&D.links[i].r, p)) return (int)i;
-    return -1;
-}
 
 // Verification (premier clic) puis telechargement controle (second clic), sur un thread : uniquement sur demande de l'utilisateur
 void startUpdate(HWND h) {
@@ -182,6 +183,37 @@ void startUpdate(HWND h) {
     }).detach();
 }
 
+// Lien dessine par un bouton : texte souligne, blanc au focus (avec le cadre de focus)
+void drawLink(const DRAWITEMSTRUCT* d) {
+    HBRUSH bg = CreateSolidBrush(cref(CARD));
+    FillRect(d->hDC, &d->rcItem, bg);
+    DeleteObject(bg);
+    wchar_t text[256] = L"";
+    GetWindowTextW(d->hwndItem, text, 256);
+    const bool focus = (d->itemState & ODS_FOCUS) != 0;
+    LOGFONTW lf{};
+    GetObjectW(g.font, sizeof(lf), &lf);
+    lf.lfUnderline = TRUE;
+    HFONT f = CreateFontIndirectW(&lf);
+    HGDIOBJ old = SelectObject(d->hDC, f);
+    SetBkMode(d->hDC, TRANSPARENT);
+    SetTextColor(d->hDC, cref(focus ? 0xFFFFFF : ACCENT));
+    RECT r = d->rcItem;
+    DrawTextW(d->hDC, text, -1, &r, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX);
+    SelectObject(d->hDC, old);
+    DeleteObject(f);
+    if (focus) DrawFocusRect(d->hDC, &d->rcItem);
+}
+
+LRESULT CALLBACK linkProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR) {  // curseur « main » sur les liens
+    if (msg == WM_SETCURSOR) {
+        SetCursor(LoadCursorW(nullptr, MAKEINTRESOURCEW(32649)));
+        return TRUE;
+    }
+    if (msg == WM_NCDESTROY) RemoveWindowSubclass(h, linkProc, id);
+    return DefSubclassProc(h, msg, wp, lp);
+}
+
 LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_PAINT: paint(); return 0;
@@ -189,29 +221,11 @@ LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_DRAWITEM: {
             DRAWITEMSTRUCT* d = (DRAWITEMSTRUCT*)lp;
             if (d->CtlType == ODT_BUTTON) {
-                ui::drawButton(d, D.dpi);
+                if (d->CtlID == ID_ABOUT_LINK0 || d->CtlID == ID_ABOUT_LINK1) drawLink(d);
+                else ui::drawButton(d, D.dpi);
                 return TRUE;
             }
             break;
-        }
-        case WM_MOUSEMOVE: {
-            int hv = hitLink({(short)LOWORD(lp), (short)HIWORD(lp)});
-            if (hv != D.hover) {
-                D.hover = hv;
-                InvalidateRect(h, nullptr, FALSE);
-            }
-            return 0;
-        }
-        case WM_SETCURSOR:
-            if (LOWORD(lp) == HTCLIENT && D.hover >= 0) {
-                SetCursor(LoadCursorW(nullptr, MAKEINTRESOURCEW(32649)));  // main
-                return TRUE;
-            }
-            break;
-        case WM_LBUTTONUP: {
-            int hv = hitLink({(short)LOWORD(lp), (short)HIWORD(lp)});
-            if (hv >= 0) ShellExecuteW(h, L"open", D.links[hv].target.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-            return 0;
         }
         case WM_COMMAND:
             switch (LOWORD(wp)) {
@@ -222,6 +236,12 @@ LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     break;
                 case ID_ABOUT_BUY: showBuy(h); break;
                 case ID_ABOUT_UPDATE: startUpdate(h); break;
+                case ID_ABOUT_LINK0:
+                case ID_ABOUT_LINK1: {
+                    const size_t i = (size_t)(LOWORD(wp) - ID_ABOUT_LINK0);
+                    if (i < D.links.size()) ShellExecuteW(h, L"open", D.links[i].target.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                    break;
+                }
                 case ID_ABOUT_CLOSE: DestroyWindow(h); break;
             }
             return 0;
@@ -287,6 +307,13 @@ void showAbout(HWND parent) {
     D.bClose = button("about.btn.close", ID_ABOUT_CLOSE, IC_CHECK, ui::BtnStyle::Primary);
     if (showTrialUi()) D.bBuy = button("about.btn.buy", ID_ABOUT_BUY, IC_ZAP, ui::BtnStyle::Secondary);  // absent avec une licence valide
     D.bUpdate = button("update.btn.check", ID_ABOUT_UPDATE, IC_DOWNLOAD, ui::BtnStyle::Secondary);
+    {  // e-mail et site : boutons de liens (positions donnees par la peinture)
+        const wchar_t* texts[2] = {APP_CONTACT_EMAIL_WSTR, APP_WEBSITE_URL_WSTR};
+        for (int i = 0; i < 2; i++) {
+            D.linkBtn[i] = CreateWindowExW(0, L"BUTTON", texts[i], WS_CHILD | WS_TABSTOP | BS_OWNERDRAW, 0, 0, 10, 10, D.wnd, (HMENU)(INT_PTR)(ID_ABOUT_LINK0 + i), hi, nullptr);
+            SetWindowSubclass(D.linkBtn[i], linkProc, 5, 0);
+        }
+    }
     layoutButtons();
 
     // Boîte modale : la fenêtre principale est désactivée pendant l'affichage

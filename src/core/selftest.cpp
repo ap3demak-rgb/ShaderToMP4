@@ -6,6 +6,7 @@
 #include "gallery.h"
 #include "updatecheck.h"
 #include "crashinfo.h"
+#include "fuzz.h"
 #include "process.h"
 #include "explain.h"
 #include "gl.h"
@@ -4272,10 +4273,47 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
             report = TXF("selftest.no_shaders", dir.c_str()) + L"\r\n";
             fails = 1;
         } else {
+            // Images de reference par pilote : tests/ref/<pilote>/<nom>.ref d'abord (nvidia, amd, intel, llvmpipe...), sinon tests/<nom>.ref ; tolerance de chaque
+            // cas dans tests/tolerances.txt (« nom ecart justification », 2 par defaut) ; au-dela de la moitie de la tolerance, une ligne DRIFT previent
+            const std::string driver = [] {  // pilote d'apres GL_RENDERER : llvmpipe (Mesa, CI), warp (Mesa GLon12 sur le rasteriseur logiciel de Direct3D), nvidia, amd, intel...
+                const char* r = (const char*)glGetString(0x1F01);
+                std::string n = r ? r : "";
+                for (char& c : n) c = (char)tolower((unsigned char)c);
+                auto has = [&](const char* k) { return n.find(k) != std::string::npos; };
+                if (has("llvmpipe")) return std::string("llvmpipe");
+                if (has("d3d12") && (has("basic render") || has("warp"))) return std::string("warp");  // nom-technique
+                if (has("d3d12")) return std::string("d3d12");  // nom-technique
+                if (has("nvidia")) return std::string("nvidia");  // nom-technique
+                if (has("radeon") || has("amd")) return std::string("amd");  // nom-technique
+                if (has("intel")) return std::string("intel");  // nom-technique
+                if (has("gdi generic")) return std::string("gdi");  // nom-technique
+                return std::string("other");  // nom-technique
+            }();
+            std::map<std::wstring, double> tolerance;
+            {
+                std::string text;
+                if (readFile(dir + L"tolerances.txt", text)) {
+                    size_t pos = 0;
+                    while (pos < text.size()) {
+                        size_t eol = text.find('\n', pos);
+                        if (eol == std::string::npos) eol = text.size();
+                        const std::string line = text.substr(pos, eol - pos);
+                        pos = eol + 1;
+                        char nm[128];
+                        double v;
+                        if (line.empty() || line[0] == '#') continue;
+                        if (sscanf(line.c_str(), "%127s %lf", nm, &v) == 2 && v > 0) tolerance[W(nm)] = v;
+                    }
+                }
+            }
+            const std::wstring refDir = dir + L"ref/" + W(driver) + L"/";
             for (const auto& en : shaders) {
                 total++;
                 const std::wstring file = en.name;
-                const std::wstring ref = dir + file.substr(0, file.find_last_of(L'.')) + L".ref";
+                const std::wstring stem = file.substr(0, file.find_last_of(L'.'));
+                const std::wstring baseRef = dir + stem + L".ref", driverRef = refDir + stem + L".ref";
+                const std::wstring ref = update || fileExists(driverRef) ? driverRef : baseRef;
+                const double tol = tolerance.count(stem) ? tolerance[stem] : 2.0;
                 std::vector<uint8_t> got;
                 Hooks H;
                 H.log = [](const std::wstring&) {};
@@ -4293,10 +4331,14 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
                         if (!update) {
                             line = L"FAIL    " + file + L": " + TX("selftest.ref_missing");
                             fails++;
-                        } else if (FILE* f = platform::openFile(ref, "wb")) {
-                            fwrite(got.data(), 1, got.size(), f);
-                            fclose(f);
-                            line = L"UPDATED " + file + L": " + TX("selftest.ref_written");
+                        } else {
+                            platform::makeDir(dir + L"ref");
+                            platform::makeDir(refDir.substr(0, refDir.size() - 1));
+                            if (FILE* f = platform::openFile(ref, "wb")) {
+                                fwrite(got.data(), 1, got.size(), f);
+                                fclose(f);
+                                line = L"UPDATED " + file + L": " + TX("selftest.ref_written");
+                            }
                         }
                     } else if (want.size() != got.size()) {
                         line = L"FAIL    " + file + L": " + TX("selftest.ref_size");
@@ -4310,9 +4352,10 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
                             cnt++;
                         }
                         const double mad = cnt ? sum / cnt : 0;  // ecart moyen sur 255
-                        line = (mad <= 2.0 ? L"PASS    " : L"FAIL    ") + file + L" (" +
-                               TXF(mad <= 2.0 ? "selftest.diff_ok" : "selftest.diff_bad", mad) + L")";
-                        if (mad > 2.0) fails++;
+                        const bool drift = mad <= tol && mad > 0.5 * tol && mad > 0.5;  // proche de la limite : alerte, pas encore un echec
+                        line = (mad > tol ? L"FAIL    " : drift ? L"DRIFT   " : L"PASS    ") + file + L" (" +
+                               (mad <= tol ? TXF("selftest.diff_ok", mad) : TXF("selftest.diff_bad", mad, tol)) + L")" + (drift ? L" " + TXF("selftest.drift", tol) : L"") + L" [" + W(driver) + (ref == driverRef ? L"]" : L" -> reference commune]");
+                        if (mad > tol) fails++;
                     }
                 }
                 report += line + L"\r\n";
@@ -4454,7 +4497,7 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
                 report += L"FAIL    " + TX("selftest.update") + L": " + W(problem) + L"\r\n";
             }
         }
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__SANITIZE_ADDRESS__)  // sous le detecteur de memoire, c'est lui qui prend la main sur un plantage : ce cas n'a pas de sens
         {  // rapport de plantage local : le programme plante a dessein (--crash-test) et le rapport est lu, sans chemin ni nom de shader
             total++;
             std::string problem;
@@ -4479,6 +4522,20 @@ int runSelfTest(const std::wstring& exeDir, bool update, bool quiet) {
             else {
                 fails++;
                 report += L"FAIL    " + TX("selftest.crash") + L": " + W(problem) + L"\r\n";
+            }
+        }
+#endif
+#ifdef _WIN32
+        {  // fuzzing des lecteurs (JSON, montage, ini, cube, EXR, TIFF, fiche des temps, expressions...) : le programme se relance en mode --fuzz, un plantage est un code de sortie
+            total++;
+            std::string problem, text;
+            const int rc = runProcess(L"\"" + exeDir + platform::exeFileName(L"ShaderToMP4") + L"\" --fuzz=all --fuzz-count=500 --fuzz-seed=3", [&](const std::wstring& l) { text += U8(l) + " "; });
+            if (rc != 0) problem = "exit code " + std::to_string(rc) + " " + text.substr(0, 200);
+            else if (text.find("no crash") == std::string::npos) problem = "no summary: " + text.substr(0, 200);
+            if (problem.empty()) report += L"PASS    " + TX("selftest.fuzz") + L": " + W(text.substr(text.find("fuzz: "))) + L"\r\n";
+            else {
+                fails++;
+                report += L"FAIL    " + TX("selftest.fuzz") + L": " + W(problem) + L"\r\n";
             }
         }
 #endif

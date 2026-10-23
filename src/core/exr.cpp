@@ -574,8 +574,15 @@ bool read(const std::wstring& path, Image& img, std::wstring& err) {
         err = TXF("error.exr_unsupported", comp);
         return false;
     }
-    img.width = x1 - x0 + 1;
-    img.height = y1 - y0 + 1;
+    {  // taille bornee (64 bits, sans debordement) : une fenetre de donnees enorme d'un fichier abime ne reserve pas des gigaoctets
+        const int64_t w64 = (int64_t)x1 - x0 + 1, h64 = (int64_t)y1 - y0 + 1;
+        if (w64 > 65536 || h64 > 65536 || w64 * h64 * (int64_t)chs.size() > ((int64_t)1 << 28)) {
+            err = TXF("error.exr_read", path.c_str());
+            return false;
+        }
+        img.width = (int)w64;
+        img.height = (int)h64;
+    }
     const int lpb = comp == 3 ? 16 : 1;
     const int blocks = (img.height + lpb - 1) / lpb;
     if (pos + (size_t)blocks * 8 > f.size()) {
@@ -594,7 +601,7 @@ bool read(const std::wstring& path, Image& img, std::wstring& err) {
     for (int b = 0; b < blocks; b++) {
         uint64_t off;
         memcpy(&off, f.data() + pos + (size_t)b * 8, 8);
-        if (off + 8 > f.size()) {
+        if (off > f.size() || f.size() - off < 8) {
             err = TXF("error.exr_read", path.c_str());
             return false;
         }
@@ -602,7 +609,7 @@ bool read(const std::wstring& path, Image& img, std::wstring& err) {
         uint32_t size;
         memcpy(&y, f.data() + off, 4);
         memcpy(&size, f.data() + off + 4, 4);
-        if (off + 8 + size > f.size() || y - y0 < 0 || y - y0 >= img.height) {
+        if (size > f.size() - off - 8 || (int64_t)y - y0 < 0 || (int64_t)y - y0 >= img.height) {
             err = TXF("error.exr_read", path.c_str());
             return false;
         }

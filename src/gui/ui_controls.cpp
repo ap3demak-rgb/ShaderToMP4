@@ -338,6 +338,8 @@ void setupButton(HWND btn, int iconId, BtnStyle style, unsigned bgColor) {
     s.style = style;
     s.bg = bgColor;
     SetWindowSubclass(btn, btnProc, 1, 0);
+    setAccessibleButton(btn);  // un bouton dessine par le programme se presente comme un bouton (sinon : « panneau » pour les lecteurs d'ecran)
+    setAccessibleRole(btn, 0x2B);  // ROLE_SYSTEM_PUSHBUTTON pour MSAA (NVDA...)
 }
 
 void setButtonStyle(HWND btn, BtnStyle style) {

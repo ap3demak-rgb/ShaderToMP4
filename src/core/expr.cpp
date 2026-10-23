@@ -53,6 +53,12 @@ struct ExprParser {
     Expr& out;
     size_t pos = 0;
     std::string err;
+    int depth = 0;  // imbrication : bornee, un fichier abime ne fait pas deborder la pile
+    struct Guard {
+        int& d;
+        explicit Guard(int& x) : d(x) { ++d; }
+        ~Guard() { --d; }
+    };
 
     ExprParser(const std::string& text, Expr& e) : s(text), out(e) {}
 
@@ -78,6 +84,8 @@ struct ExprParser {
 
     // expr = terme { (+|-) terme }
     bool expr() {
+        Guard guard(depth);
+        if (depth > 100) return fail("expr.err.deep");
         if (!term()) return false;
         for (;;) {
             ws();
@@ -104,6 +112,8 @@ struct ExprParser {
         }
     }
     bool unary() {
+        Guard guard(depth);
+        if (depth > 100) return fail("expr.err.deep");
         ws();
         if (pos < s.size() && (s[pos] == '-' || s[pos] == '+')) {
             const char c = s[pos++];

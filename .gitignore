@@ -8,3 +8,10 @@ tests/report.txt
 build-cmake/
 _deps/
 dist/
+build-asan/
+bin-asan/
+build-cov/
+bin-cov/
+coverage/
+bin-soak/
+bin-llvm/

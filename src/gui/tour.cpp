@@ -102,6 +102,7 @@ void refreshButtons() {
 void goTo(int s) {
     D.step = std::max(0, std::min(kSteps - 1, s));
     refreshButtons();
+    SetWindowTextW(D.wnd, TX(kText[D.step]).c_str());  // le texte de l'etape est le nom de la fenetre : lu par les lecteurs d'ecran
     place();
     InvalidateRect(D.wnd, nullptr, FALSE);
 }
@@ -158,6 +159,8 @@ LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 case ID_TOUR_NEXT: D.step == kSteps - 1 ? stop() : goTo(D.step + 1); break;
                 case ID_TOUR_BACK: goTo(D.step - 1); break;
                 case ID_TOUR_SKIP: stop(); break;
+                case IDCANCEL: stop(); break;  // Echap
+                case IDOK: D.step == kSteps - 1 ? stop() : goTo(D.step + 1); break;  // Entree
             }
             return 0;
         case WM_CLOSE: stop(); return 0;

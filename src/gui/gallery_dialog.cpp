@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Patrick JAILLET
 
-// Galerie d'exemples : vignettes par categorie, explication dans la langue de l'interface, ajout du shader a la liste (double-clic ou bouton).
-// Fenetre non modale ; les vignettes sont des BMP 24 bits livres a cote des shaders (core/gallery).
+// Galerie d'exemples : vignettes par categorie, explication dans la langue de l'interface, ajout du shader a la liste (double-clic, Entree ou bouton).
+// Fenetre non modale faite de controles Windows (pastilles = boutons, vignettes = liste en grandes icones, textes = controles statiques) : clavier complet
+// (Tab, fleches, Entree, Echap) et lecteurs d'ecran. Les vignettes sont des BMP 24 bits livres a cote des shaders (core/gallery).
+#include "accessible.h"
 #include "app.h"
 #include "core/gallery.h"
 #include "core/i18n.h"
@@ -12,29 +14,24 @@
 #include "ui_render.h"
 #include "ui_theme.h"
 #include "../../res/resource.h"
+#include <commctrl.h>
 
 using namespace theme;
 
 namespace {
 
-enum { ID_GAL_ADD = 951, ID_GAL_FOLDER, ID_GAL_CLOSE = IDCANCEL };
-
-struct Thumb {
-    std::vector<uint8_t> bgra;
-    int w = 0, h = 0;
-    bool tried = false;
-};
+enum { ID_GAL_LIST = 950, ID_GAL_ADD, ID_GAL_FOLDER, ID_GAL_TITLE, ID_GAL_TEXT, ID_GAL_CHIP0 = 960, ID_GAL_CLOSE = IDCANCEL };
+constexpr int kThumbW = 128, kThumbH = 72;
 
 struct Dialog {
-    HWND wnd = nullptr, bAdd = nullptr, bFolder = nullptr, bClose = nullptr;
+    HWND wnd = nullptr, list = nullptr, bAdd = nullptr, bFolder = nullptr, bClose = nullptr, title = nullptr, text = nullptr;
+    HWND chips[11] = {};  // 0 = toutes, 1.. = categories
+    HIMAGELIST images = nullptr;
     UINT dpi = 96;
     std::vector<GalleryItem> items;
-    std::vector<Thumb> thumbs;
-    std::vector<int> shown;  // indices de items visibles (categorie choisie)
-    int category = -1;       // -1 = toutes
-    int selected = -1;       // index dans `shown`
-    float scroll = 0, contentH = 0, viewH = 0;
+    int category = -1;  // -1 = toutes
     std::string lang;
+    HBRUSH brCard = nullptr;
 } D;
 
 const wchar_t* kClass = L"ShaderToMP4Gallery";
@@ -45,90 +42,36 @@ const char* kCategoryKeys[] = {"gallery.cat.maths", "gallery.cat.bruit", "galler
 int S(int v) { return MulDiv(v, (int)D.dpi, 96); }
 float F(int v) { return (float)v * D.dpi / 96.0f; }
 
-// BMP 24 bits non compresse, lignes du bas vers le haut (sortie de ffmpeg) -> BGRA
-bool loadBmp(const std::wstring& path, Thumb& t) {
-    std::string raw;
-    if (!readFile(path, raw) || raw.size() < 54 || raw[0] != 'B' || raw[1] != 'M') return false;
-    auto u32 = [&](size_t o) { uint32_t v; memcpy(&v, raw.data() + o, 4); return v; };
-    const uint32_t off = u32(10);
-    const int w = (int)u32(18), h0 = (int)u32(22);
-    uint16_t bpp;
-    memcpy(&bpp, raw.data() + 28, 2);
-    const int h = h0 < 0 ? -h0 : h0;
-    if (bpp != 24 || w <= 0 || h <= 0 || w > 4096 || h > 4096) return false;
-    const size_t stride = ((size_t)w * 3 + 3) & ~(size_t)3;
-    if (off + stride * (size_t)h > raw.size()) return false;
-    t.bgra.assign((size_t)w * h * 4, 255);
-    for (int y = 0; y < h; y++) {
-        const uint8_t* src = (const uint8_t*)raw.data() + off + stride * (size_t)(h0 < 0 ? y : h - 1 - y);
-        uint8_t* dst = t.bgra.data() + (size_t)y * w * 4;
-        for (int x = 0; x < w; x++) {
-            dst[x * 4] = src[x * 3];
-            dst[x * 4 + 1] = src[x * 3 + 1];
-            dst[x * 4 + 2] = src[x * 3 + 2];
-        }
-    }
-    t.w = w;
-    t.h = h;
-    return true;
-}
+int infoHeight() { return S(150); }
 
-void refilter() {
-    D.shown.clear();
-    for (size_t i = 0; i < D.items.size(); i++)
-        if (D.category < 0 || D.items[i].category == galleryCategories()[(size_t)D.category]) D.shown.push_back((int)i);
-    D.selected = D.shown.empty() ? -1 : 0;
-    D.scroll = 0;
-}
-
-RECT chipRect(int i) {  // i = -1 : « Toutes » ; sinon la categorie i. Les pastilles s'alignent sur plusieurs lignes si la fenetre est etroite
-    RECT rc;
-    GetClientRect(D.wnd, &rc);
-    int x = S(16), y = S(14);
-    for (int k = -1; k <= i; k++) {
-        const std::wstring label = k < 0 ? TX("gallery.all") : TX(kCategoryKeys[k]);
-        const int wChip = (int)ui::measureText(label, F(13), true) + S(28);
-        if (x + wChip > rc.right - S(16) && x > S(16)) {
+// Pastilles sur une ou plusieurs lignes selon la largeur ; rend la hauteur occupee
+int layoutChips(int width, bool move) {
+    int x = S(16), y = S(14), bottom = y;
+    for (int i = 0; i < 11; i++) {
+        wchar_t buf[96] = L"";
+        GetWindowTextW(D.chips[i], buf, 96);
+        const int w = (int)ui::measureText(buf, F(13), true) + S(30);
+        if (x + w > width - S(16) && x > S(16)) {
             x = S(16);
             y += S(36);
         }
-        if (k == i) return {x, y, x + wChip, y + S(30)};
-        x += wChip + S(8);
+        if (move) MoveWindow(D.chips[i], x, y, w, S(30), TRUE);
+        bottom = y + S(30);
+        x += w + S(8);
     }
-    return {};
-}
-
-int chipsBottom() {
-    int bottom = 0;
-    for (int i = -1; i < 10; i++) bottom = std::max<int>(bottom, chipRect(i).bottom);
     return bottom + S(12);
-}
-
-int infoHeight() { return S(150); }
-
-int columns(int gridW) { return std::max(1, gridW / S(220)); }
-
-RECT cardRect(int pos) {  // pos = rang dans `shown`, hors defilement (coordonnees client, y de la grille ajoute)
-    RECT rc;
-    GetClientRect(D.wnd, &rc);
-    const int gridW = rc.right - S(32), cols = columns(gridW);
-    const int cw = S(208), chh = S(148), gap = (gridW - cols * cw) / std::max(1, cols);
-    const int col = pos % cols, row = pos / cols;
-    const int x = S(16) + col * (cw + gap), y = chipsBottom() + row * (chh + S(12)) - (int)D.scroll;
-    return {x, y, x + cw, y + chh};
-}
-
-RECT gridRect() {
-    RECT rc;
-    GetClientRect(D.wnd, &rc);
-    return {0, chipsBottom(), rc.right, rc.bottom - infoHeight()};
 }
 
 void layoutControls() {
     RECT rc;
     GetClientRect(D.wnd, &rc);
+    const int top = layoutChips(rc.right, true), info = infoHeight();
+    MoveWindow(D.list, S(12), top, rc.right - S(24), std::max(S(80), (int)rc.bottom - top - info - S(8)), TRUE);
+    const int py = rc.bottom - info;  // panneau d'explication
+    MoveWindow(D.title, S(28), py + S(14), rc.right - S(56), S(26), TRUE);
+    MoveWindow(D.text, S(28), py + S(44), rc.right - S(56), S(56), TRUE);
     const int bh = S(34), y = rc.bottom - S(16) - bh;
-    int x = rc.right - S(16);
+    int x = rc.right - S(24);
     auto put = [&](HWND b, int w) {
         x -= S(w);
         MoveWindow(b, x, y, S(w), bh, TRUE);
@@ -139,102 +82,106 @@ void layoutControls() {
     put(D.bAdd, 170);
 }
 
-void clampScroll() { D.scroll = std::max(0.0f, std::min(D.scroll, std::max(0.0f, D.contentH - D.viewH))); }
+int selectedItem() {
+    const int row = (int)SendMessageW(D.list, LVM_GETNEXTITEM, (WPARAM)-1, LVNI_SELECTED);
+    if (row < 0) return -1;
+    LVITEMW it{};
+    it.mask = LVIF_PARAM;
+    it.iItem = row;
+    SendMessageW(D.list, LVM_GETITEMW, 0, (LPARAM)&it);
+    return (int)it.lParam;
+}
 
-void paint() {
-    PAINTSTRUCT ps;
-    HDC hdc = BeginPaint(D.wnd, &ps);
-    RECT rc;
-    GetClientRect(D.wnd, &rc);
-    ui::Frame f(rc.right, rc.bottom, ui::rgb(BG));
-    const float w = (float)rc.right, h = (float)rc.bottom;
-
-    // Grille des vignettes (le fond de la carte recouvre ce qui depasse en haut)
-    const RECT gr = gridRect();
-    const int cols = columns(rc.right - S(32));
-    const int rows = ((int)D.shown.size() + cols - 1) / cols;
-    D.viewH = (float)(gr.bottom - gr.top);
-    D.contentH = (float)rows * (F(148) + F(12));
-    clampScroll();
-    for (size_t pos = 0; pos < D.shown.size(); pos++) {
-        const RECT r = cardRect((int)pos);
-        if (r.bottom < gr.top || r.top > gr.bottom) continue;
-        const int idx = D.shown[pos];
-        Thumb& t = D.thumbs[(size_t)idx];
-        if (!t.tried) {
-            t.tried = true;
-            if (!D.items[(size_t)idx].thumb.empty()) loadBmp(D.items[(size_t)idx].thumb, t);
-        }
-        const bool sel = (int)pos == D.selected;
-        f.fillRound(ui::rectf(r), F(10), ui::rgb(sel ? FIELD_HOT : CARD));
-        f.strokeRound(ui::rectf(r), F(10), ui::rgb(sel ? ACCENT : CARD_BORDER), sel ? 2.0f : 1.0f);
-        const D2D1_RECT_F tr = ui::rectf((float)r.left + F(8), (float)r.top + F(8), (float)r.left + F(200), (float)r.top + F(116));
-        if (t.w > 0) f.image(idx, t.bgra.data(), t.w, t.h, tr);
-        else f.fillRound(tr, F(6), ui::rgb(FIELD));
-        f.text(galleryTitle(D.items[(size_t)idx], D.lang), ui::rectf((float)r.left + F(10), (float)r.top + F(118), (float)r.right - F(8), (float)r.bottom - F(4)), F(12.5f), sel, ui::rgb(sel ? TEXT : MUTED));
-    }
-    // Les zones hors grille (au-dessus et au-dessous) sont repeintes par-dessus le defilement, puis les pastilles
-    f.fillRound(ui::rectf(0, (float)gr.bottom, w, h), 0, ui::rgb(BG));
-    f.fillRound(ui::rectf(0, 0, w, (float)gr.top), 0, ui::rgb(BG));
-    for (int i = -1; i < 10; i++) {
-        const RECT r = chipRect(i);
-        const bool on = i == D.category;
-        f.fillRound(ui::rectf(r), F(15), ui::rgb(on ? ACCENT : FIELD));
-        f.text(i < 0 ? TX("gallery.all") : TX(kCategoryKeys[i]), ui::rectf(r), F(13), true, ui::rgb(on ? BG : MUTED), ui::Center);
-    }
-
-    // Panneau d'explication
-    f.fillRound(ui::rectf(F(8), (float)gr.bottom + F(4), w - F(8), h - F(8)), F(12), ui::rgb(CARD));
-    if (D.selected >= 0) {
-        const GalleryItem& it = D.items[(size_t)D.shown[(size_t)D.selected]];
-        f.text(galleryTitle(it, D.lang), ui::rectf(F(24), (float)gr.bottom + F(14), w - F(24), (float)gr.bottom + F(40)), F(16), true, ui::rgb(TEXT));
-        f.text(galleryText(it, D.lang), ui::rectf(F(24), (float)gr.bottom + F(44), w - F(24), (float)gr.bottom + F(100)), F(13), false, ui::rgb(MUTED), ui::Left, false, true);
+void showSelection() {
+    const int idx = selectedItem();
+    if (idx < 0) {
+        SetWindowTextW(D.title, L"");
+        SetWindowTextW(D.text, D.items.empty() ? TX("gallery.empty").c_str() : L"");
     } else {
-        f.text(TX("gallery.empty"), ui::rectf(F(24), (float)gr.bottom + F(14), w - F(24), (float)gr.bottom + F(60)), F(14), false, ui::rgb(MUTED), ui::Left, false, true);
+        SetWindowTextW(D.title, galleryTitle(D.items[(size_t)idx], D.lang).c_str());
+        SetWindowTextW(D.text, galleryText(D.items[(size_t)idx], D.lang).c_str());
     }
-    f.present(hdc);
-    EndPaint(D.wnd, &ps);
+    EnableWindow(D.bAdd, idx >= 0 && !g.running);
+}
+
+void fillList() {
+    SendMessageW(D.list, WM_SETREDRAW, FALSE, 0);
+    SendMessageW(D.list, LVM_DELETEALLITEMS, 0, 0);
+    int row = 0;
+    for (size_t i = 0; i < D.items.size(); i++) {
+        if (D.category >= 0 && D.items[i].category != galleryCategories()[(size_t)D.category]) continue;
+        const std::wstring title = galleryTitle(D.items[i], D.lang);
+        LVITEMW it{};
+        it.mask = LVIF_TEXT | LVIF_IMAGE | LVIF_PARAM;
+        it.iItem = row++;
+        it.pszText = const_cast<wchar_t*>(title.c_str());
+        it.iImage = (int)i;
+        it.lParam = (LPARAM)i;
+        SendMessageW(D.list, LVM_INSERTITEMW, 0, (LPARAM)&it);
+    }
+    SendMessageW(D.list, WM_SETREDRAW, TRUE, 0);
+    if (row > 0) {
+        LVITEMW st{};
+        st.stateMask = LVIS_SELECTED | LVIS_FOCUSED;
+        st.state = LVIS_SELECTED | LVIS_FOCUSED;
+        SendMessageW(D.list, LVM_SETITEMSTATE, 0, (LPARAM)&st);
+    }
+    for (int i = 0; i < 11; i++) ui::setButtonStyle(D.chips[i], i - 1 == D.category ? ui::BtnStyle::Primary : ui::BtnStyle::Chip);
+    showSelection();
 }
 
 void addSelected() {
-    if (D.selected < 0) return;
-    const GalleryItem& it = D.items[(size_t)D.shown[(size_t)D.selected]];
-    if (g.running) return;
+    const int idx = selectedItem();
+    if (idx < 0 || g.running) return;
+    const GalleryItem& it = D.items[(size_t)idx];
     addFiles({it.path});
     appendLog(TXF("gallery.added", galleryTitle(it, D.lang).c_str()));
 }
 
-int hitCard(POINT p) {
-    const RECT gr = gridRect();
-    if (p.y < gr.top || p.y > gr.bottom) return -1;
-    for (size_t pos = 0; pos < D.shown.size(); pos++) {
-        const RECT r = cardRect((int)pos);
-        if (PtInRect(&r, p)) return (int)pos;
+void buildImages() {
+    D.images = ImageList_Create(kThumbW, kThumbH, ILC_COLOR24, (int)D.items.size() + 1, 8);
+    for (const GalleryItem& it : D.items) {
+        HBITMAP bmp = it.thumb.empty() ? nullptr : (HBITMAP)LoadImageW(nullptr, it.thumb.c_str(), IMAGE_BITMAP, kThumbW, kThumbH, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
+        if (!bmp) {  // vignette absente ou illisible : carre uni
+            HDC dc = GetDC(nullptr);
+            bmp = CreateCompatibleBitmap(dc, kThumbW, kThumbH);
+            HDC mem = CreateCompatibleDC(dc);
+            HGDIOBJ old = SelectObject(mem, bmp);
+            HBRUSH br = CreateSolidBrush(cref(FIELD));
+            RECT r{0, 0, kThumbW, kThumbH};
+            FillRect(mem, &r, br);
+            DeleteObject(br);
+            SelectObject(mem, old);
+            DeleteDC(mem);
+            ReleaseDC(nullptr, dc);
+        }
+        ImageList_Add(D.images, bmp, nullptr);
+        DeleteObject(bmp);
     }
-    return -1;
 }
-
-int hitChip(POINT p) {
-    for (int i = -1; i < 10; i++) {
-        const RECT r = chipRect(i);
-        if (PtInRect(&r, p)) return i;
-    }
-    return -2;
-}
-
-void scrollBy(float dy) {
-    D.scroll += dy;
-    clampScroll();
-    InvalidateRect(D.wnd, nullptr, FALSE);
-}
-
-void refreshAddButton() { EnableWindow(D.bAdd, D.selected >= 0 && !g.running); }
 
 LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
-        case WM_PAINT: paint(); return 0;
+        case WM_PAINT: {  // la carte arrondie du panneau d'explication
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(h, &ps);
+            RECT rc;
+            GetClientRect(h, &rc);
+            ui::Frame f(rc.right, rc.bottom, ui::rgb(BG));
+            f.fillRound(ui::rectf(F(8), (float)(rc.bottom - infoHeight()) + F(4), (float)rc.right - F(8), (float)rc.bottom - F(8)), F(12), ui::rgb(CARD));
+            f.present(hdc);
+            EndPaint(h, &ps);
+            return 0;
+        }
         case WM_ERASEBKGND: return 1;
         case WM_SIZE: layoutControls(); InvalidateRect(h, nullptr, FALSE); return 0;
+        case WM_CTLCOLORSTATIC: {
+            HDC hdc = (HDC)wp;
+            SetTextColor(hdc, cref((HWND)lp == D.title ? TEXT : MUTED));
+            SetBkColor(hdc, cref(CARD));
+            if (!D.brCard) D.brCard = CreateSolidBrush(cref(CARD));
+            return (LRESULT)D.brCard;
+        }
         case WM_DRAWITEM: {
             DRAWITEMSTRUCT* d = (DRAWITEMSTRUCT*)lp;
             if (d->CtlType == ODT_BUTTON) {
@@ -243,62 +190,35 @@ LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             break;
         }
-        case WM_LBUTTONDOWN:
-        case WM_LBUTTONDBLCLK: {
-            const POINT p{(short)LOWORD(lp), (short)HIWORD(lp)};
-            const int chip = hitChip(p);
-            if (chip != -2) {
-                D.category = chip;
-                refilter();
-                refreshAddButton();
-                InvalidateRect(h, nullptr, FALSE);
-                return 0;
-            }
-            const int c = hitCard(p);
-            if (c >= 0) {
-                D.selected = c;
-                refreshAddButton();
-                InvalidateRect(h, nullptr, FALSE);
-                if (msg == WM_LBUTTONDBLCLK) addSelected();
+        case WM_NOTIFY: {
+            const NMHDR* nh = (const NMHDR*)lp;
+            if (nh->idFrom == ID_GAL_LIST) {
+                if (nh->code == LVN_ITEMCHANGED) {
+                    const NMLISTVIEW* nl = (const NMLISTVIEW*)lp;
+                    if ((nl->uChanged & LVIF_STATE) && ((nl->uNewState ^ nl->uOldState) & LVIS_SELECTED)) showSelection();
+                } else if (nh->code == NM_DBLCLK) {
+                    addSelected();
+                }
             }
             return 0;
         }
-        case WM_MOUSEWHEEL: scrollBy(-(float)GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA * F(70)); return 0;
-        case WM_KEYDOWN:
-            if (wp == VK_ESCAPE) {
-                DestroyWindow(h);
-                return 0;
-            }
-            if (wp == VK_RETURN) {
+        case WM_COMMAND: {
+            const int id = LOWORD(wp);
+            if (id >= ID_GAL_CHIP0 && id < ID_GAL_CHIP0 + 11) {
+                D.category = id - ID_GAL_CHIP0 - 1;
+                fillList();
+                SetFocus(D.list);
+            } else if (id == ID_GAL_ADD || id == IDOK) {  // Entree (bouton par defaut du gestionnaire de dialogue) ajoute le shader choisi
                 addSelected();
-                return 0;
-            }
-            if (!D.shown.empty() && (wp == VK_LEFT || wp == VK_RIGHT || wp == VK_UP || wp == VK_DOWN)) {
-                RECT rc;
-                GetClientRect(h, &rc);
-                const int cols = columns(rc.right - S(32)), n = (int)D.shown.size();
-                int s = D.selected < 0 ? 0 : D.selected;
-                s += wp == VK_LEFT ? -1 : wp == VK_RIGHT ? 1 : wp == VK_UP ? -cols : cols;
-                D.selected = std::max(0, std::min(n - 1, s));
-                const RECT r = cardRect(D.selected), gr = gridRect();  // la carte choisie reste visible
-                if (r.top < gr.top) scrollBy((float)(r.top - gr.top));
-                else if (r.bottom > gr.bottom) scrollBy((float)(r.bottom - gr.bottom));
-                refreshAddButton();
-                InvalidateRect(h, nullptr, FALSE);
-                return 0;
-            }
-            break;
-        case WM_COMMAND:
-            switch (LOWORD(wp)) {
-                case ID_GAL_ADD: addSelected(); break;
-                case ID_GAL_FOLDER: {
-                    const std::wstring dir = galleryDir(g.exeDir);
-                    if (!dir.empty()) platform::openWithDefault(dir);
-                    break;
-                }
-                case ID_GAL_CLOSE: DestroyWindow(h); break;
+            } else if (id == ID_GAL_FOLDER) {
+                const std::wstring dir = galleryDir(g.exeDir);
+                if (!dir.empty()) platform::openWithDefault(dir);
+            } else if (id == ID_GAL_CLOSE) {
+                DestroyWindow(h);
             }
             return 0;
+        }
+        case WM_SETFOCUS: SetFocus(D.list); return 0;
         case WM_GETMINMAXINFO: {
             MINMAXINFO* mm = (MINMAXINFO*)lp;
             mm->ptMinTrackSize.x = S(640);
@@ -307,7 +227,10 @@ LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_CLOSE: DestroyWindow(h); return 0;
         case WM_DESTROY:
-            ui::dropImages();
+            if (D.images) ImageList_Destroy(D.images);
+            if (D.brCard) DeleteObject(D.brCard);
+            D.images = nullptr;
+            D.brCard = nullptr;
             D.wnd = nullptr;
             return 0;
     }
@@ -327,7 +250,6 @@ void showGallery(HWND owner) {
     if (!registered) {
         WNDCLASSEXW wc{};
         wc.cbSize = sizeof(wc);
-        wc.style = CS_DBLCLKS;
         wc.lpfnWndProc = proc;
         wc.hInstance = hi;
         wc.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
@@ -341,8 +263,6 @@ void showGallery(HWND owner) {
     D.dpi = theme::dpiFor(owner);
     D.lang = i18n::language();
     D.items = listGallery(g.exeDir);
-    D.thumbs.assign(D.items.size(), Thumb());
-    refilter();
     RECT want{0, 0, S(960), S(700)};
     const DWORD style = WS_OVERLAPPEDWINDOW;
     AdjustWindowRectExForDpi(&want, style, FALSE, 0, D.dpi);
@@ -354,16 +274,34 @@ void showGallery(HWND owner) {
                             place.right - place.left, place.bottom - place.top, owner, nullptr, hi, nullptr);
     if (!D.wnd) return;
     ui::darkTitleBar(D.wnd);
-    auto button = [&](const char* key, int id, int icon, ui::BtnStyle st) {
-        HWND b = CreateWindowExW(0, L"BUTTON", TX(key).c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 0, 0, 10, 10, D.wnd, (HMENU)(INT_PTR)id, hi, nullptr);
-        ui::setupButton(b, icon, st, CARD);  // le panneau d'explication est derriere les boutons
+    auto button = [&](const wchar_t* label, int id, int icon, ui::BtnStyle st, unsigned bg) {
+        HWND b = CreateWindowExW(0, L"BUTTON", label, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 0, 0, 10, 10, D.wnd, (HMENU)(INT_PTR)id, hi, nullptr);
+        ui::setupButton(b, icon, st, bg);
         SendMessageW(b, WM_SETFONT, (WPARAM)g.font, TRUE);
         return b;
     };
-    D.bAdd = button("gallery.btn.add", ID_GAL_ADD, IC_ADD, ui::BtnStyle::Primary);
-    D.bFolder = button("gallery.btn.folder", ID_GAL_FOLDER, IC_FOLDER, ui::BtnStyle::Secondary);
-    D.bClose = button("gallery.btn.close", ID_GAL_CLOSE, IC_CHECK, ui::BtnStyle::Secondary);
+    D.chips[0] = button(TX("gallery.all").c_str(), ID_GAL_CHIP0, 0, ui::BtnStyle::Chip, BG);
+    for (int i = 0; i < 10; i++) D.chips[i + 1] = button(TX(kCategoryKeys[i]).c_str(), ID_GAL_CHIP0 + 1 + i, 0, ui::BtnStyle::Chip, BG);
+    D.list = CreateWindowExW(0, L"SysListView32", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | LVS_ICON | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_AUTOARRANGE, 0, 0, 10, 10, D.wnd,
+                             (HMENU)(INT_PTR)ID_GAL_LIST, hi, nullptr);
+    SendMessageW(D.list, LVM_SETEXTENDEDLISTVIEWSTYLE, 0, LVS_EX_DOUBLEBUFFER | LVS_EX_INFOTIP);
+    SendMessageW(D.list, LVM_SETBKCOLOR, 0, cref(CARD));
+    SendMessageW(D.list, LVM_SETTEXTBKCOLOR, 0, cref(CARD));
+    SendMessageW(D.list, LVM_SETTEXTCOLOR, 0, cref(TEXT));
+    SendMessageW(D.list, WM_SETFONT, (WPARAM)g.font, TRUE);
+    ui::darkTheme(D.list, L"DarkMode_Explorer");
+    buildImages();
+    SendMessageW(D.list, LVM_SETIMAGELIST, LVSIL_NORMAL, (LPARAM)D.images);
+    SendMessageW(D.list, LVM_SETICONSPACING, 0, MAKELPARAM(kThumbW + S(36), kThumbH + S(50)));
+    D.title = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX, 0, 0, 10, 10, D.wnd, (HMENU)(INT_PTR)ID_GAL_TITLE, hi, nullptr);
+    SendMessageW(D.title, WM_SETFONT, (WPARAM)g.fontBold, TRUE);
+    D.text = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX, 0, 0, 10, 10, D.wnd, (HMENU)(INT_PTR)ID_GAL_TEXT, hi, nullptr);
+    SendMessageW(D.text, WM_SETFONT, (WPARAM)g.font, TRUE);
+    D.bAdd = button(TX("gallery.btn.add").c_str(), ID_GAL_ADD, IC_ADD, ui::BtnStyle::Primary, CARD);
+    D.bFolder = button(TX("gallery.btn.folder").c_str(), ID_GAL_FOLDER, IC_FOLDER, ui::BtnStyle::Secondary, CARD);
+    D.bClose = button(TX("gallery.btn.close").c_str(), ID_GAL_CLOSE, IC_CHECK, ui::BtnStyle::Secondary, CARD);
+    setAccessibleName(D.list, "gallery.list");
     layoutControls();
-    refreshAddButton();
-    SetFocus(D.wnd);
+    fillList();
+    SetFocus(D.list);
 }

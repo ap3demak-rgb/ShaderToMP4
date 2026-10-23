@@ -37,6 +37,7 @@ jobs:
         run: |
           $p = Start-Process bin\ShaderToMP4.exe -ArgumentList '--selftest','--quiet' -Wait -PassThru -NoNewWindow
           Get-Content tests\report.txt
+          Select-String -Path tests\report.txt -Pattern '^DRIFT' | ForEach-Object { Write-Host "::warning::$($_.Line)" }   # close to the tolerance: an alert, not a silent pass
           if ($p.ExitCode -ne 0) { throw "self-test exit code $($p.ExitCode)" }
       - name: Output formats (ffmpeg download, each codec / container rendered and re-read)
         shell: pwsh
@@ -45,6 +46,7 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "ffmpeg download exit code $($p.ExitCode)" }
           $p = Start-Process bin\ShaderToMP4.exe -ArgumentList '--selftest','--quiet' -Wait -PassThru -NoNewWindow
           Get-Content tests\report.txt
+          Select-String -Path tests\report.txt -Pattern '^DRIFT' | ForEach-Object { Write-Host "::warning::$($_.Line)" }   # close to the tolerance: an alert, not a silent pass
           if ($p.ExitCode -ne 0) { throw "self-test exit code $($p.ExitCode)" }
       - name: Command line (--render, JSON progress, exit codes)
         shell: pwsh
@@ -66,6 +68,18 @@ jobs:
           $p = Start-Process bin\ShaderToMP4.exe -ArgumentList '--benchmark','--quick','--full','--seconds=1','--compare=bench-ref.json','--max-drop=40' -Wait -PassThru -NoNewWindow -RedirectStandardOutput bench-cmp.txt
           Get-Content bench-cmp.txt
           if ($p.ExitCode -ne 0) { throw "benchmark regression or error, exit code $($p.ExitCode)" }
+      # Memory errors: the program is built with Visual Studio's AddressSanitizer (/fsanitize=address, scripts/build-asan.bat) and the complete self-test must
+      # pass with no alert; the fuzzing of the file readers runs inside it (the self-test restarts the program in --fuzz mode)
+      - name: AddressSanitizer build and complete self-test
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $env:VCVARSALL = "$vs\VC\Auxiliary\Build\vcvars64.bat"
+          cmd /c scripts\build-asan.bat
+          if ($LASTEXITCODE -ne 0) { throw "AddressSanitizer build failed" }
+          Copy-Item mesa\x64\*.dll bin-asan\
+          cmd /c scripts\test-asan.bat
+          if ($LASTEXITCODE -ne 0) { throw "AddressSanitizer found a problem or the self-test failed" }
       - name: Repository checks
         shell: pwsh
         run: ./scripts/check-repo.ps1
@@ -90,6 +104,22 @@ jobs:
           ./scripts/package-manifests.ps1
           $v = (Select-String -Path src\app_info.h -Pattern '^#define APP_VER_STR "(.*)"').Matches[0].Groups[1].Value
           Compress-Archive -Path dist\manifests\* -DestinationPath "dist\ShaderToMP4-$v-manifests.zip"
+      # Performance journal published with the version (benchmark, opening time, memory and duration of a reference render), compared with the journal of the previous
+      # release: a regression of more than 15 % stops the release (on a tag; on other pushes it is a warning, runners vary). Skipped when the machine differs.
+      - name: Performance journal
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force prev | Out-Null
+          gh release download --pattern '*-perf.json' --dir prev 2>$null
+          $prev = Get-ChildItem prev -Filter *-perf.json -ErrorAction SilentlyContinue | Select-Object -First 1
+          ./scripts/perf-journal.ps1 -Previous $(if ($prev) { $prev.FullName } else { "" })
+          if ($LASTEXITCODE -ne 0) {
+            if ($env:GITHUB_REF -like 'refs/tags/v*') { throw "performance regression of more than 15 % (see the journal above)" }
+            Write-Warning "performance regression of more than 15 % (warning only outside a release tag)"
+            $global:LASTEXITCODE = 0
+          }
       # Two builds of the same commit in the same folder must give the same bytes (linker option /Brepro); this step rebuilds bin\ShaderToMP4.exe, so it comes last
       - name: Reproducible build
         shell: pwsh
@@ -102,6 +132,7 @@ jobs:
             dist/*-setup.exe
             dist/*-sbom.spdx.json
             dist/*-vulnerabilities.txt
+            dist/*-perf.json
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -136,5 +167,5 @@ jobs:
           for f in CHANGELOG.md CHANGELOG.fr.md; do
             awk -v v="$version" '/^## /{p=index($0,"## " v)==1; next} p' "$f" >> notes.md || true
           done
-          gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/*-setup.exe dist/SHA256SUMS.txt dist/*-sbom.spdx.json dist/*-vulnerabilities.txt \
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip dist/*-setup.exe dist/SHA256SUMS.txt dist/*-sbom.spdx.json dist/*-vulnerabilities.txt dist/*-perf.json \
             --title "ShaderToMP4 ${GITHUB_REF_NAME#v}" --notes-file notes.md

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Patrick JAILLET
 
-// Aide integree : fenetre non modale (rubriques a gauche, texte defilant a droite), ouverte par F1 ou le bouton « ? » sur la rubrique de la fenetre
-// en cours. Les textes viennent de lang/*.json (pas de page web) ; le glossaire est une rubrique comme les autres.
+// Aide integree : fenetre non modale (liste des rubriques a gauche, texte a droite), ouverte par F1 ou le bouton « ? » sur la rubrique de la fenetre
+// en cours. Les textes viennent de lang/*.json (pas de page web) ; le glossaire est une rubrique comme les autres. La liste est une vraie liste Windows
+// et le texte un controle RichEdit en lecture seule : clavier complet (Tab, fleches, Page haut / bas), selection et copie, lecteurs d'ecran.
+#include "accessible.h"
 #include "app.h"
 #include "core/i18n.h"
 #include "core/util.h"
@@ -10,12 +12,14 @@
 #include "ui_render.h"
 #include "ui_theme.h"
 #include "../../res/resource.h"
+#include <commctrl.h>
+#include <richedit.h>
 
 using namespace theme;
 
 namespace {
 
-enum { ID_HELP_TOUR = 901, ID_HELP_CLOSE = IDCANCEL };
+enum { ID_HELP_LIST = 900, ID_HELP_TOUR, ID_HELP_TEXT, ID_HELP_CLOSE = IDCANCEL };
 
 struct Topic {
     const char* id;
@@ -37,17 +41,15 @@ const char* kGlossary[] = {"help.gloss.shader", "help.gloss.channel", "help.glos
                            "help.gloss.hdr",    "help.gloss.ss",      "help.gloss.blur",   "help.gloss.encoder", "help.gloss.crf"};
 
 struct Dialog {
-    HWND wnd = nullptr, bTour = nullptr;
+    HWND wnd = nullptr, list = nullptr, text = nullptr, bTour = nullptr;
     UINT dpi = 96;
-    int topic = 0, hover = -1;
-    float scroll = 0, contentH = 0, viewH = 0;
+    int topic = 0;
+    HBRUSH brCard = nullptr;
 } D;
 
 const wchar_t* kClass = L"ShaderToMP4Help";
 
 int S(int v) { return MulDiv(v, (int)D.dpi, 96); }
-float F(int v) { return (float)v * D.dpi / 96.0f; }
-
 int sideWidth() { return S(250); }
 
 std::vector<std::wstring> paragraphs(const char* key) {
@@ -63,99 +65,76 @@ std::vector<std::wstring> paragraphs(const char* key) {
     return out;
 }
 
-RECT topicRow(int i) {
-    RECT rc;
-    GetClientRect(D.wnd, &rc);
-    const int top = S(16) + i * S(36);
-    return {S(12), top, sideWidth() - S(8), top + S(32)};
+// Ajoute une serie de caracteres a la fin du texte, avec sa taille (points), son epaisseur et sa couleur
+void append(const std::wstring& s, int points, bool bold, unsigned color) {
+    CHARRANGE end{-1, -1};
+    SendMessageW(D.text, EM_EXSETSEL, 0, (LPARAM)&end);
+    CHARFORMAT2W cf{};
+    cf.cbSize = sizeof(cf);
+    cf.dwMask = CFM_SIZE | CFM_BOLD | CFM_COLOR | CFM_FACE;
+    cf.yHeight = points * 20;
+    cf.dwEffects = bold ? CFE_BOLD : 0;
+    cf.crTextColor = cref(color);
+    wcscpy_s(cf.szFaceName, L"Segoe UI");
+    SendMessageW(D.text, EM_SETCHARFORMAT, SCF_SELECTION, (LPARAM)&cf);
+    SendMessageW(D.text, EM_REPLACESEL, FALSE, (LPARAM)s.c_str());
 }
 
-void layoutControls() {
-    RECT rc;
-    GetClientRect(D.wnd, &rc);
-    MoveWindow(D.bTour, S(12), rc.bottom - S(16) - S(34), sideWidth() - S(20), S(34), TRUE);
-}
-
-void clampScroll() { D.scroll = std::max(0.0f, std::min(D.scroll, std::max(0.0f, D.contentH - D.viewH))); }
-
-void paint() {
-    PAINTSTRUCT ps;
-    HDC hdc = BeginPaint(D.wnd, &ps);
-    RECT rc;
-    GetClientRect(D.wnd, &rc);
-    ui::Frame f(rc.right, rc.bottom, ui::rgb(BG));
-    const float w = (float)rc.right, h = (float)rc.bottom;
-
-    // Rubriques
-    f.fillRound(ui::rectf(F(8), F(8), (float)sideWidth() - F(4), h - F(8)), F(12), ui::rgb(CARD));
-    for (int i = 0; i < kTopicCount; i++) {
-        const RECT r = topicRow(i);
-        const bool sel = i == D.topic, hot = i == D.hover;
-        if (sel || hot) f.fillRound(ui::rectf(r), F(8), ui::rgb(sel ? FIELD_HOT : FIELD));
-        if (sel) f.fillRound(ui::rectf((float)r.left, (float)r.top + F(6), (float)r.left + F(3), (float)r.bottom - F(6)), F(1.5f), ui::rgb(ACCENT));
-        f.text(TX(kTopics[i].title), ui::rectf((float)r.left + F(14), (float)r.top, (float)r.right - F(6), (float)r.bottom), F(13), sel, ui::rgb(sel ? TEXT : MUTED));
-    }
-
-    // Texte de la rubrique
-    const float cx = (float)sideWidth() + F(24), cw = w - cx - F(28);
-    D.viewH = h - F(16) - F(8);
-    float y = F(24) - D.scroll;
+void fillText() {
+    SetWindowTextW(D.text, L"");
     const Topic& t = kTopics[D.topic];
-    f.text(TX(t.title), ui::rectf(cx, y, cx + cw, y + F(34)), F(22), true, ui::rgb(TEXT));
-    y += F(46);
-    auto block = [&](const std::wstring& s, float size, bool bold, unsigned col, float after) {
-        const float bh = ui::measureWrapped(s, size, bold, cw) + F(2);
-        f.text(s, ui::rectf(cx, y, cx + cw, y + bh), size, bold, ui::rgb(col), ui::Left, false, true);
-        y += bh + after;
-    };
+    append(TX(t.title) + L"\n\n", 18, true, TEXT);
     if (t.body) {
-        for (const std::wstring& p : paragraphs(t.body)) block(p, F(14), false, TEXT, F(12));
+        for (const std::wstring& p : paragraphs(t.body)) append(p + L"\n\n", 11, false, TEXT);
     } else {
         for (const char* key : kGlossary) {
             const std::wstring e = TX(key);
             const size_t bar = e.find(L'|');
-            block(bar == std::wstring::npos ? e : e.substr(0, bar), F(14), true, ACCENT, F(2));
-            if (bar != std::wstring::npos) block(e.substr(bar + 1), F(14), false, TEXT, F(14));
+            append((bar == std::wstring::npos ? e : e.substr(0, bar)) + L"\n", 11, true, ACCENT);
+            if (bar != std::wstring::npos) append(e.substr(bar + 1) + L"\n\n", 11, false, TEXT);
         }
     }
-    D.contentH = y + D.scroll + F(16);
-    clampScroll();
-    if (D.contentH > D.viewH) {  // barre de defilement discrete
-        const float trackTop = F(16), trackH = h - F(32);
-        const float thumbH = std::max(F(30), trackH * D.viewH / D.contentH);
-        const float thumbY = trackTop + (trackH - thumbH) * (D.scroll / (D.contentH - D.viewH));
-        f.fillRound(ui::rectf(w - F(10), thumbY, w - F(6), thumbY + thumbH), F(2), ui::rgb(FIELD_BORDER));
-    }
-    f.present(hdc);
-    EndPaint(D.wnd, &ps);
+    CHARRANGE top{0, 0};
+    SendMessageW(D.text, EM_EXSETSEL, 0, (LPARAM)&top);
+    SendMessageW(D.text, EM_SCROLLCARET, 0, 0);
 }
 
 void selectTopic(int i) {
     if (i < 0 || i >= kTopicCount) return;
     D.topic = i;
-    D.scroll = 0;
-    InvalidateRect(D.wnd, nullptr, FALSE);
+    if ((int)SendMessageW(D.list, LB_GETCURSEL, 0, 0) != i) SendMessageW(D.list, LB_SETCURSEL, (WPARAM)i, 0);
+    fillText();
 }
 
-int hitTopic(POINT p) {
-    for (int i = 0; i < kTopicCount; i++) {
-        const RECT r = topicRow(i);
-        if (PtInRect(&r, p)) return i;
+void layoutControls() {
+    RECT rc;
+    GetClientRect(D.wnd, &rc);
+    const int m = S(10), bh = S(34), listBottom = rc.bottom - m - bh - S(8);
+    MoveWindow(D.list, m, m, sideWidth() - m, std::max(S(60), listBottom - m), TRUE);
+    MoveWindow(D.bTour, m, rc.bottom - m - bh, sideWidth() - m, bh, TRUE);
+    MoveWindow(D.text, sideWidth() + m, m, std::max(S(100), (int)rc.right - sideWidth() - 2 * m), std::max(S(60), (int)rc.bottom - 2 * m), TRUE);
+}
+
+LRESULT CALLBACK escProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR) {  // Echap ferme l'aide depuis n'importe quel controle
+    if (msg == WM_KEYDOWN && wp == VK_ESCAPE) {
+        DestroyWindow(GetParent(h));
+        return 0;
     }
-    return -1;
-}
-
-void scrollBy(float dy) {
-    D.scroll += dy;
-    clampScroll();
-    InvalidateRect(D.wnd, nullptr, FALSE);
+    if (msg == WM_GETDLGCODE) return DefSubclassProc(h, msg, wp, lp) & ~(LRESULT)(DLGC_WANTTAB | DLGC_WANTALLKEYS);  // le texte en lecture seule ne garde pas Tab : il passe au controle suivant
+    if (msg == WM_NCDESTROY) RemoveWindowSubclass(h, escProc, id);
+    return DefSubclassProc(h, msg, wp, lp);
 }
 
 LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
-        case WM_PAINT: paint(); return 0;
-        case WM_ERASEBKGND: return 1;
-        case WM_SIZE: layoutControls(); InvalidateRect(h, nullptr, FALSE); return 0;
+        case WM_SIZE: layoutControls(); return 0;
+        case WM_CTLCOLORLISTBOX: {
+            HDC hdc = (HDC)wp;
+            SetTextColor(hdc, cref(TEXT));
+            SetBkColor(hdc, cref(CARD));
+            if (!D.brCard) D.brCard = CreateSolidBrush(cref(CARD));
+            return (LRESULT)D.brCard;
+        }
         case WM_DRAWITEM: {
             DRAWITEMSTRUCT* d = (DRAWITEMSTRUCT*)lp;
             if (d->CtlType == ODT_BUTTON) {
@@ -164,36 +143,23 @@ LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             break;
         }
-        case WM_MOUSEMOVE: {
-            const int hv = hitTopic({(short)LOWORD(lp), (short)HIWORD(lp)});
-            if (hv != D.hover) {
-                D.hover = hv;
-                InvalidateRect(h, nullptr, FALSE);
-            }
-            return 0;
-        }
-        case WM_LBUTTONDOWN: {
-            const int hv = hitTopic({(short)LOWORD(lp), (short)HIWORD(lp)});
-            if (hv >= 0) selectTopic(hv);
-            return 0;
-        }
-        case WM_MOUSEWHEEL: scrollBy(-(float)GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA * F(60)); return 0;
-        case WM_KEYDOWN:
-            switch (wp) {
-                case VK_ESCAPE: DestroyWindow(h); return 0;
-                case VK_DOWN: scrollBy(F(40)); return 0;
-                case VK_UP: scrollBy(-F(40)); return 0;
-                case VK_NEXT: scrollBy(D.viewH * 0.9f); return 0;
-                case VK_PRIOR: scrollBy(-D.viewH * 0.9f); return 0;
-                case VK_HOME: scrollBy(-1e9f); return 0;
-                case VK_END: scrollBy(1e9f); return 0;
-            }
-            break;
         case WM_COMMAND:
-            if (LOWORD(wp) == ID_HELP_TOUR) {
+            if (LOWORD(wp) == ID_HELP_LIST && HIWORD(wp) == LBN_SELCHANGE) {
+                const int i = (int)SendMessageW(D.list, LB_GETCURSEL, 0, 0);
+                if (i >= 0 && i != D.topic) {
+                    D.topic = i;
+                    fillText();
+                }
+            } else if (LOWORD(wp) == IDCANCEL) {  // Echap (gestionnaire de dialogue)
+                DestroyWindow(h);
+            } else if (LOWORD(wp) == ID_HELP_TOUR) {
                 showTour(GetWindow(h, GW_OWNER) ? GetWindow(h, GW_OWNER) : g.wnd, true);
                 DestroyWindow(h);
             }
+            return 0;
+        case WM_SETFOCUS: SetFocus(D.list); return 0;
+        case WM_KEYDOWN:
+            if (wp == VK_ESCAPE) DestroyWindow(h);
             return 0;
         case WM_GETMINMAXINFO: {
             MINMAXINFO* mm = (MINMAXINFO*)lp;
@@ -202,7 +168,11 @@ LRESULT CALLBACK proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_CLOSE: DestroyWindow(h); return 0;
-        case WM_DESTROY: D.wnd = nullptr; return 0;
+        case WM_DESTROY:
+            if (D.brCard) DeleteObject(D.brCard);
+            D.brCard = nullptr;
+            D.wnd = nullptr;
+            return 0;
     }
     return DefWindowProcW(h, msg, wp, lp);
 }
@@ -250,6 +220,7 @@ void showHelp(HWND owner, const char* topicId) {
     HINSTANCE hi = GetModuleHandleW(nullptr);
     static bool registered = false;
     if (!registered) {
+        LoadLibraryW(L"Msftedit.dll");  // RichEdit 5 (comme le journal)
         WNDCLASSEXW wc{};
         wc.cbSize = sizeof(wc);
         wc.lpfnWndProc = proc;
@@ -275,10 +246,26 @@ void showHelp(HWND owner, const char* topicId) {
                             place.right - place.left, place.bottom - place.top, owner ? owner : g.wnd, nullptr, hi, nullptr);
     if (!D.wnd) return;
     ui::darkTitleBar(D.wnd);
+    D.list = CreateWindowExW(0, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT | WS_VSCROLL, 0, 0, 10, 10, D.wnd,
+                             (HMENU)(INT_PTR)ID_HELP_LIST, hi, nullptr);
+    SendMessageW(D.list, WM_SETFONT, (WPARAM)g.font, TRUE);
+    SendMessageW(D.list, LB_SETITEMHEIGHT, 0, S(30));
+    for (int i = 0; i < kTopicCount; i++) SendMessageW(D.list, LB_ADDSTRING, 0, (LPARAM)TX(kTopics[i].title).c_str());
+    ui::darkTheme(D.list, L"DarkMode_Explorer");
+    D.text = CreateWindowExW(0, L"RICHEDIT50W", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_NOHIDESEL, 0, 0, 10, 10, D.wnd,
+                             (HMENU)(INT_PTR)ID_HELP_TEXT, hi, nullptr);
+    SendMessageW(D.text, EM_SETBKGNDCOLOR, 0, cref(CARD));
+    SendMessageW(D.text, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(S(18), S(18)));
+    SendMessageW(D.text, EM_SETTARGETDEVICE, 0, 0);  // retour a la ligne a la largeur du controle
+    ui::darkTheme(D.text, L"DarkMode_Explorer");
     D.bTour = CreateWindowExW(0, L"BUTTON", TX("help.btn.tour").c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 0, 0, 10, 10, D.wnd,
                               (HMENU)(INT_PTR)ID_HELP_TOUR, hi, nullptr);
-    ui::setupButton(D.bTour, IC_HELP, ui::BtnStyle::Secondary, CARD);
+    ui::setupButton(D.bTour, IC_HELP, ui::BtnStyle::Secondary, BG);
     SendMessageW(D.bTour, WM_SETFONT, (WPARAM)g.font, TRUE);
+    setAccessibleName(D.list, "help.topics");
+    setAccessibleName(D.text, "help.content");
+    for (HWND c : {D.list, D.text, D.bTour}) SetWindowSubclass(c, escProc, 91, 0);
     layoutControls();
-    SetFocus(D.wnd);
+    selectTopic(want);
+    SetFocus(D.list);
 }
