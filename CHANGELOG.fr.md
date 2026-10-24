@@ -6,6 +6,21 @@
 
 Format : une section par version, la plus récente en premier. La section d'une version étiquetée est reprise dans les notes de version.
 
+## Non publié
+
+### Ajouté
+
+- **Projets** (`.s2mproj`) : la liste des shaders, les réglages généraux, ceux de chaque shader, les lots, les priorités, et les passes et médias de chaque shader, dans un fichier JSON écrit par le programme ; Nouveau, Ouvrir, Enregistrer, Enregistrer sous et Projets récents dans le nouveau menu **Projet** ; les chemins situés dans le dossier du projet sont relatifs, le dossier peut donc être déplacé ; un projet se dépose sur la fenêtre ou se donne en ligne de commande ; numéro de version du format avec migration de l'ancienne disposition, refus (sans plantage) d'un fichier plus récent ou abîmé, cible de fuzzing `project`.
+- **File de travaux** : réordonner en glissant ou avec `Alt+Haut` / `Alt+Bas`, aussi pendant un rendu (le travail suivant suit la liste) ; *Suspendre / reprendre* un travail ; **priorité** (haute, normale, basse) ; un **journal par travail** (`jobs/logs/`) ; **fin estimée de toute la file** dans la barre d'état ; nouveau statut « Suspendu ».
+- **Historique des rendus** (`history.jsonl`, 2000 lignes au plus, écrit aussi par `--render`) : date, shader, résultat, durée, sortie, empreinte du shader et des réglages ; fenêtre avec *Refaire ce rendu* (mêmes réglages, mêmes octets pour une vidéo sans perte) et *Ouvrir le dossier*.
+- **Outils d'aperçu** : zoom (molette) et déplacement, ajuster (`Ctrl+0`) et pixels réels (`Ctrl+1`) ; *Figer* pour une comparaison A/B avec l'aperçu suivant ; fenêtre des **oscilloscopes** (histogramme, forme d'onde, vectorscope, résumé en texte).
+- **Raccourcis configurables** (`keys.ini`, conflits et lignes invalides refusés et signalés) et **palette de commandes** (`Ctrl+K`, recherche sans casse ni accents) ; chaque commande a un nom dans les neuf langues.
+- Rubrique d'aide « Projets, file de travaux et raccourcis » ; `scripts/test-queue.ps1` pilote la fenêtre (priorité, suspension, échec, annulation, réordonnancement en direct, glisser à la souris, `Alt+Haut`, projet, raccourcis, palette, refaire un rendu) ; l'audit d'accessibilité couvre les nouvelles fenêtres.
+
+### Corrigé
+
+- Les réglages écrits pour « Ce shader seul » et l'historique notent maintenant `loudnorm=off` au lieu de `loudnorm=0`, relu comme une normalisation à −5 LUFS.
+
 ## 3.0.0 — 2026-10-23
 
 ### Modifié

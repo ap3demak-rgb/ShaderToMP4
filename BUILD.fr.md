@@ -106,6 +106,7 @@ Il vérifie les en-têtes de licence (`SPDX-License-Identifier` et la ligne de c
 | `scripts\soak-test.ps1` | un seul processus rend des vidéos en parties et en parallèle pendant `-Minutes` minutes pendant que les descripteurs et la mémoire sont relevés |
 | `scripts\make-sbom.ps1` | nomenclature logicielle (SPDX 2.3) d'après `scripts\components.json` |
 | `scripts\check-vulnerabilities.ps1` | interroge la base NVD sur les vulnérabilités connues des composants tiers livrés (réseau) |
+| `scripts\test-queue.ps1` | pilote la vraie fenêtre : priorité, suspension, échec, annulation, réordonnancement en direct, glisser à la souris, `Alt+Haut`, fichier projet, `keys.ini`, palette de commandes, refaire un rendu depuis l'historique (ne touchez ni à la souris ni au clavier ; deux minutes environ) |
 | `scripts\verify-portable.ps1`, `verify-installer.ps1` | le programme ne crée aucun fichier ni clé de registre hors de son dossier pendant une vraie session ; l'installeur est essayé en silence (installation, mise à jour, refus, désinstallation, traces laissées) |
 
 Gardez `scripts\components.json` et `THIRD_PARTY_NOTICES.md` (et `.fr.md`) d'accord quand un composant est ajouté.

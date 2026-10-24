@@ -89,6 +89,25 @@ One portable program for **Windows** (nothing to install; an optional **installe
   <sub>The <b>guided tour</b> of the first launch: five steps, skippable, available again from the help window.</sub>
 </p>
 
+<table>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/en/project-menu.png"><img src="docs/screenshots/en/project-menu.png" alt="The Project menu"></a></td>
+    <td width="50%"><a href="docs/screenshots/en/palette.png"><img src="docs/screenshots/en/palette.png" alt="Command palette"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The <b>Project</b> menu (layers button): projects, recent projects, render history, preview tools, command palette, shortcuts.</sub></td>
+    <td align="center"><sub>The <b>command palette</b> (<code>Ctrl+K</code>): type a few letters, press Enter.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/en/history.png"><img src="docs/screenshots/en/history.png" alt="Render history"></a></td>
+    <td width="50%"><a href="docs/screenshots/en/scopes.png"><img src="docs/screenshots/en/scopes.png" alt="Scopes"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The <b>render history</b>: <i>Redo this render</i> uses the same settings again.</sub></td>
+    <td align="center"><sub><b>Scopes</b>: histogram, waveform and vectorscope of the displayed image.</sub></td>
+  </tr>
+</table>
+
 <p align="center">
   <a href="docs/screenshots/en/about.png"><img src="docs/screenshots/en/about.png" alt="About window" width="420"></a><br>
   <sub>The “About” window (<code>i</code> button): version, copyright, license, contact and website. The globe button switches the language instantly.</sub>
@@ -139,6 +158,21 @@ The [`examples/gallery`](examples/gallery) folder holds **sixty original shaders
 - **macOS**: 10.13 or newer. The archive is signed ad hoc, not notarized: on first launch, right-click `ShaderToMP4.app` and choose *Open* (or run `xattr -dr com.apple.quarantine ShaderToMP4.app`). Settings are written in the folder that contains the `.app`, so keep it in a folder you can write to (not `/Applications`).
 
 ## Features
+
+<details>
+<summary><b>Projects, job queue, history, preview tools and shortcuts</b></summary>
+
+**Projects.** The layers button at the top right opens the **Project** menu: *New*, *Open*, *Save*, *Save as* and *Recent projects*. A project is a `.s2mproj` file (JSON written by the program) that remembers the list of shaders, the general settings, the settings of each shader (“This shader only”), the batches, the priorities, and the passes and media each shader uses. Paths inside the project folder are stored **relative**, so the whole folder can be moved or copied; a file that is missing when a project opens is listed in the log. A project can be dropped on the window or given on the command line (`ShaderToMP4.exe project.s2mproj` opens it without starting a render). The format has a version number: an older file is migrated, a file made by a newer version is refused with a message, and a damaged file is refused without crashing (the reader is fuzzed, target `project`).
+
+**Job queue.** The shader list is the queue. Drag a line (or `Alt+Up` / `Alt+Down`) to reorder it — **also while a render is running**: the next job always follows the list. Right click: *Hold / resume this job* (a held job is set aside, status “On hold”), *Priority* (high jobs render before the others, low ones last, the order of the list otherwise) and *Log of this job* (each job writes its own `jobs/logs/<name>.log`, with the lines of that job only). While a render runs, the status bar also gives the **estimated end of the whole queue** (jobs left, time and clock time, from the speed measured so far).
+
+**Render history.** `Ctrl+H` (or the Project menu) lists every finished render: date, shader, result, duration and output file. *Redo this render* renders it again **with the settings it used** (an identical file, byte for byte, with a lossless video). The history is `history.jsonl` in the program folder (at most 2000 lines, also written by `--render`); nothing is sent anywhere.
+
+**Preview tools.** In the preview, the mouse wheel zooms around the cursor, dragging moves the zoomed image, `Ctrl+0` fits the window and `Ctrl+1` shows real pixels. *Freeze* (`Ctrl+Shift+F`) keeps the displayed image: the next preview (after a change in the shader, for instance) is shown next to it with a draggable curtain, an **A/B comparison**. *Scopes* (`Ctrl+Shift+V`) opens the **histogram**, the **waveform** and the **vectorscope** of the displayed image, with a text summary (minimum, maximum and mean luma, clipped blacks and whites).
+
+**Shortcuts and command palette.** `Ctrl+K` opens the **command palette**: type a few letters of any command (no matter the case or the accents) and press Enter. The shortcuts are listed in the menus and can be changed in `keys.ini` next to the program (menu *Edit shortcuts*, then *Reload shortcuts*): one line `action=shortcut` (`Ctrl+Shift+K`, `F5`, `Esc`...), an empty value removes a shortcut, and a shortcut that is already taken by another command is refused (the log says which line). `F1` always opens the help of the current window.
+
+</details>
 
 <details>
 <summary><b>Buttons and keyboard shortcuts</b></summary>
@@ -441,6 +475,7 @@ Taken from [CHANGELOG.md](CHANGELOG.md), which has the details; the list is chec
 
 | Version | Main additions |
 |---|---|
+| Unreleased | Projects (`.s2mproj`: shaders, general and per-shader settings, batches, priorities, passes and media, relative paths, recent projects); live-reorderable job queue (drag or `Alt+Up/Down`, hold, priority, a log per job, estimated end of the whole queue); render history (`history.jsonl`, *Redo this render* with the same settings); preview zoom and pan, freeze with A/B comparison, histogram / waveform / vectorscope; configurable shortcuts (`keys.ini`) and command palette (`Ctrl+K`) |
 | 3.0.0 | Pro edition: 3D scenes (OBJ / PLY / glTF meshes, camera, depth, instances, shadows, reflections, GPU compute, preview with mouse orbit); Linux and macOS frozen (2.1.1 is the last version with them), Windows only continuous integration; Pro edition infrastructure (nothing locked in the free edition): signed `ShaderToMP4.license` checked offline, trial watermark on Pro outputs without a license, “Buy Pro” (5, 10 or 15 € by PayPal) and license status in “About”, `--license-info` |
 | 2.1.1 | Sound normalization with a constant gain (the volume no longer rises and falls); Multilayer OpenEXR written by the program (HDR colour, depth, normal, id, alpha, estimated motion), straight or premultiplied alpha, floating-point TIFF, DPX, 16-bit depth map; effect mode: the shader applied to videos, images, sequences and folders (size, rate, duration, sound, subtitles and chapters follow the source), playing backwards, 25 transitions between two sources with `iProgress`, chroma / luma / difference keys |
 | 2.1.0 | Windows installer (NSIS, per user, ffmpeg included, optional) |

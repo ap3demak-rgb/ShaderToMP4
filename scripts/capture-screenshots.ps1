@@ -23,11 +23,22 @@ public class Cap {
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr a, string c, string t);
+  [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
   [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
 }
 "@
+# identifiants des commandes plus recentes : relus dans l'enumeration de src\gui\app.h
+$hdr = Get-Content "$root\src\gui\app.h" -Raw
+$enum = [regex]::Match($hdr, 'enum \{\s*ID_LIST = 101(.*?)\n\};', 'Singleline').Value -replace '//[^\n]*', ''
+$ID = @{}; $next = 101
+foreach ($tok in ($enum -replace '^enum \{', '' -replace '\};$', '') -split ',') {
+  $t = $tok.Trim(); if (-not $t) { continue }
+  if ($t -match '^(ID_[A-Z0-9_]+)\s*=\s*(\d+)$') { $next = [int]$Matches[2]; $ID[$Matches[1]] = $next } elseif ($t -match '^(ID_[A-Z0-9_]+)$') { $ID[$Matches[1]] = $next } else { continue }
+  $next++
+}
 $OutDir = if ([IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $root $OutDir }
 $drive = "S:"
 if (Test-Path "$drive\") { throw "le lecteur $drive existe deja : liberez-le (subst $drive /D) ou changez la variable `$drive" }
@@ -130,6 +141,28 @@ try {
     Cmd 162; Start-Sleep -Seconds 3
     $ed = [Cap]::FindWindow("ShaderToMP4Editor", [NullString]::Value)
     if ($ed -ne [IntPtr]::Zero) { Shot $ed "$out\editor.png"; Close-Wnd "ShaderToMP4Editor" }
+    # projets, file de travaux, historique, oscilloscopes, comparaison A/B (menu et palette : photographies de l'ecran, la fenetre principale les contient)
+    Cmd 148; Start-Sleep -Seconds 3
+    Cmd $ID.ID_PROJECT; Start-Sleep -Seconds 1
+    Grab (Main-Wnd) "$out\project-menu.png"
+    [System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 500
+    Cmd $ID.ID_PALETTE; Start-Sleep -Seconds 1
+    [System.Windows.Forms.SendKeys]::SendWait("pr"); Start-Sleep -Milliseconds 600
+    Shot ([Cap]::FindWindow("ShaderToMP4Palette", [NullString]::Value)) "$out\palette.png"
+    [System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 500
+    Cmd $ID.ID_HISTORY; Start-Sleep -Seconds 2
+    Shot ([Cap]::FindWindow("ShaderToMP4History", [NullString]::Value)) "$out\history.png"
+    Close-Wnd "ShaderToMP4History"
+    Cmd $ID.ID_SCOPES; Start-Sleep -Seconds 2
+    Shot ([Cap]::FindWindow("ShaderToMP4Scopes", [NullString]::Value)) "$out\scopes.png"
+    Close-Wnd "ShaderToMP4Scopes"
+    Cmd $ID.ID_FREEZE; Start-Sleep -Milliseconds 400
+    $prev = [IntPtr]::Zero; $last = [IntPtr]::Zero
+    while (($sl = [Cap]::FindWindowEx((Main-Wnd), $prev, "STSlider", [NullString]::Value)) -ne [IntPtr]::Zero) { $prev = $sl; $last = $sl }
+    [void][Cap]::SendMessage($last, 0x405, [IntPtr]1, [IntPtr]6000)   # TBM_SETPOS : un autre instant du shader
+    Cmd 148; Start-Sleep -Seconds 4
+    Shot (Main-Wnd) "$out\compare.png"
+    Cmd $ID.ID_FREEZE; Start-Sleep -Milliseconds 300
     Stop-App $p
 
     # 5. visite guidee du premier lancement (la carte de la visite est une fenetre a part, posee sur la fenetre principale)

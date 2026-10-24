@@ -6,6 +6,21 @@
 
 Format: one section per version, newest first. The section of a tagged version is copied into the release notes.
 
+## Unreleased
+
+### Added
+
+- **Projects** (`.s2mproj`): the list of shaders, the general settings, the settings of each shader, the batches, the priorities, and the passes and media of each shader, in a JSON file written by the program; New, Open, Save, Save as and Recent projects in the new **Project** menu; paths inside the project folder are relative, so the folder can be moved; a project can be dropped on the window or given on the command line; format version with migration of the previous layout, refusal (without a crash) of a newer or damaged file, fuzzing target `project`.
+- **Job queue**: reorder by dragging or with `Alt+Up` / `Alt+Down`, also while a render runs (the next job follows the list); *Hold / resume* a job; **priority** (high, normal, low); one **log per job** (`jobs/logs/`); **estimated end of the whole queue** in the status bar; new status “On hold”.
+- **Render history** (`history.jsonl`, 2000 lines at most, also written by `--render`): date, shader, result, duration, output, hash of the shader and settings; window with *Redo this render* (same settings, same bytes for a lossless video) and *Show in folder*.
+- **Preview tools**: zoom (mouse wheel) and pan, fit (`Ctrl+0`) and real pixels (`Ctrl+1`); *Freeze* for an A/B comparison with the next preview; **scopes** window (histogram, waveform, vectorscope, text summary).
+- **Configurable shortcuts** (`keys.ini`, conflicts and invalid lines refused and reported) and **command palette** (`Ctrl+K`, search without case or accents); every command has a name in the nine languages.
+- Help topic “Projects, queue and shortcuts”; `scripts/test-queue.ps1` drives the window (priority, hold, failure, cancellation, live reordering, mouse drag, `Alt+Up`, project, shortcuts, palette, history redo); the accessibility audit covers the new windows.
+
+### Fixed
+
+- The settings written for “This shader only” and the history now store `loudnorm=off` instead of `loudnorm=0`, which was read back as a −5 LUFS normalisation.
+
 ## 3.0.0 — 2026-10-23
 
 ### Changed

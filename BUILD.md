@@ -106,6 +106,7 @@ It checks the license headers (`SPDX-License-Identifier` and the copyright line 
 | `scripts\soak-test.ps1` | one process renders chunked videos in parallel for `-Minutes` minutes while handles and memory are sampled |
 | `scripts\make-sbom.ps1` | software bill of materials (SPDX 2.3) from `scripts\components.json` |
 | `scripts\check-vulnerabilities.ps1` | asks the NVD for the known vulnerabilities of the shipped third-party components (network) |
+| `scripts\test-queue.ps1` | drives the real window: priority, hold, failure, cancellation, live reordering, mouse drag, `Alt+Up`, project file, `keys.ini`, command palette, redo from the history (do not touch the mouse or keyboard; about two minutes) |
 | `scripts\verify-portable.ps1`, `verify-installer.ps1` | the program creates no file and no registry key outside its own folder during a real session; the installer is tried silently (install, update, refusals, uninstall, traces left) |
 
 Keep `scripts\components.json` and `THIRD_PARTY_NOTICES.md` (and `.fr.md`) in step when a component is added.

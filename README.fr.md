@@ -89,6 +89,25 @@ Un seul programme portable pour **Windows** (rien à installer ; un **installeur
   <sub>La <b>visite guidée</b> du premier lancement : cinq étapes, qu'on peut passer, et qu'on retrouve dans la fenêtre d'aide.</sub>
 </p>
 
+<table>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/fr/project-menu.png"><img src="docs/screenshots/fr/project-menu.png" alt="Le menu Projet"></a></td>
+    <td width="50%"><a href="docs/screenshots/fr/palette.png"><img src="docs/screenshots/fr/palette.png" alt="Palette de commandes"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Le menu <b>Projet</b> (bouton « couches ») : projets, projets récents, historique des rendus, outils d'aperçu, palette de commandes, raccourcis.</sub></td>
+    <td align="center"><sub>La <b>palette de commandes</b> (<code>Ctrl+K</code>) : tapez quelques lettres, appuyez sur Entrée.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/fr/history.png"><img src="docs/screenshots/fr/history.png" alt="Historique des rendus"></a></td>
+    <td width="50%"><a href="docs/screenshots/fr/scopes.png"><img src="docs/screenshots/fr/scopes.png" alt="Oscilloscopes"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>L'<b>historique des rendus</b> : <i>Refaire ce rendu</i> reprend les mêmes réglages.</sub></td>
+    <td align="center"><sub>Les <b>oscilloscopes</b> : histogramme, forme d'onde et vectorscope de l'image affichée.</sub></td>
+  </tr>
+</table>
+
 <p align="center">
   <a href="docs/screenshots/fr/about.png"><img src="docs/screenshots/fr/about.png" alt="Fenêtre À propos" width="420"></a><br>
   <sub>La fenêtre « À propos » (bouton <code>i</code>) : version, copyright, licence, contact et site web. Le bouton globe change la langue instantanément.</sub>
@@ -139,6 +158,21 @@ Le dossier [`examples/gallery`](examples/gallery) contient **soixante shaders or
 - **macOS** : 10.13 ou plus récent. L'archive est signée « ad hoc », non notariée : au premier lancement, clic droit sur `ShaderToMP4.app` puis *Ouvrir* (ou `xattr -dr com.apple.quarantine ShaderToMP4.app`). Les réglages sont écrits dans le dossier qui contient le `.app` : garde-le dans un dossier où tu peux écrire (pas `/Applications`).
 
 ## Fonctions
+
+<details>
+<summary><b>Projets, file de travaux, historique, outils d'aperçu et raccourcis</b></summary>
+
+**Projets.** Le bouton « couches » en haut à droite ouvre le menu **Projet** : *Nouveau*, *Ouvrir*, *Enregistrer*, *Enregistrer sous* et *Projets récents*. Un projet est un fichier `.s2mproj` (JSON écrit par le programme) qui retient la liste des shaders, les réglages généraux, ceux de chaque shader (« Ce shader seul »), les lots, les priorités, et les passes et médias que chaque shader utilise. Les chemins situés dans le dossier du projet sont notés en **relatif** : tout le dossier peut être déplacé ou copié ; un fichier absent à l'ouverture est signalé dans le journal. Un projet se dépose sur la fenêtre ou se donne en ligne de commande (`ShaderToMP4.exe projet.s2mproj` l'ouvre sans lancer de rendu). Le format porte un numéro de version : un ancien fichier est migré, un fichier fait par une version plus récente est refusé avec un message, et un fichier abîmé est refusé sans plantage (le lecteur est soumis au fuzzing, cible `project`).
+
+**File de travaux.** La liste des shaders est la file. Glissez une ligne (ou `Alt+Haut` / `Alt+Bas`) pour la réordonner — **aussi pendant un rendu** : le travail suivant suit toujours la liste. Clic droit : *Suspendre / reprendre ce travail* (un travail suspendu est mis de côté, statut « Suspendu »), *Priorité* (les travaux de haute priorité passent avant les autres, ceux de basse priorité après, l'ordre de la liste sinon) et *Journal de ce travail* (chaque travail écrit son propre `jobs/logs/<nom>.log`, avec les seules lignes de ce travail). Pendant un rendu, la barre d'état donne aussi la **fin estimée de toute la file** (travaux restants, durée et heure, d'après la vitesse mesurée).
+
+**Historique des rendus.** `Ctrl+H` (ou le menu Projet) liste chaque rendu terminé : date, shader, résultat, durée et fichier produit. *Refaire ce rendu* le refait **avec les réglages qu'il avait** (un fichier identique, octet pour octet, avec une vidéo sans perte). L'historique est `history.jsonl` dans le dossier du programme (2000 lignes au plus, écrit aussi par `--render`) ; rien n'est envoyé nulle part.
+
+**Outils d'aperçu.** Dans l'aperçu, la molette zoome autour du curseur, glisser déplace l'image agrandie, `Ctrl+0` ajuste à la fenêtre et `Ctrl+1` montre les pixels réels. *Figer* (`Ctrl+Maj+F`) garde l'image affichée : l'aperçu suivant (après une modification du shader, par exemple) s'affiche à côté avec un rideau à glisser, une **comparaison A/B**. *Oscilloscopes* (`Ctrl+Maj+V`) ouvre l'**histogramme**, la **forme d'onde** et le **vectorscope** de l'image affichée, avec un résumé en texte (luminance minimale, maximale et moyenne, noirs et blancs écrêtés).
+
+**Raccourcis et palette de commandes.** `Ctrl+K` ouvre la **palette de commandes** : tapez quelques lettres d'une commande (sans tenir compte de la casse ni des accents) et appuyez sur Entrée. Les raccourcis sont indiqués dans les menus et se changent dans `keys.ini`, à côté du programme (menu *Modifier les raccourcis*, puis *Recharger les raccourcis*) : une ligne `action=raccourci` (`Ctrl+Shift+K`, `F5`, `Esc`...), une valeur vide retire un raccourci, et un raccourci déjà pris par une autre commande est refusé (le journal dit quelle ligne). `F1` ouvre toujours l'aide de la fenêtre en cours.
+
+</details>
 
 <details>
 <summary><b>Les boutons et les raccourcis</b></summary>
@@ -441,6 +475,7 @@ Tirées de [CHANGELOG.fr.md](CHANGELOG.fr.md), qui donne le détail ; la liste e
 
 | Version | Principaux ajouts |
 |---|---|
+| Non publié | Projets (`.s2mproj` : shaders, réglages généraux et par shader, lots, priorités, passes et médias, chemins relatifs, projets récents) ; file de travaux réordonnable en direct (glisser ou `Alt+Haut/Bas`, suspension, priorité, un journal par travail, fin estimée de toute la file) ; historique des rendus (`history.jsonl`, *Refaire ce rendu* avec les mêmes réglages) ; zoom et déplacement dans l'aperçu, image figée avec comparaison A/B, histogramme / forme d'onde / vectorscope ; raccourcis configurables (`keys.ini`) et palette de commandes (`Ctrl+K`) |
 | 3.0.0 | Édition Pro : scènes 3D (maillages OBJ / PLY / glTF, caméra, profondeur, instances, ombres, réflexions, calcul GPU, aperçu avec orbite à la souris) ; Linux et macOS gelés (la 2.1.1 est la dernière version avec eux), intégration continue Windows seulement ; infrastructure de l'édition Pro (rien de verrouillé dans l'édition libre) : `ShaderToMP4.license` signé et vérifié hors ligne, filigrane d'essai sur les sorties Pro sans licence, « Acheter Pro » (5, 10 ou 15 € par PayPal) et état de la licence dans « À propos », `--license-info` |
 | 2.1.1 | Normalisation du son à gain constant (le volume ne monte plus ni ne descend) ; OpenEXR multicouche écrit par le programme (couleur HDR, profondeur, normale, id, alpha, mouvement estimé), alpha droit ou prémultiplié, TIFF flottant, DPX, carte de profondeur 16 bits ; mode effet : le shader appliqué à des vidéos, images, séquences et dossiers (taille, cadence, durée, son, sous-titres et chapitres suivent la source), lecture à l'envers, 25 transitions entre deux sources avec `iProgress`, clés chroma / luminance / différence |
 | 2.1.0 | Installeur Windows (NSIS, par utilisateur, ffmpeg inclus, facultatif) |
