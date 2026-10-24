@@ -1162,7 +1162,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             if (problem.empty() && (lit[0] != 0 || lit[1] < 30)) problem = bad("lit pixels " + std::to_string(lit[0]) + " / " + std::to_string(lit[1]));
             check("selftest.fmt_overlay", problem);
         }
-        // --- Temps et boucle (phase 16) : courbe de temps, ralenti, boucles sans couture, recherche de periode, image fixe moyennee, vignette intelligente ---
+        // --- Temps et boucle : courbe de temps, ralenti, boucles sans couture, recherche de periode, image fixe moyennee, vignette intelligente ---
         {
             // courbe de temps : points, vitesse lisse, marche arriere, aller-retour, erreurs, vitesse constante
             {
@@ -1442,7 +1442,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                 check("selftest.fmt_smartthumb", problem);
             }
         }
-        // --- Tres grandes images et projections (phase 17) -----------------------------------------------------------------------------------------
+        // --- Tres grandes images et projections -----------------------------------------------------------------------------------------
         {
             auto seqSettings = [&](double duration) {
                 Settings st = base("h264", "png", 8);
@@ -1855,7 +1855,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                     check("selftest.fmt_domeflat", problem);
                 }
             }
-            // --- Controle qualite, comparaison, images de reference, estimation (phase 18) ---------------------------------------------------------------------
+            // --- Controle qualite, comparaison, images de reference, estimation ---------------------------------------------------------------------
             {
                 Hooks quiet;
                 quiet.log = [](const std::wstring&) {};
@@ -2014,7 +2014,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             }
         }
     }
-    // Publication (phase 19) : calculs purs, poids cible, maitre en cache, source embarquee et verification, recadrage, export HTML
+    // Publication : calculs purs, poids cible, maitre en cache, source embarquee et verification, recadrage, export HTML
     {
         const std::wstring sep(1, platform::pathSeparator());
         auto put = [&](const std::wstring& name, const std::string& body) {
@@ -2254,7 +2254,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             check("selftest.fmt_html", problem);
         }
     }
-    // Son et rythme (phase 20) : analyse d'une piste de clics a tempo connu (120 temps par minute, premier clic a 0,13 s, accent tous les quatre temps,
+    // Son et rythme : analyse d'une piste de clics a tempo connu (120 temps par minute, premier clic a 0,13 s, accent tous les quatre temps,
     // trois sections de huit secondes), variables du shader, expressions lissees, marqueurs, montage cale sur la musique, corrections a la main
     {
         const std::wstring sep(1, platform::pathSeparator());
@@ -2493,7 +2493,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             check("selftest.fmt_rhythm_beatsync", problem);
         }
     }
-    // Calcul reparti (phase 21) : parties rendues en parallele par plusieurs contextes OpenGL, panne et partie lente, ferme sur un dossier partage
+    // Calcul reparti : parties rendues en parallele par plusieurs contextes OpenGL, panne et partie lente, ferme sur un dossier partage
     {
         const std::wstring sep(1, platform::pathSeparator());
         auto put = [&](const std::wstring& name, const std::string& body) {
@@ -2720,7 +2720,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             report += L"        " + TXF("selftest.fmt_farm_machines", machines) + L"\r\n";
         }
     }
-    // Mode effet (phase 23) : un shader applique a des videos, images, sequences et dossiers ; transitions ; incrustation par cle
+    // Mode effet : un shader applique a des videos, images, sequences et dossiers ; transitions ; incrustation par cle
     {
         const std::wstring sep(1, platform::pathSeparator());
         auto put = [&](const std::wstring& name, const std::string& body) {
@@ -3046,7 +3046,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             check("selftest.fmt_source_key", problem);
         }
     }
-    // Sorties multicouches (phase 24) : OpenEXR ecrit par le programme, passes de sortie, alpha droit / premultiplie, TIFF flottant, DPX, carte de profondeur
+    // Sorties multicouches : OpenEXR ecrit par le programme, passes de sortie, alpha droit / premultiplie, TIFF flottant, DPX, carte de profondeur
     {
         const std::wstring sep(1, platform::pathSeparator());
         auto put = [&](const std::wstring& name, const std::string& body) {
@@ -3974,7 +3974,7 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + label + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
         if (!problem.empty()) fails++;
     }
-    // Licence Pro (phase 24b) : signature, fichiers de licence, filigrane, interface
+    // Licence Pro : signature, fichiers de licence, filigrane, interface
     {
         const std::wstring sep(1, platform::pathSeparator());
         auto check = [&](const char* key, const std::wstring& problem) {

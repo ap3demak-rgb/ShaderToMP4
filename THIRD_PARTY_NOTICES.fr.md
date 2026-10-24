@@ -53,7 +53,7 @@ Dernière revue : ShaderToMP4 2.1.0 (l'installeur Windows livre ffmpeg 9.0.2 et 
 | Fichiers de langue (`lang/*.json` : anglais, français, allemand, espagnol, italien, portugais, néerlandais, japonais, chinois) | Textes originaux du projet | GPL-3.0-or-later |
 | Captures d'écran et bannière (`docs/`) | Produites à partir du programme lui-même | GPL-3.0-or-later |
 
-## 5. Revue pour l'édition Pro (shareware, à partir de la phase 25)
+## 5. Revue pour l'édition Pro (shareware)
 
 L'édition Pro est distribuée sous licence propriétaire : chaque composant doit donc permettre la redistribution dans un logiciel propriétaire. Revue des composants ci-dessus : **aucun composant uniquement GPL** parmi ceux compilés dans le programme (TweetNaCl : domaine public ; GLFW et NanoSVG : zlib ; Dear ImGui : MIT ; Inter : OFL). FFmpeg reste un **programme séparé** que l'édition Pro ne lie pas : l'installeur Windows livre sa version GPL v3 avec le texte de sa licence et l'offre de son code source correspondant (section 2) ; l'archive portable le télécharge. La liste des contributeurs a été vérifiée : le dépôt n'a qu'un seul auteur (le titulaire du copyright), aucun apport externe ne demande donc de cession écrite. Linux et macOS sont gelés : leurs bibliothèques ne font pas partie de l'édition Pro.
 

@@ -89,7 +89,7 @@ foreach ($f in $tracked) {
   foreach ($n in $secretNames) { if ($text.Contains($n)) { Fail "reference au generateur ou a la cle secrete dans $f : $n" } }
 }
 
-# --- Windows seulement : Linux et macOS sont geles (ROADMAP, phase 24c) --------------------------------
+# --- Windows seulement : Linux et macOS sont geles (decision du gel) --------------------------------
 # Le programme Windows livre n'embarque ni le code gele (interface ImGui, couche POSIX) ni leurs bibliotheques (GLFW, Dear ImGui, NanoSVG, police Inter),
 # et l'integration continue n'a plus de tache Linux ni macOS.
 Section "Windows seulement"
