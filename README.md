@@ -49,13 +49,13 @@ One portable program for **Windows** (nothing to install; an optional **installe
 ## The interface
 
 <p align="center">
-  <img src="docs/screenshots/en/done.png" alt="ShaderToMP4 after a render" width="860">
+  <a href="docs/screenshots/en/done.png"><img src="docs/screenshots/en/done.png" alt="ShaderToMP4 after a render" width="860"></a>
 </p>
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/en/empty.png" alt="Illustrated drop zone"></td>
-    <td width="50%"><img src="docs/screenshots/en/running.png" alt="Render in progress"></td>
+    <td width="50%"><a href="docs/screenshots/en/empty.png"><img src="docs/screenshots/en/empty.png" alt="Illustrated drop zone"></a></td>
+    <td width="50%"><a href="docs/screenshots/en/running.png"><img src="docs/screenshots/en/running.png" alt="Render in progress"></a></td>
   </tr>
   <tr>
     <td align="center"><sub><b>Drop your shaders</b> in the drop zone, or click “Add”.</sub></td>
@@ -64,19 +64,19 @@ One portable program for **Windows** (nothing to install; an optional **installe
 </table>
 
 <p align="center">
-  <img src="docs/screenshots/en/settings.png" alt="Video settings" width="860"><br>
+  <a href="docs/screenshots/en/settings.png"><img src="docs/screenshots/en/settings.png" alt="Video settings" width="860"></a><br>
   <sub>All video settings in one place, with <b>one-click presets</b> (Draft, YouTube, 4K 60, Vertical) and a tooltip on every field.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/en/list-preview.png" alt="Shader list and preview" width="860"><br>
+  <a href="docs/screenshots/en/list-preview.png"><img src="docs/screenshots/en/list-preview.png" alt="Shader list and preview" width="860"></a><br>
   <sub>The queue with the status of each shader, and a <b>preview</b> at the time of your choice, without starting ffmpeg.</sub>
 </p>
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/en/examples.png" alt="Examples gallery"></td>
-    <td width="50%"><img src="docs/screenshots/en/help.png" alt="Built-in help"></td>
+    <td width="50%"><a href="docs/screenshots/en/examples.png"><img src="docs/screenshots/en/examples.png" alt="Examples gallery"></a></td>
+    <td width="50%"><a href="docs/screenshots/en/help.png"><img src="docs/screenshots/en/help.png" alt="Built-in help"></a></td>
   </tr>
   <tr>
     <td align="center"><sub><b>Examples</b> button: sixty shaders in ten categories, each with a thumbnail and an explanation; one click adds it to the list.</sub></td>
@@ -85,12 +85,12 @@ One portable program for **Windows** (nothing to install; an optional **installe
 </table>
 
 <p align="center">
-  <img src="docs/screenshots/en/tour.png" alt="Guided tour" width="860"><br>
+  <a href="docs/screenshots/en/tour.png"><img src="docs/screenshots/en/tour.png" alt="Guided tour" width="860"></a><br>
   <sub>The <b>guided tour</b> of the first launch: five steps, skippable, available again from the help window.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/en/about.png" alt="About window" width="420"><br>
+  <a href="docs/screenshots/en/about.png"><img src="docs/screenshots/en/about.png" alt="About window" width="420"></a><br>
   <sub>The “About” window (<code>i</code> button): version, copyright, license, contact and website. The globe button switches the language instantly.</sub>
 </p>
 
@@ -99,7 +99,7 @@ One portable program for **Windows** (nothing to install; an optional **installe
 Windows keeps its native Direct2D interface. Linux and macOS use a second interface with the same look (dark cards, gradient accent, the same SVG icons), built on GLFW and Dear ImGui and drawn with OpenGL; both interfaces share the same rendering engine, settings and translations.
 
 <p align="center">
-  <img src="docs/screenshots/linux/en/main.png" alt="ShaderToMP4 on Linux" width="860"><br>
+  <a href="docs/screenshots/linux/en/main.png"><img src="docs/screenshots/linux/en/main.png" alt="ShaderToMP4 on Linux" width="860"></a><br>
   <sub>The Linux / macOS interface (screenshot produced by the continuous integration on Linux).</sub>
 </p>
 
@@ -110,7 +110,7 @@ The [`examples`](examples) folder contains four shaders ready to convert: plasma
 The [`examples/gallery`](examples/gallery) folder holds **sixty original shaders** in ten categories (maths, noise, fractals, ray marching, 2D, post-processing, loops, sound, VR, multiple passes), each with a 128 × 72 thumbnail (`.bmp`) and an explanation in French and English in the header of the file (`// fr:` and `// en:` lines; the other languages show the English one). The **Examples** button of the program opens them in a gallery. Every one is rendered as an image by the self-test, without error.
 
 <p align="center">
-  <img src="docs/screenshots/gallery.png" alt="The sixty example shaders of the gallery" width="860">
+  <a href="docs/screenshots/gallery.png"><img src="docs/screenshots/gallery.png" alt="The sixty example shaders of the gallery" width="860"></a>
 </p>
 
 ## Quick start
@@ -196,7 +196,7 @@ Open it with the pencil icon in the header (Windows), the **Edit** button under 
 - **`Ctrl+S`** writes the file in its own folder (never elsewhere; it is written aside then renamed, so never half-written; line endings and byte order mark are kept) and reloads the preview. The compiler errors come back in the log as `file:line: message` and are marked in the editor: red underlined line, dot in the margin, message under the editor. When the live preview is playing it reloads by itself.
 - Closing asks whether to save the modified tabs. A render started meanwhile uses what is on disk.
 
-<p align="center"><img src="docs/screenshots/en/editor.png" alt="The shader editor on Windows" width="620"></p>
+<p align="center"><a href="docs/screenshots/en/editor.png"><img src="docs/screenshots/en/editor.png" alt="The shader editor on Windows" width="620"></a></p>
 
 </details>
 
@@ -387,7 +387,7 @@ The window shows the effects in the live preview (restarted a moment after a cha
 
 All of these are written as `// key=value` comments in the shader, in `config.ini` or on the command line (`--key=value`), and set in the **Output** window (the film icon in the header on Windows; a section at the bottom of the settings card on Linux and macOS). Values are checked when you close the window (Windows) or press Start, with the same rules as the command line.
 
-<p align="center"><img src="docs/screenshots/en/output.png" alt="The Output window" width="420"></p>
+<p align="center"><a href="docs/screenshots/en/output.png"><img src="docs/screenshots/en/output.png" alt="The Output window" width="420"></a></p>
 
 **Transparency** (`alpha=1`). The shader's `fragColor.a` is kept (straight, not premultiplied alpha; most Shadertoy shaders write garbage or 0 there, so it is off by default). Possible with **ProRes 4444** (MOV, MKV), **VP9** (WebM, MKV; 8-bit alpha), **WebP** and **PNG / TIFF / EXR** sequences; every other combination (H.264, H.265, AV1, GIF, ProRes 422...) is refused before the render with a message. Supersampling, motion blur and the post-processing keep the alpha (the blur accumulates premultiplied colors, so edges stay exact); fades act on the alpha, the live preview and the preview image show the transparency over a gray checkerboard. The size estimate counts the alpha channel. Not possible with HDR or frame interpolation.
 

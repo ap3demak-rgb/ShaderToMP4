@@ -49,13 +49,13 @@ Un seul programme portable pour **Windows** (rien à installer ; un **installeur
 ## L'interface
 
 <p align="center">
-  <img src="docs/screenshots/fr/done.png" alt="Interface de ShaderToMP4 après un rendu" width="860">
+  <a href="docs/screenshots/fr/done.png"><img src="docs/screenshots/fr/done.png" alt="Interface de ShaderToMP4 après un rendu" width="860"></a>
 </p>
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/fr/empty.png" alt="Zone de dépôt illustrée"></td>
-    <td width="50%"><img src="docs/screenshots/fr/running.png" alt="Rendu en cours"></td>
+    <td width="50%"><a href="docs/screenshots/fr/empty.png"><img src="docs/screenshots/fr/empty.png" alt="Zone de dépôt illustrée"></a></td>
+    <td width="50%"><a href="docs/screenshots/fr/running.png"><img src="docs/screenshots/fr/running.png" alt="Rendu en cours"></a></td>
   </tr>
   <tr>
     <td align="center"><sub><b>Glisse tes shaders</b> dans la zone de dépôt, ou clique sur « Ajouter ».</sub></td>
@@ -64,19 +64,19 @@ Un seul programme portable pour **Windows** (rien à installer ; un **installeur
 </table>
 
 <p align="center">
-  <img src="docs/screenshots/fr/settings.png" alt="Réglages vidéo" width="860"><br>
+  <a href="docs/screenshots/fr/settings.png"><img src="docs/screenshots/fr/settings.png" alt="Réglages vidéo" width="860"></a><br>
   <sub>Tous les réglages vidéo au même endroit, avec des <b>préréglages en un clic</b> (Brouillon, YouTube, 4K 60, Vertical) et une info-bulle sur chaque champ.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/fr/list-preview.png" alt="Liste des shaders et aperçu" width="860"><br>
+  <a href="docs/screenshots/fr/list-preview.png"><img src="docs/screenshots/fr/list-preview.png" alt="Liste des shaders et aperçu" width="860"></a><br>
   <sub>La file d'attente avec le statut de chaque shader, et un <b>aperçu</b> à l'instant de ton choix, sans lancer ffmpeg.</sub>
 </p>
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/fr/examples.png" alt="Galerie d'exemples"></td>
-    <td width="50%"><img src="docs/screenshots/fr/help.png" alt="Aide intégrée"></td>
+    <td width="50%"><a href="docs/screenshots/fr/examples.png"><img src="docs/screenshots/fr/examples.png" alt="Galerie d'exemples"></a></td>
+    <td width="50%"><a href="docs/screenshots/fr/help.png"><img src="docs/screenshots/fr/help.png" alt="Aide intégrée"></a></td>
   </tr>
   <tr>
     <td align="center"><sub>Bouton <b>Exemples</b> : soixante shaders en dix catégories, chacun avec une vignette et une explication ; un clic l'ajoute à la liste.</sub></td>
@@ -85,12 +85,12 @@ Un seul programme portable pour **Windows** (rien à installer ; un **installeur
 </table>
 
 <p align="center">
-  <img src="docs/screenshots/fr/tour.png" alt="Visite guidée" width="860"><br>
+  <a href="docs/screenshots/fr/tour.png"><img src="docs/screenshots/fr/tour.png" alt="Visite guidée" width="860"></a><br>
   <sub>La <b>visite guidée</b> du premier lancement : cinq étapes, qu'on peut passer, et qu'on retrouve dans la fenêtre d'aide.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/fr/about.png" alt="Fenêtre À propos" width="420"><br>
+  <a href="docs/screenshots/fr/about.png"><img src="docs/screenshots/fr/about.png" alt="Fenêtre À propos" width="420"></a><br>
   <sub>La fenêtre « À propos » (bouton <code>i</code>) : version, copyright, licence, contact et site web. Le bouton globe change la langue instantanément.</sub>
 </p>
 
@@ -99,7 +99,7 @@ Un seul programme portable pour **Windows** (rien à installer ; un **installeur
 Windows garde son interface native Direct2D. Linux et macOS utilisent une seconde interface au même aspect (cartes sombres, accent en dégradé, mêmes icônes SVG), fondée sur GLFW et Dear ImGui et dessinée en OpenGL ; les deux interfaces partagent le même moteur de rendu, les mêmes réglages et les mêmes traductions.
 
 <p align="center">
-  <img src="docs/screenshots/linux/fr/main.png" alt="ShaderToMP4 sous Linux" width="860"><br>
+  <a href="docs/screenshots/linux/fr/main.png"><img src="docs/screenshots/linux/fr/main.png" alt="ShaderToMP4 sous Linux" width="860"></a><br>
   <sub>L'interface Linux / macOS (capture produite par l'intégration continue sous Linux).</sub>
 </p>
 
@@ -110,7 +110,7 @@ Le dossier [`examples`](examples) contient quatre shaders prêts à convertir : 
 Le dossier [`examples/gallery`](examples/gallery) contient **soixante shaders originaux** en dix catégories (maths, bruit, fractales, ray marching, 2D, post-traitement, boucles, son, VR, passes multiples), chacun avec une vignette 128 × 72 (`.bmp`) et une explication en français et en anglais dans l'en-tête du fichier (lignes `// fr:` et `// en:` ; les autres langues affichent l'anglais). Le bouton **Exemples** du programme les ouvre dans une galerie. L'auto-test rend chacun en une image, sans erreur.
 
 <p align="center">
-  <img src="docs/screenshots/gallery.png" alt="Les soixante shaders d'exemple de la galerie" width="860">
+  <a href="docs/screenshots/gallery.png"><img src="docs/screenshots/gallery.png" alt="Les soixante shaders d'exemple de la galerie" width="860"></a>
 </p>
 
 ## Démarrage rapide
@@ -196,7 +196,7 @@ On l'ouvre par l'icône crayon de l'en-tête (Windows), le bouton **Modifier** s
 - **`Ctrl+S`** écrit le fichier dans son propre dossier (jamais ailleurs ; il est écrit à côté puis renommé, donc jamais à moitié écrit ; fins de ligne et marque d'ordre des octets conservées) et recharge l'aperçu. Les erreurs du compilateur reviennent dans le journal sous la forme `fichier:ligne: message` et se marquent dans l'éditeur : ligne rouge soulignée, point dans la marge, message sous l'éditeur. Quand l'aperçu en lecture tourne, il se recharge tout seul.
 - La fermeture demande si les onglets modifiés doivent être enregistrés. Un rendu lancé entre-temps utilise ce qui est sur le disque.
 
-<p align="center"><img src="docs/screenshots/fr/editor.png" alt="L'éditeur de shader sous Windows" width="620"></p>
+<p align="center"><a href="docs/screenshots/fr/editor.png"><img src="docs/screenshots/fr/editor.png" alt="L'éditeur de shader sous Windows" width="620"></a></p>
 
 </details>
 
@@ -387,7 +387,7 @@ La fenêtre montre les effets dans l'aperçu en lecture (relancé un instant apr
 
 Tout ceci s'écrit en commentaires `// clé=valeur` dans le shader, dans `config.ini` ou en ligne de commande (`--clé=valeur`), et se règle dans la fenêtre **Sortie** (l'icône de film dans l'en-tête sous Windows ; une section en bas de la carte des réglages sous Linux et macOS). Les valeurs sont vérifiées quand vous fermez la fenêtre (Windows) ou appuyez sur Démarrer, avec les mêmes règles qu'en ligne de commande.
 
-<p align="center"><img src="docs/screenshots/fr/output.png" alt="La fenêtre Sortie" width="420"></p>
+<p align="center"><a href="docs/screenshots/fr/output.png"><img src="docs/screenshots/fr/output.png" alt="La fenêtre Sortie" width="420"></a></p>
 
 **Transparence** (`alpha=1`). Le `fragColor.a` du shader est conservé (alpha droit, pas prémultiplié ; la plupart des shaders Shadertoy y écrivent n'importe quoi ou 0, c'est donc désactivé par défaut). Possible avec **ProRes 4444** (MOV, MKV), **VP9** (WebM, MKV ; alpha 8 bits), **WebP** et les séquences **PNG / TIFF / EXR** ; toute autre combinaison (H.264, H.265, AV1, GIF, ProRes 422...) est refusée avant le rendu avec un message. Le supersampling, le flou de mouvement et le post-traitement gardent l'alpha (le flou accumule des couleurs prémultipliées, les bords restent exacts) ; les fondus agissent sur l'alpha, l'aperçu en lecture et l'image d'aperçu montrent la transparence sur un damier gris. L'estimation de taille compte le canal alpha. Impossible avec le HDR ou l'interpolation d'images.
 

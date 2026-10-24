@@ -55,6 +55,10 @@
   .about b { color: var(--text); }
   footer { border-top: 1px solid var(--border); padding: 28px 0 40px; color: var(--muted); font-size: 14px; text-align: center; }
   html[lang="en"] [data-lang="fr"], html[lang="fr"] [data-lang="en"] { display: none !important; }
+  .two img, .gallery img, #hero { cursor: zoom-in; }
+  #lightbox { position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center; background: rgba(8,9,12,.92); cursor: zoom-out; padding: 16px; }
+  #lightbox.open { display: flex; }
+  #lightbox img { max-width: 100%; max-height: 100%; border-radius: 10px; box-shadow: 0 10px 50px rgba(0,0,0,.6); }
 </style>
 </head>
 <body>
@@ -189,6 +193,19 @@
   <div class="wrap">© 2026 Patrick JAILLET · GPL-3.0-or-later · <a href="mailto:sandefjord.development@proton.me">sandefjord.development@proton.me</a></div>
 </footer>
 
+<div id="lightbox" role="dialog" aria-modal="true"><img alt=""></div>
+<script>
+  (function () {
+    var box = document.getElementById('lightbox'), big = box.querySelector('img');
+    function close() { box.classList.remove('open'); }
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+      if (t.tagName === 'IMG' && (t.id === 'hero' || t.closest('.two, .gallery'))) { big.src = t.currentSrc || t.src; big.alt = t.alt; box.classList.add('open'); }
+      else if (box.classList.contains('open')) close();
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  })();
+</script>
 <script>
   (function () {
     var html = document.documentElement, btn = document.getElementById('langBtn');
