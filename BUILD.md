@@ -85,7 +85,7 @@ It needs the "MSVC AddressSanitizer" component of Visual Studio. A few cases tha
 
 ### Coverage
 
-`scripts\build-coverage.bat` builds `bin-cov\` with symbols for a coverage tool. No tool works with this binary yet (see the repository README, "Quality checks"); the script is kept for a new attempt.
+`scripts\build-coverage.bat` builds `bin-cov\` with clang-cl (LLVM, `C:\Program Files\LLVM`; set the `LLVM` variable if it is elsewhere) and source-based coverage; `scripts\coverage.ps1` then runs the complete self-test on it, merges the profiles of every process it starts and writes `coverage\report.txt` (per file) plus the totals of the engine, the windows and the rest. The engine total must stay at or above 80 % of the lines (`-Min`); the windows are not driven by the self-test and show 0 %.
 
 ## Repository checks
 

@@ -42,6 +42,9 @@
 #include "params.h"
 #include "passes.h"
 #include "player.h"
+#include "presets.h"
+#include "queue.h"
+#include "endaction.h"
 #include "shadertoy_import.h"
 #include "i18n.h"
 #include "process.h"
@@ -3973,6 +3976,87 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
         const std::wstring label = TX("selftest.fmt_texture") + L" " + W(ext);
         report += (problem.empty() ? L"PASS    " : L"FAIL    ") + label + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
         if (!problem.empty()) fails++;
+    }
+    // Preselections, file d'attente et action de fin : fichiers du moteur sans autre cas
+    {
+        const std::wstring sep(1, platform::pathSeparator());
+        const std::wstring work = outDir + sep + L"unit_files" + sep;
+        removeTree(work);
+        platform::makeDir(work);
+        auto check = [&](const char* key, const std::wstring& problem) {
+            total++;
+            report += (problem.empty() ? L"PASS    " : L"FAIL    ") + TX(key) + (problem.empty() ? L"" : L": " + problem) + L"\r\n";
+            if (!problem.empty()) fails++;
+        };
+        auto bad = [&](const std::string& what) { return TXF("selftest.fmt_bad", W(what).c_str()); };
+        {  // les huit preselections integrees, puis deux fichiers de l'utilisateur
+            std::wstring problem;
+            struct P {
+                int w, h, fps;
+                const char *codec, *container;
+            };
+            const P want[kBuiltinPresetCount] = {{1280, 720, 30, "h264", "mp4"},  {1920, 1080, 60, "h264", "mp4"},      {3840, 2160, 60, "h265", "mp4"},
+                                                 {1080, 1920, 30, "h264", "mp4"}, {1280, 720, 30, "h264", "mp4"},       {480, 270, 15, "h264", "gif"},
+                                                 {1920, 1080, 30, "prores_hq", "mov"}, {1280, 720, 30, "vp9", "webm"}};
+            for (int i = 0; i < kBuiltinPresetCount && problem.empty(); i++) {
+                Settings st;
+                st.duration = 20;
+                applyBuiltinPreset(i, st);
+                if (st.width != want[i].w || st.height != want[i].h || st.fps != want[i].fps || st.codec != want[i].codec || st.container != want[i].container)
+                    problem = bad("built-in preset " + std::to_string(i));
+                else if (i == 5 && st.duration > 8.0) problem = bad("gif preset duration");
+                else if (std::string(builtinPresetKey(i)).empty()) problem = bad("preset name");
+            }
+            if (problem.empty() && std::string(builtinPresetKey(-3)) != builtinPresetKey(0)) problem = bad("preset key range");
+            if (problem.empty()) {
+                platform::makeDir(work + L"presets");
+                writeFileAtomic(work + L"presets" + sep + L"zeta.ini", "width=640\nheight=360\nfps=24\n");
+                writeFileAtomic(work + L"presets" + sep + L"Alpha.INI", "width=800\nheight=450\n");
+                writeFileAtomic(work + L"presets" + sep + L"notes.txt", "pas un reglage\n");
+                const auto list = userPresets(work);
+                bool ok = false;
+                if (list.size() != 2 || list[0].name != L"Alpha" || list[1].name != L"zeta") problem = bad("user presets list");
+                else {
+                    const Settings a = loadUserPreset(list[0], &ok);
+                    const Settings z = loadUserPreset(list[1], nullptr);
+                    if (!ok || a.width != 800 || a.height != 450 || z.fps != 24 || z.width != 640) problem = bad("user preset values");
+                    else {
+                        loadUserPreset({L"x", work + L"presets" + sep + L"absent.ini"}, &ok);
+                        if (ok) problem = bad("missing preset");
+                    }
+                }
+                if (problem.empty() && !userPresets(work + L"nulle" + sep).empty()) problem = bad("no presets folder");
+            }
+            check("selftest.unit_presets", problem);
+        }
+        {  // queue.txt : aller-retour, fichiers disparus ignores, suppression quand la liste est vide
+            std::wstring problem;
+            const std::wstring a = work + L"a.glsl", b = work + L"b.glsl", gone = work + L"disparu.glsl";
+            writeFileAtomic(a, "void mainImage(out vec4 o,in vec2 p){o=vec4(0);}\n");
+            writeFileAtomic(b, "void mainImage(out vec4 o,in vec2 p){o=vec4(1);}\n");
+            saveQueue(work, {a, gone, b});
+            const auto got = loadQueue(work);
+            if (got.size() != 2 || got[0] != a || got[1] != b) problem = bad("queue round trip");
+            else {
+                saveQueue(work, {a, gone, b});  // liste inchangee : rien a refaire
+                saveQueue(work, {});
+                if (fileExists(work + L"queue.txt") || !loadQueue(work).empty()) problem = bad("queue cleared");
+            }
+            check("selftest.unit_queue", problem);
+        }
+        {  // action de fin : noms reconnus, « none » et « folder » sur un fichier absent ne font rien
+            std::wstring problem;
+            int logged = 0;
+            auto log = [&](const std::wstring&) { logged++; };
+            if (!isEndAction("none") || !isEndAction("folder") || !isEndAction("sleep") || isEndAction("shutdown") || isEndAction("")) problem = bad("end action names");
+            else {
+                performEndAction("none", L"", log, true);
+                performEndAction("folder", work + L"absent.mp4", log, true);
+                if (logged != 0) problem = bad("end action silent");
+            }
+            check("selftest.unit_endaction", problem);
+        }
+        removeTree(work);
     }
     // Licence Pro : signature, fichiers de licence, filigrane, interface
     {

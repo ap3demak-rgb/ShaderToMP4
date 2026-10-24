@@ -85,7 +85,7 @@ Il faut le composant « MSVC AddressSanitizer » de Visual Studio. Quelques cas 
 
 ### Couverture
 
-`scripts\build-coverage.bat` construit `bin-cov\` avec des symboles pour un outil de couverture. Aucun outil ne fonctionne encore avec ce binaire (voir le README du dépôt, « Contrôles de qualité ») ; le script est gardé pour un nouvel essai.
+`scripts\build-coverage.bat` construit `bin-cov\` avec clang-cl (LLVM, `C:\Program Files\LLVM` ; définissez la variable `LLVM` s'il est ailleurs) et la couverture par source ; `scripts\coverage.ps1` lance ensuite l'auto-test complet dessus, fusionne les profils de chaque processus qu'il démarre et écrit `coverage\report.txt` (par fichier) ainsi que les totaux du moteur, des fenêtres et du reste. Le total du moteur doit rester à 80 % des lignes ou plus (`-Min`) ; les fenêtres ne sont pas pilotées par l'auto-test et comptent 0 %.
 
 ## Contrôles du dépôt
 
