@@ -334,9 +334,8 @@ void parseLines(Settings& s, const std::string& text, bool onlySlashComments) {
     }
 }
 
-void writeIni(const std::wstring& path, const Settings& s) {
-    FILE* f = platform::openFile(path, "wb");
-    if (!f) return;
+std::string iniText(const Settings& s) {
+    std::string out;
     // Les valeurs gardent toujours le point décimal ; seuls les commentaires suivent la langue de l'interface.
     auto num = [](double v) {
         char b[48];
@@ -347,10 +346,10 @@ void writeIni(const std::wstring& path, const Settings& s) {
         std::string l = key + "=" + value;
         if (commentKey) l += "      ; " + i18n::tr8(commentKey);
         l += "\r\n";
-        fputs(l.c_str(), f);
+        out += l;
     };
-    fputs(("; " + i18n::tr8("ini.header1") + "\r\n; " + i18n::tr8("ini.header2") + "\r\n").c_str(), f);
-    fputs(("; name: " + i18n::tr8("ini.name") + "\r\n; iChannel0-3: " + i18n::tr8("ini.ichannel") + "\r\n; variant: " + i18n::tr8("ini.variant") + "\r\n; mouse: " + i18n::tr8("ini.mouse") + "\r\n; key: " + i18n::tr8("ini.key") + "\r\n; lut: " + i18n::tr8("ini.lut") + "\r\n; alpha, hdr, interp, scale, loudnorm, title, credit: " + i18n::tr8("ini.output_more") + "\r\n").c_str(), f);
+    out += ("; " + i18n::tr8("ini.header1") + "\r\n; " + i18n::tr8("ini.header2") + "\r\n");
+    out += ("; name: " + i18n::tr8("ini.name") + "\r\n; iChannel0-3: " + i18n::tr8("ini.ichannel") + "\r\n; variant: " + i18n::tr8("ini.variant") + "\r\n; mouse: " + i18n::tr8("ini.mouse") + "\r\n; key: " + i18n::tr8("ini.key") + "\r\n; lut: " + i18n::tr8("ini.lut") + "\r\n; alpha, hdr, interp, scale, loudnorm, title, credit: " + i18n::tr8("ini.output_more") + "\r\n");
     put("width", std::to_string(s.width));
     put("height", std::to_string(s.height));
     put("fps", num(s.fps));
@@ -470,5 +469,13 @@ void writeIni(const std::wstring& path, const Settings& s) {
     put("vripd", num(s.vrIpd), "ini.vripd");
     put("metadata", s.metadata ? "1" : "0", "ini.metadata");
     for (const auto& kv : s.pro) put(kv.first, kv.second);  // reglages des fonctions Pro : sans commentaire (la valeur garde sa forme exacte)
+    return out;
+}
+
+void writeIni(const std::wstring& path, const Settings& s) {
+    FILE* f = platform::openFile(path, "wb");
+    if (!f) return;
+    const std::string text = iniText(s);
+    fwrite(text.data(), 1, text.size(), f);
     fclose(f);
 }

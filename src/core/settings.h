@@ -137,6 +137,7 @@ void registerProSettingKey(const std::string& key, bool keepSpaces);
 
 bool sameSettings(const Settings& a, const Settings& b);
 void parseLines(Settings& s, const std::string& text, bool onlySlashComments);  // ini (false) ou commentaires // (true)
+std::string iniText(const Settings& s);  // le texte de config.ini : tous les reglages, un par ligne
 void writeIni(const std::wstring& path, const Settings& s);
 // Reglage nomme (ligne de commande : --width=1280) : isSettingKey dit si la cle (minuscules) existe, applySetting l'applique.
 bool isSettingKey(const std::string& key);

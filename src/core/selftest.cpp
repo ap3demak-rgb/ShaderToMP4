@@ -44,6 +44,10 @@
 #include "player.h"
 #include "presets.h"
 #include "queue.h"
+#include "project.h"
+#include "history.h"
+#include "scopes.h"
+#include "keys.h"
 #include "endaction.h"
 #include "shadertoy_import.h"
 #include "i18n.h"
@@ -3989,6 +3993,11 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
             if (!problem.empty()) fails++;
         };
         auto bad = [&](const std::string& what) { return TXF("selftest.fmt_bad", W(what).c_str()); };
+        auto norm = [](std::wstring v) {  // les deux separateurs valent le meme
+            for (auto& c : v)
+                if (c == L'/' || c == L'\\') c = platform::pathSeparator();
+            return v;
+        };
         {  // les huit preselections integrees, puis deux fichiers de l'utilisateur
             std::wstring problem;
             struct P {
@@ -4055,6 +4064,299 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                 if (logged != 0) problem = bad("end action silent");
             }
             check("selftest.unit_endaction", problem);
+        }
+        {  // fichier projet : reglages generaux, shaders de tests/, aller-retour identique
+            std::wstring problem;
+            Settings st;
+            st.width = 1920;
+            st.height = 1080;
+            st.fps = 59.94;
+            st.codec = "h265";
+            st.crf = 19;
+            st.outdir = norm(work + L"sortie");
+            st.audio = L"";
+            st.variants = {"draft", "final"};
+            st.channel[1] = L"noise";
+            const Settings back = projectSettings(projectGeneral(st), Settings());
+            if (iniText(back) != iniText(st)) {
+                const std::string x = iniText(st), y = iniText(back);
+                size_t i = 0;
+                while (i < x.size() && i < y.size() && x[i] == y[i]) i++;
+                problem = bad("general settings round trip near: " + x.substr(i, 40) + " / " + y.substr(i, 40));
+            }
+            std::vector<std::wstring> shaders;
+            std::vector<platform::DirEntry> entries;
+            if (problem.empty() && platform::listDir(dir, entries)) {
+                std::sort(entries.begin(), entries.end(), [](const platform::DirEntry& a, const platform::DirEntry& b) { return a.name < b.name; });
+                for (const auto& e : entries)
+                    if (!e.isDir && e.name.size() > 5 && e.name.compare(e.name.size() - 5, 5, L".glsl") == 0 && e.name.find(L'.') == e.name.size() - 5) shaders.push_back(dir + e.name);
+            }
+            if (problem.empty() && shaders.size() < 10) problem = bad("no shaders in tests");
+            if (problem.empty()) {
+                std::map<std::wstring, int> batches;
+                batches[shaders[0]] = 2;
+                const Project p = captureProject(work, L"essai", st, shaders, batches);
+                const std::string a = projectToJson(p, work);
+                Project q;
+                std::string err;
+                if (!projectFromJson(a, work, q, err)) problem = bad("project read: " + err);
+                else if (projectToJson(q, work) != a) problem = bad("project round trip");
+                else if (q.shaders.size() != shaders.size() || q.shaders[0].batch != 2 || q.shaders[0].path != norm(shaders[0])) problem = bad("project shaders");
+                else if (iniText(projectSettings(q.general, Settings())) != iniText(st)) problem = bad("project general");
+            }
+            check("selftest.unit_project", problem);
+        }
+        {  // le projet se deplace avec son dossier : chemins relatifs, copie du dossier, tout se retrouve
+            std::wstring problem;
+            const std::wstring p1 = work + L"proj1" + sep, p2 = work + L"proj2" + sep;
+            platform::makeDir(p1);
+            platform::makeDir(p2);
+            const std::string code = "// iChannel0=tex.png\nvoid mainImage(out vec4 o,in vec2 p){o=texture(iChannel0,p/iResolution.xy);}\n";
+            writeFileAtomic(p1 + L"clip.glsl", code);
+            writeFileAtomic(p1 + L"clip.bufferA.glsl", "void mainImage(out vec4 o,in vec2 p){o=vec4(0);}\n");
+            writeFileAtomic(p1 + L"tex.png", "x");
+            writeFileAtomic(p2 + L"clip.glsl", code);
+            writeFileAtomic(p2 + L"clip.bufferA.glsl", "void mainImage(out vec4 o,in vec2 p){o=vec4(0);}\n");
+            writeFileAtomic(p2 + L"tex.png", "x");
+            Settings st;
+            st.outdir = norm(p1 + L"videos");
+            std::map<std::wstring, int> batches;
+            Project p = captureProject(work, L"deplacable", st, {p1 + L"clip.glsl"}, batches);
+            std::wstring e;
+            if (!saveProject(p1 + L"a" + kProjectExt, p, e)) problem = bad("save project");
+            std::string text;
+            readFile(p1 + L"a" + kProjectExt, text);
+            if (problem.empty() && (text.find(U8(work)) != std::string::npos || text.find("clip.glsl") == std::string::npos || text.find("clip.bufferA.glsl") == std::string::npos || text.find("tex.png") == std::string::npos))
+                problem = bad("project paths are not relative");
+            if (problem.empty() && p.shaders[0].passes.size() != 1) problem = bad("project passes");
+            if (problem.empty() && p.shaders[0].media.size() != 1) problem = bad("project media");
+            writeFileAtomic(p2 + L"a" + kProjectExt, text);  // le dossier copie ailleurs
+            Project q;
+            if (problem.empty() && !loadProject(p2 + L"a" + kProjectExt, q, e)) problem = bad("load moved project");
+            if (problem.empty()) {
+                if (q.shaders.size() != 1 || norm(q.shaders[0].path) != norm(p2 + L"clip.glsl")) problem = bad("moved shader path");
+                else if (!projectMissing(q).empty()) problem = bad("moved project has missing files");
+                else if (norm(projectSettings(q.general, Settings()).outdir) != norm(p2 + L"videos")) problem = bad("moved output folder");
+            }
+            if (problem.empty()) {  // un fichier retire est signale
+                platform::removeFile(p2 + L"tex.png");
+                const auto miss = projectMissing(q);
+                if (miss.size() != 1 || norm(miss[0]) != norm(p2 + L"tex.png")) problem = bad("missing media not reported");
+            }
+            if (problem.empty()) {  // projets recents : le dernier ouvert en tete, sans doublon
+                addRecentProject(work, p1 + L"a" + kProjectExt);
+                addRecentProject(work, p2 + L"a" + kProjectExt);
+                addRecentProject(work, p1 + L"a" + kProjectExt);
+                const auto r = recentProjects(work);
+                if (r.size() != 2 || norm(r[0]) != norm(p1 + L"a" + kProjectExt)) problem = bad("recent projects");
+            }
+            check("selftest.unit_project_move", problem);
+        }
+        {  // version de format, ancien format migre, fichiers abimes refuses sans plantage
+            std::wstring problem;
+            Project q;
+            std::string err;
+            const std::wstring base = work;
+            if (projectFromJson("{\"version\":99,\"shaders\":[]}", base, q, err) || err.empty()) problem = bad("newer version accepted");
+            else if (projectFromJson("[1,2,3]", base, q, err)) problem = bad("array accepted");
+            else if (projectFromJson("{\"format\":\"x\",\"version\":1}", base, q, err)) problem = bad("wrong format accepted");
+            else if (projectFromJson("{\"format\":\"ShaderToMP4 project\",\"version\":1,\"shaders\":[{\"path\":3}]}", base, q, err)) problem = bad("bad shader entry accepted");
+            else if (projectFromJson("{\"format\":\"ShaderToMP4 project\",\"version\":1,\"general\":[\"width=640\"", base, q, err)) problem = bad("truncated file accepted");
+            else if (projectFromJson(std::string(20u << 20, ' '), base, q, err)) problem = bad("huge file accepted");
+            if (problem.empty()) {  // version 0 : liste de chemins et objet « settings »
+                if (!projectFromJson("{\"name\":\"ancien\",\"shaders\":[\"a.glsl\",\"sous/b.glsl\"],\"settings\":{\"width\":640,\"height\":360,\"fps\":30,\"codec\":\"vp9\",\"alpha\":true}}", base, q, err))
+                    problem = bad("old format refused: " + err);
+                else {
+                    const Settings s = projectSettings(q.general, Settings());
+                    if (q.version != kProjectVersion || q.shaders.size() != 2 || norm(q.shaders[1].path) != norm(base + L"sous" + sep + L"b.glsl") || s.width != 640 || s.height != 360 || s.codec != "vp9" || !s.alpha)
+                        problem = bad("old format migration");
+                }
+            }
+            if (problem.empty()) {  // un reglage inconnu est ignore, le reste est lu
+                if (!projectFromJson("{\"format\":\"ShaderToMP4 project\",\"version\":1,\"general\":[\"width=800\",\"inconnu=1\",\"sans egal\"],\"shaders\":[]}", base, q, err) || projectSettings(q.general, Settings()).width != 800)
+                    problem = bad("unknown setting");
+            }
+            check("selftest.unit_project_errors", problem);
+        }
+        {  // historique des rendus : ligne JSON, relecture, ordre, limite, empreinte
+            std::wstring problem;
+            const std::wstring hdir = work + L"hist" + sep;
+            platform::makeDir(hdir);
+            const std::wstring sh = hdir + L"un shader été.glsl";  // nom-technique
+            writeFileAtomic(sh, "void mainImage(out vec4 o,in vec2 p){o=vec4(0.25);}\n");
+            Settings st;
+            st.width = 640;
+            const HistoryEntry e1 = makeHistoryEntry(sh, st, hdir + L"sortie.mp4", 12.5, "ok");
+            HistoryEntry back;
+            if (!parseHistoryLine(historyLine(e1), back) || back.shader != e1.shader || back.output != e1.output || back.hash != e1.hash || back.result != "ok" || std::fabs(back.seconds - 12.5) > 1e-6 ||
+                back.time.size() != 19 || back.settings.size() != e1.settings.size() || back.settings.empty())
+                problem = bad("history line round trip");
+            if (problem.empty()) {  // guillemets, barres et tabulations dans les chemins
+                HistoryEntry q = e1;
+                q.shader = L"C:\\a \"b\"\\\u00e9.glsl";
+                q.output = L"x\ty\r\nz";
+                HistoryEntry r;
+                if (!parseHistoryLine(historyLine(q), r) || r.shader != q.shader || r.output != q.output) problem = bad("history escapes");
+            }
+            if (problem.empty()) {
+                Settings other = st;
+                other.width = 800;
+                if (historyHash(sh, st) != e1.hash || historyHash(sh, other) == e1.hash) problem = bad("history hash settings");
+                const std::string before = historyHash(sh, st);
+                writeFileAtomic(sh, "void mainImage(out vec4 o,in vec2 p){o=vec4(0.5);}\n");
+                if (historyHash(sh, st) == before) problem = bad("history hash shader");
+            }
+            if (problem.empty()) {  // le shader et les reglages enregistres servent a refaire le rendu
+                Settings again;
+                applyFileOverrides(again, back.settings);
+                if (again.width != 640 || again.codec != st.codec) problem = bad("history settings redo");
+            }
+            if (problem.empty()) {
+                clearHistory(hdir);
+                appendHistory(hdir, e1);
+                HistoryEntry e2 = e1;
+                e2.result = "failed";
+                e2.output.clear();
+                appendHistory(hdir, e2);
+                const auto list = loadHistory(hdir);
+                if (list.size() != 2 || list[0].result != "failed" || list[1].result != "ok") problem = bad("history order");
+            }
+            if (problem.empty()) {  // plus de kHistoryMax rendus : seuls les plus recents restent
+                HistoryEntry e3 = e1;
+                for (size_t i = 0; i < kHistoryMax + 250; i++) {
+                    e3.seconds = (double)i;
+                    appendHistory(hdir, e3);
+                }
+                const auto list = loadHistory(hdir);
+                if (list.size() != kHistoryMax || list[0].seconds != (double)(kHistoryMax + 249)) problem = bad("history limit");
+            }
+            if (problem.empty()) {
+                writeFileAtomic(hdir + L"history.jsonl", "pas du json\n{\"shader\":\"x\"}\n" + historyLine(e1) + "\n[1]\n");
+                const auto list = loadHistory(hdir);
+                if (list.size() != 1 || list[0].shader != e1.shader) problem = bad("history damaged lines");
+            }
+            check("selftest.unit_history", problem);
+        }
+        {  // oscilloscopes : histogramme, forme d'onde, vectorscope sur des images de contenu connu
+            std::wstring problem;
+            const int w = 64, h = 48;
+            auto image = [&](int r, int g, int b) {
+                std::vector<uint8_t> px((size_t)w * h * 4);
+                for (size_t i = 0; i < px.size(); i += 4) {
+                    px[i] = (uint8_t)b;
+                    px[i + 1] = (uint8_t)g;
+                    px[i + 2] = (uint8_t)r;
+                    px[i + 3] = 255;
+                }
+                return px;
+            };
+            Scopes s;
+            const uint32_t n = (uint32_t)(w * h);
+            std::vector<uint8_t> gray = image(128, 128, 128);
+            computeScopes(gray.data(), w, h, s);
+            if (s.pixels != n || s.hist[3][128] != n || s.hist[0][128] != n || s.hist[1][128] != n || s.hist[2][128] != n) problem = bad("scope gray histogram");
+            else if (s.wave[(size_t)128 * kScopeWaveCols + 0] != (uint32_t)h || s.wave[(size_t)128 * kScopeWaveCols + (size_t)((w - 1) * kScopeWaveCols / w)] != (uint32_t)h) problem = bad("scope gray waveform");
+            else if (s.vec[(size_t)128 * 256 + 128] != n) problem = bad("scope gray vectorscope");
+            if (problem.empty()) {
+                std::vector<uint8_t> red = image(255, 0, 0);
+                computeScopes(red.data(), w, h, s);
+                int cb, cr;
+                scopeChroma(255, 0, 0, cb, cr);
+                if (s.hist[0][255] != n || s.hist[1][0] != n || s.hist[2][0] != n || s.hist[3][scopeLuma(255, 0, 0)] != n) problem = bad("scope red histogram");
+                else if (cr != 255 || cb >= 128 || s.vec[(size_t)cr * 256 + (size_t)cb] != n) problem = bad("scope red vectorscope");
+                else if (scopeLuma(255, 255, 255) != 255 || scopeLuma(0, 0, 0) != 0) problem = bad("scope luma range");
+            }
+            if (problem.empty()) {  // degrade horizontal de 0 a 255 : la forme d'onde monte de gauche a droite
+                std::vector<uint8_t> ramp((size_t)w * h * 4);
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++) {
+                        const uint8_t v = (uint8_t)(x * 255 / (w - 1));
+                        uint8_t* p = &ramp[((size_t)y * w + x) * 4];
+                        p[0] = p[1] = p[2] = v;
+                        p[3] = 255;
+                    }
+                computeScopes(ramp.data(), w, h, s);
+                const int colLeft = 0, colRight = (w - 1) * kScopeWaveCols / w;
+                int levelLeft = -1, levelRight = -1;
+                for (int l = 0; l < 256; l++) {
+                    if (s.wave[(size_t)l * kScopeWaveCols + (size_t)colLeft]) levelLeft = l;
+                    if (s.wave[(size_t)l * kScopeWaveCols + (size_t)colRight]) levelRight = l;
+                }
+                if (levelLeft > 8 || levelRight < 247) problem = bad("scope ramp waveform");
+                else if (s.hist[3][0] == 0 || s.hist[3][255] == 0) problem = bad("scope ramp histogram");
+            }
+            if (problem.empty()) {  // les images affichees ont la taille annoncee et montrent le contenu
+                computeScopes(gray.data(), w, h, s);
+                std::vector<uint8_t> a, b, c;
+                int aw = 0, ah = 0, bw = 0, bh = 0, cw = 0, ch = 0;
+                renderHistogram(s, a, aw, ah);
+                renderWaveform(s, b, bw, bh);
+                renderVectorscope(s, c, cw, ch);
+                if (aw != 256 || ah != 128 || a.size() != (size_t)aw * ah * 4 || bw != kScopeWaveCols || bh != 256 || b.size() != (size_t)bw * bh * 4 || cw != 256 || ch != 256 || c.size() != (size_t)cw * ch * 4)
+                    problem = bad("scope image sizes");
+                else {
+                    auto lit = [](const std::vector<uint8_t>& img, int iw, int x, int y) { return (int)img[((size_t)y * iw + x) * 4 + 1]; };
+                    if (lit(b, bw, bw / 2, 255 - 128) < 150 || lit(b, bw, bw / 2, 255 - 20) > 80) problem = bad("scope waveform image");
+                    else if (lit(c, cw, 128, 255 - 128) < 150) problem = bad("scope vectorscope image");
+                    else if (lit(a, aw, 128, ah - 2) < 20 || lit(a, aw, 40, ah - 2) > 40) problem = bad("scope histogram image");
+                }
+            }
+            if (problem.empty()) {  // image vide ou sans pixels : rien ne plante
+                computeScopes(nullptr, 0, 0, s);
+                if (s.pixels != 0 || s.wave.size() != (size_t)kScopeWaveCols * 256) problem = bad("scope empty image");
+            }
+            check("selftest.unit_scopes", problem);
+        }
+        {  // raccourcis clavier (keys.ini) et recherche de la palette de commandes
+            std::wstring problem;
+            Shortcut sc;
+            if (!parseShortcut("Ctrl+S", sc) || !sc.ctrl || sc.shift || sc.vk != 'S' || shortcutText(sc) != "Ctrl+S") problem = bad("shortcut Ctrl+S");
+            else if (!parseShortcut(" ctrl + shift + k ", sc) || shortcutText(sc) != "Ctrl+Shift+K") problem = bad("shortcut spaces");
+            else if (!parseShortcut("F5", sc) || sc.vk != 0x74 || shortcutText(sc) != "F5") problem = bad("shortcut F5");
+            else if (!parseShortcut("Esc", sc) || sc.vk != 0x1B || !parseShortcut("Alt+Up", sc) || !sc.alt || sc.vk != 0x26) problem = bad("shortcut named keys");
+            else if (parseShortcut("S", sc) || parseShortcut("Shift+5", sc) || parseShortcut("Ctrl+", sc) || parseShortcut("Ctrl+F13", sc) || parseShortcut("Hyper+X", sc) || parseShortcut("", sc))
+                problem = bad("invalid shortcut accepted");
+            if (problem.empty()) {
+                const std::vector<KeyAction> acts = {{"a", "Ctrl+A"}, {"b", "Ctrl+B"}, {"c", ""}, {"f", "F5"}, {"e", ""}, {"g", "Ctrl+G"}};
+                std::vector<std::string> problems;
+                const KeyMap def = defaultKeys(acts);
+                if (!keyConflicts(def).empty() || !def.find("c") || !def.find("c")->empty() || def.find("zz") || def.find("a")->vk != 'A') problem = bad("default keys");
+                const KeyMap m = parseKeys("; commentaire\na=Ctrl+B\nc=Ctrl+C\nb=\na=Ctrl+B\nd=F1\nsans egal\nc=Ctrl+Bogus\nf=\ne=Ctrl+G\n", acts, problems);
+                if (problem.empty() && (problems.size() != 4 || !keyConflicts(m).empty())) problem = bad("keys.ini problems " + std::to_string(problems.size()));
+                else if (problem.empty() && (shortcutText(*m.find("a")) != "Ctrl+B" || !m.find("b")->empty() || shortcutText(*m.find("c")) != "Ctrl+C" || !m.find("f")->empty() || !m.find("e")->empty() || shortcutText(*m.find("g")) != "Ctrl+G")) problem = bad("keys.ini result");
+                else if (problem.empty()) {  // le modele ecrit se relit a l'identique
+                    std::vector<std::string> again;
+                    const KeyMap m2 = parseKeys(keysTemplate(m), acts, again);
+                    if (!again.empty() || m2.binding != m.binding) problem = bad("keys.ini template round trip");
+                }
+            }
+            if (problem.empty()) {
+                const std::vector<std::wstring> names = {L"Ouvrir un projet", L"Enregistrer le projet", L"Éditeur de shader", L"Aide"};  // nom-technique
+                auto same = [](std::vector<int> a, std::vector<int> b) { return a == b; };
+                if (!same(filterNames(names, L"projet"), {0, 1})) problem = bad("palette word");
+                else if (!same(filterNames(names, L"editeur"), {2})) problem = bad("palette accents");
+                else if (!same(filterNames(names, L"PROJET ouv"), {0})) problem = bad("palette two words");  // nom-technique
+                else if (!same(filterNames(names, L"e"), {1, 2, 0, 3})) problem = bad("palette prefix first");
+                else if (!same(filterNames(names, L""), {0, 1, 2, 3}) || !filterNames(names, L"zzz").empty()) problem = bad("palette empty and none");
+            }
+            check("selftest.unit_keys", problem);
+        }
+        {  // refaire un rendu avec les memes reglages donne les memes octets (video sans perte)
+            std::wstring problem, e;
+            std::string logText;
+            Settings st = base("h264", "mp4", 8);
+            st.crf = 0;
+            st.name = L"redo_a";
+            Settings st2 = st;
+            st2.name = L"redo_b";
+            if (!render(st, e, logText) || !render(st2, e, logText)) problem = e.empty() ? TX("selftest.render_failed") : e;
+            else {
+                std::string a, b;
+                readFile(outputFile(renderShader, st, false), a);
+                readFile(outputFile(renderShader, st2, false), b);
+                if (a.size() < 200 || a != b) problem = bad("lossless render twice: " + std::to_string(a.size()) + " / " + std::to_string(b.size()) + " bytes");
+            }
+            check("selftest.unit_redo", problem);
         }
         removeTree(work);
     }

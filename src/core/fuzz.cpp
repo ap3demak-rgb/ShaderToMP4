@@ -17,6 +17,9 @@
 #include "publish.h"
 #include "quality.h"
 #include "queue.h"
+#include "project.h"
+#include "history.h"
+#include "keys.h"
 #include "rhythm.h"
 #include "settings.h"
 #include "shadertoy_import.h"
@@ -97,7 +100,36 @@ std::vector<FuzzTarget> builtins() {
                      writeBytes(env.dir + L"queue.txt", in);
                      loadQueue(env.dir);
                  }});
-    t.push_back({"montage", L".montage", {"# montage\nset width=64\nset height=64\nset fps=10\nset codec=h264\nduration=2\na.glsl\n\"a.glsl\" 2 crossfade 0.5\na.glsl 2 cut\na.glsl 2 fade 1\n", "set audio=song.mp3\nset beatsync=bar\na.glsl 4\n"}, nullptr,
+    t.push_back({"project", L".s2mproj", {"{\"format\":\"ShaderToMP4 project\",\"version\":1,\"name\":\"p\",\"general\":[\"width=1280\",\"height=720\",\"outdir=videos\"],\"shaders\":[{\"path\":\"a.glsl\",\"batch\":2,\"settings\":[\"fps=24\"],\"passes\":[\"a.bufferA.glsl\"],\"media\":[\"tex/x.png\"]},{\"path\":\"C:/s/b.glsl\"}]}", "{\"shaders\":[\"a.glsl\",\"b.glsl\"],\"settings\":{\"width\":640,\"fps\":30,\"alpha\":true}}", "{\"version\":99,\"shaders\":[]}"}, nullptr,
+                 [](const std::string& in, const FuzzEnv& env) {
+                     Project p;
+                     std::string err;
+                     if (projectFromJson(in, env.dir, p, err)) {
+                         projectMissing(p);
+                         const std::string again = projectToJson(p, env.dir);
+                         Project q;
+                         if (!projectFromJson(again, env.dir, q, err)) throw std::runtime_error("project: written file is not readable");
+                         projectSettings(p.general, Settings());
+                     }
+                 }});
+    t.push_back({"shortcuts", L".ini", {"; raccourcis\nstart=F5\nproject_save=Ctrl+S\nundo=Ctrl+Shift+Z\nhelp=\n", "a=Ctrl+A\nb=Ctrl+A\nc=Hyper+X\nsans egal\n=F1\nstart=Ctrl+\n"}, nullptr,
+                 [](const std::string& in, const FuzzEnv&) {
+                     const std::vector<KeyAction> acts = {{"start", "F5"}, {"project_save", "Ctrl+S"}, {"undo", "Ctrl+Z"}, {"help", "F1"}, {"a", ""}, {"b", ""}};
+                     std::vector<std::string> problems;
+                     const KeyMap m = parseKeys(in, acts, problems);
+                     if (!keyConflicts(m).empty()) throw std::runtime_error("keys: conflict kept");
+                     std::vector<std::string> again;
+                     if (parseKeys(keysTemplate(m), acts, again).binding != m.binding) throw std::runtime_error("keys: template not stable");
+                     filterNames({L"Ouvrir", L"Fermer"}, W(in));
+                 }});
+    t.push_back({"history", L".jsonl", {"{\"time\":\"2026-10-24 10:00:00\",\"shader\":\"C:/a.glsl\",\"output\":\"C:/a.mp4\",\"seconds\":3.5,\"hash\":\"abc\",\"result\":\"ok\",\"settings\":[\"width=640\",\"fps=30\"]}\n", "{\"shader\":\"x\",\"result\":\"failed\"}\ngarbage\n[1,2]\n"}, nullptr,
+                 [](const std::string& in, const FuzzEnv& env) {
+                     writeBytes(env.dir + L"history.jsonl", in);
+                     loadHistory(env.dir);
+                     HistoryEntry e;
+                     parseHistoryLine(in, e);
+                 }});
+    t.push_back({"montage", L".montage",{"# montage\nset width=64\nset height=64\nset fps=10\nset codec=h264\nduration=2\na.glsl\n\"a.glsl\" 2 crossfade 0.5\na.glsl 2 cut\na.glsl 2 fade 1\n", "set audio=song.mp3\nset beatsync=bar\na.glsl 4\n"}, nullptr,
                  [](const std::string&, const FuzzEnv& env) {
                      MontageDef def;
                      std::wstring err;

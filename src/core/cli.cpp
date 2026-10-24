@@ -6,6 +6,8 @@
 #include "encoder.h"
 #include "exrtools.h"
 #include "endaction.h"
+#include "history.h"
+#include <chrono>
 #include "ffmpeg_download.h"
 #include "formats.h"
 #include "gl.h"
@@ -644,7 +646,11 @@ int runRenderCli(const std::wstring& exeDir, const std::vector<std::wstring>& ar
             else out(U8(TXF("log.error", e.c_str())) + "\n", true);
             return false;
         }
-        if (convertFile(f, exeDir, cfg, H, e) == Result::Ok) {
+        const auto t0 = std::chrono::steady_clock::now();
+        const Result res = convertFile(f, exeDir, cfg, H, e);
+        appendHistory(exeDir, makeHistoryEntry(f, cfg, res == Result::Ok ? currentOutput : std::wstring(), std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(),
+                                               res == Result::Ok ? "ok" : res == Result::Cancelled ? "cancelled" : "failed"));
+        if (res == Result::Ok) {
             ok++;
             if (json) out("{\"event\":\"done\",\"file\":" + jsonString(U8(f)) + ",\"output\":" + jsonString(U8(currentOutput)) + "}\n", false);
             return true;

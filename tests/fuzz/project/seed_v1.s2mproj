@@ -1,0 +1,1 @@
+{"format":"ShaderToMP4 project","version":1,"name":"p","general":["width=1280","height=720","outdir=videos"],"shaders":[{"path":"a.glsl","batch":2,"settings":["fps=24"],"passes":["a.bufferA.glsl"],"media":["tex/x.png"]},{"path":"C:/s/b.glsl"}]}
