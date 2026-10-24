@@ -577,6 +577,8 @@ No. The program is portable: settings (`config.ini`, `window.ini`), languages an
 
 ## Building
 
+The full guide (build, tests, fuzzing, AddressSanitizer, packages, publishing a version) is in [BUILD.md](BUILD.md).
+
 ### Windows
 
 With the Visual Studio Build Tools (the path of `vcvars64.bat` is written in `scripts\build.bat`; adjust it if needed):

@@ -3,6 +3,7 @@ rem SPDX-License-Identifier: GPL-3.0-or-later
 rem Copyright (C) 2026 Patrick JAILLET
 rem Compile bin\ShaderToMP4.exe avec les Build Tools de Visual Studio (a lancer depuis VS Code : .\scripts\build.bat)
 set "VCVARS=C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+if not exist "%VCVARS%" if defined VCVARSALL ( set "VCVARS=%VCVARSALL%" )
 if not exist "%VCVARS%" (
     echo vcvars64.bat introuvable : adapte le chemin VCVARS dans scripts\build.bat
     exit /b 1
