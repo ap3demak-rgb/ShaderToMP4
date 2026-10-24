@@ -223,7 +223,7 @@ void projectFiles(const std::wstring& shaderPath, std::vector<std::wstring>& pas
 }
 
 Project captureProject(const std::wstring& exeDir, const std::wstring& name, const Settings& general, const std::vector<std::wstring>& shaders,
-                       const std::map<std::wstring, int>& batches) {
+                       const std::map<std::wstring, int>& batches, const std::map<std::wstring, int>& priorities) {
     Project p;
     p.name = name;
     p.general = projectGeneral(general);
@@ -231,6 +231,7 @@ Project captureProject(const std::wstring& exeDir, const std::wstring& name, con
         ProjectShader ps;
         ps.path = path;
         ps.batch = batchOf(batches, path);
+        if (const auto it = priorities.find(path); it != priorities.end()) ps.priority = std::max(-1, std::min(1, it->second));
         if (fileSettingsExist(exeDir, path)) {
             ps.ownSettings = true;
             ps.own = loadFileSettings(exeDir, path);
@@ -253,6 +254,7 @@ std::string projectToJson(const Project& p, const std::wstring& dir) {
         const ProjectShader& s = p.shaders[i];
         o += "    {\n      \"path\": " + jq(relPath(s.path, dir));
         if (s.batch > 0) o += ",\n      \"batch\": " + std::to_string(s.batch);
+        if (s.priority != 0) o += ",\n      \"priority\": " + std::to_string(s.priority);
         if (s.ownSettings) o += ",\n      \"settings\": " + stringArray(settingLines(s.own, dir), "      ");
         if (!s.passes.empty()) o += ",\n      \"passes\": " + stringArray(pathLines(s.passes, dir), "      ");
         if (!s.media.empty()) o += ",\n      \"media\": " + stringArray(pathLines(s.media, dir), "      ");
@@ -319,6 +321,7 @@ bool projectFromJson(const std::string& text, const std::wstring& dir, Project& 
             ps.path = absPath(it.str("path"), dir);
             const int b = (int)it.num("batch", 0);
             ps.batch = b >= 1 && b <= kBatchCount ? b : 0;
+            ps.priority = std::max(-1, std::min(1, (int)it.num("priority", 0)));
             if (const JsonValue* st = it.get("settings")) {
                 if (!listOfStrings(st, lines)) {
                     err = U8(TXF("project.err.field", L"settings"));
@@ -389,12 +392,14 @@ std::vector<std::wstring> projectMissing(const Project& p) {
     return out;
 }
 
-Settings applyProject(const std::wstring& exeDir, const Project& p, const Settings& base, std::map<std::wstring, int>& batches) {
+Settings applyProject(const std::wstring& exeDir, const Project& p, const Settings& base, std::map<std::wstring, int>& batches, std::map<std::wstring, int>* priorities) {
     batches.clear();
+    if (priorities) priorities->clear();
     for (const ProjectShader& s : p.shaders) {
         if (s.ownSettings) saveFileSettings(exeDir, s.path, s.own);
         else removeFileSettings(exeDir, s.path);
         if (s.batch > 0) batches[s.path] = s.batch;
+        if (priorities && s.priority != 0) (*priorities)[s.path] = s.priority;
     }
     saveBatches(exeDir, batches);
     return projectSettings(p.general, base);

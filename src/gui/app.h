@@ -15,13 +15,20 @@
 #include "core/queue.h"
 #include "core/shadertoy_import.h"
 #include "core/presets.h"
+#include "core/history.h"
+#include "core/keys.h"
+#include "core/project.h"
+#include "core/scopes.h"
 
 enum {
     ID_LIST = 101, ID_ADD, ID_REMOVE, ID_CLEAR, ID_START, ID_CANCEL, ID_PROG, ID_STATUS, ID_LOG,
     ID_RES = 120, ID_W, ID_H, ID_FPS, ID_DUR, ID_START_T, ID_CODEC, ID_PRESET, ID_CRF, ID_SNAP, ID_CONTAINER, ID_SS, ID_OUT, ID_BROWSE, ID_LOADP, ID_SAVEP,
     ID_BITRATE, ID_COLOR, ID_BLUR, ID_LOOP, ID_AUDIO, ID_AUDIOB, ID_FADEIN, ID_FADEOUT, ID_PAUSE, ID_FOLDER, ID_PREVIEW,
-    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_PLAY, ID_ABOUT, ID_LANG, ID_PARAMS, ID_OUTPUT, ID_FILESCOPE, ID_EDITOR, ID_FINDLOOP, ID_BUY, ID_UNDO, ID_REDO, ID_GUIDES, ID_HELP, ID_GALLERY
+    ID_PREVTRK, ID_PREVBTN, ID_ENCODER, ID_PRE0, ID_PRE1, ID_PRE2, ID_PRE3, ID_PRE4, ID_DEPTH, ID_PLAY, ID_ABOUT, ID_LANG, ID_PARAMS, ID_OUTPUT, ID_FILESCOPE, ID_EDITOR, ID_FINDLOOP, ID_BUY, ID_UNDO, ID_REDO, ID_GUIDES, ID_HELP, ID_GALLERY,
+    ID_PROJECT, ID_PROJ_NEW, ID_PROJ_OPEN, ID_PROJ_SAVE, ID_PROJ_SAVEAS, ID_HISTORY, ID_PALETTE, ID_SCOPES, ID_HOLD, ID_FREEZE, ID_ZOOMFIT, ID_ZOOM100,
+    ID_KEYS_EDIT, ID_KEYS_RELOAD, ID_JOBLOG, ID_PRIO_UP, ID_PRIO_DOWN, ID_PRIO_NORMAL, ID_MOVE_UP, ID_MOVE_DOWN, ID_RENDER_SEL
 };
+constexpr int kRecentProjectBase = 3000;  // identifiants des projets recents du menu Projet (3000 a 3009)
 enum {
     WM_APP_LOG = WM_APP + 1,  // lParam = std::wstring* (a liberer)
     WM_APP_PROGRESS,          // wParam = index, lParam = ProgressInfo* (a liberer)
@@ -35,7 +42,7 @@ enum {
     WM_APP_COMPARE            // les deux images « avant / apres edition » : lParam = CompareData* (a liberer)
 };
 constexpr int kPrevSteps = 10000;  // graduations du curseur d'apercu (de Debut a Debut + Duree)
-enum FileStatus { ST_PENDING, ST_RUNNING, ST_DONE, ST_FAILED, ST_CANCELLED };
+enum FileStatus { ST_PENDING, ST_RUNNING, ST_DONE, ST_FAILED, ST_CANCELLED, ST_HELD };
 
 struct PreviewData {
     int w, h;
@@ -72,6 +79,7 @@ struct App {
     HWND tip = nullptr;
     HWND bFileScope = nullptr;  // « ce shader seul » : les champs de la carte des reglages valent pour le shader selectionne uniquement
     HWND bHelp = nullptr, bGallery = nullptr;  // aide (?) dans l'en-tete, galerie d'exemples dans la barre d'outils
+    HWND bProject = nullptr;  // menu Projet (projets, historique, outils d'apercu, palette de commandes)
     HWND bAbout = nullptr, bLang = nullptr, bParams = nullptr, bOutput = nullptr, bEditor = nullptr, bBuy = nullptr;  // en-tête : À propos, langue, paramètres et post-traitement, sortie
     int chipRight = 0;                       // bord droit de la pastille de version (à gauche des boutons de l'en-tête)
     struct Card {
@@ -88,6 +96,36 @@ struct App {
     float dropAmt = 0;      // intensite de l illumination 0..1, animee
     std::vector<std::wstring> paths;
     std::vector<int> state;  // FileStatus, parallele a paths
+    std::vector<int> ids;    // identifiant stable de chaque shader de la liste (parallele a paths) : les messages du thread de rendu le citent, la liste peut etre reordonnee pendant un rendu
+    int nextId = 1;
+    std::map<std::wstring, int> priority;  // priorite de rendu des shaders : -1 basse, 1 haute (absent = normale)
+    // File de travaux : le thread de rendu prend le travail suivant dans `plan` ; la fenetre le reconstruit quand la liste change pendant un rendu
+    std::mutex jobMutex;
+    std::vector<std::pair<int, std::wstring>> plan;  // travaux pas encore pris, dans l'ordre
+    std::set<int> runIds;                            // identifiants concernes par le rendu en cours
+    std::set<int> startedIds;                        // identifiants deja pris par le thread de rendu
+    std::map<int, long long> jobFrames;              // images a rendre par travail (estimation de la fin de la file)
+    double lastSpeed = 0;                            // images par seconde mesurees pendant le rendu en cours
+    std::chrono::steady_clock::time_point runStart;   // debut du rendu en cours
+    // Projet ouvert (.s2mproj)
+    std::wstring projectPath, projectName;
+    // Raccourcis (keys.ini) et table d'acceleration de la fenetre principale
+    KeyMap keys;
+    HACCEL accel = nullptr;
+    // Apercu avance : zoom et deplacement, image figee pour la comparaison A/B
+    struct View {
+        double zoom = 1;       // 1 = image entiere dans la zone ; 2 = deux fois plus grande...
+        double cx = 0.5, cy = 0.5;  // point de l'image (0 a 1) au centre de la zone
+        bool panning = false;
+        POINT last{};
+    } view;
+    struct Frozen {
+        bool on = false;
+        int w = 0, h = 0;
+        std::vector<uint8_t> bgra;
+    } frozen;
+    std::vector<uint8_t> lastBgra;  // derniere image d'apercu recue (haut en bas), pour la figer
+    int lastBgraW = 0, lastBgraH = 0;
     std::thread worker;
     std::unique_ptr<PreviewPlayer> player;  // apercu en temps reel (lecture) ; null si arrete
     std::wstring playerPath;                // shader lu par le lecteur
@@ -134,7 +172,16 @@ void setStatus(const std::wstring& t);
 void appendLog(const std::wstring& text);
 void updateButtons();
 
-// --- file_list.cpp : liste des shaders ---
+// --- file_list.cpp : liste des shaders et file de travaux ---
+int indexOfId(int id);                                // position d'un travail dans la liste, -1 s'il n'y est plus
+std::wstring itemLabel(const std::wstring& path);     // texte de la premiere colonne : marque de priorite, lot, chemin
+void toggleHoldSelected();                            // suspend ou reprend les travaux selectionnes (celui qui tourne : pause de tout le rendu)
+void setPriorityOfSelected(int p);                    // -1 basse, 0 normale, 1 haute
+void openJobLog();                                    // journal du travail selectionne
+void listDragBegin(int item);                         // glisser pour reordonner : debut (WM_NOTIFY LVN_BEGINDRAG), deplacement, fin
+void listDragMove(POINT clientPt);
+void listDragEnd(bool apply);
+bool listDragging();
 void addFiles(const std::vector<std::wstring>& files);
 void removeSelected();
 void moveSelected(int mode);  // priorite : -1 monte, +1 descend, 0 passe en tete (les shaders selectionnes)
@@ -186,6 +233,9 @@ void saveProfile();
 void applyQuickPreset(int idx);  // 0 brouillon, 1 YouTube 1080p60, 2 4K 60, 3 vertical 9:16
 
 // --- jobs.cpp : rendus, apercu, telechargement ---
+std::wstring jobLogPath(const std::wstring& shaderPath);          // jobs/logs/<nom>-<empreinte>.log
+void rebuildPlan();                                               // le travail suivant d'un rendu en cours suit la liste (ordre, priorites, suspensions)
+std::wstring queueEtaText(double speed, double remaining);        // « fin de la file » : travaux restants, duree et heure estimees, "" s'il n'y en a pas
 void promptDownload();               // propose de telecharger ffmpeg.exe
 void startJobs(bool snapshot = false, int imageKind = 0, int cols = 0, int rows = 0, bool atPreview = false, bool selectedOnly = false, int batch = 0);  // snapshot : une image (0 PNG, 1 vignette, 2 planche cols x rows, 3 vignette intelligente, 4 recherche de boucle, 5 faces de cubemap)
 void showImageMenu();                // menu du bouton « Images » : PNG, vignette, planches-contact
@@ -195,6 +245,38 @@ void runPreview();
 bool sceneSelected();
 void orbitScene(double dx, double dy, double zoom);
 void openFolder();
+
+// --- project_ui.cpp : projets (.s2mproj) ---
+void newProject();
+void openProjectFile(const std::wstring& path);
+void openProjectDialog();
+bool saveProjectNow(bool saveAs);   // faux si l'utilisateur annule ou si l'ecriture echoue
+void showProjectMenu();             // menu du bouton Projet : projets, historique, outils d'apercu, palette, raccourcis
+void updateTitle();                 // titre de la fenetre : version et nom du projet
+
+// --- history_dialog.cpp : historique des rendus ---
+void showHistory(HWND owner);
+
+// --- scopes_dialog.cpp : oscilloscopes de l'image d'apercu ---
+void showScopes(HWND owner);
+void scopesUpdate(const uint8_t* bgra, int w, int h);  // l'image affichee a change
+
+// --- actions.cpp : actions, raccourcis clavier (keys.ini) et palette de commandes ---
+struct ActionDef {
+    const char* id;          // « project_save »
+    const char* nameKey;     // cle de langue du nom
+    int command;             // WM_COMMAND envoye par le raccourci et la palette
+    const char* defaultKey;  // « Ctrl+S », "" = aucun
+    bool proOnly;            // actions des outils d'edition de l'edition Pro : absentes de la table sans eux
+};
+const std::vector<ActionDef>& actionTable();
+std::wstring actionName(const char* id);               // nom traduit (shortcut.action.<id>)
+std::wstring actionShortcutText(const char* id);       // « Ctrl+S » ou ""
+void loadShortcuts();                                  // lit keys.ini (les refus vont dans le journal)
+void reloadShortcuts();                                // relit keys.ini et reconstruit la table d'acceleration
+HACCEL buildAccelerators();
+void showPalette(HWND owner);
+void editShortcuts();                                  // ouvre keys.ini (cree avec les raccourcis actuels s'il n'existe pas)
 
 // --- window.cpp ---
 LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp);

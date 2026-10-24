@@ -28,7 +28,7 @@ std::vector<Override> mainSettingValues(const Settings& s) {
             // fenetre Sortie : transparence, HDR, taille, interpolation, volume, texte, fichier, parties
             {"alpha", s.alpha ? "1" : "0"},       {"hdr", s.hdr},                       {"hdrpeak", std::to_string(s.hdrPeak)},
             {"hdrfall", std::to_string(s.hdrFall)}, {"hdrwhite", std::to_string(s.hdrWhite)}, {"interp", num(s.interp)},
-            {"scale", s.scale},                   {"scalefilter", s.scaleFilter},       {"loudnorm", num(s.loudnorm)},
+            {"scale", s.scale},                   {"scalefilter", s.scaleFilter},       {"loudnorm", s.loudnorm == 0 ? std::string("off") : num(s.loudnorm)},
             {"title", U8(s.title)},               {"credit", U8(s.credit)},             {"titledur", num(s.titleDur)},
             {"name", U8(s.name)},                 {"exists", s.exists},                 {"chunk", num(s.chunk)},
             {"pbo", std::to_string(s.pbo)},       {"samples", std::to_string(s.samples)}, {"stillformat", s.stillFormat}, {"precheck", s.precheck ? "1" : "0"},

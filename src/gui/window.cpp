@@ -52,6 +52,8 @@ void layout() {
         MoveWindow(g.bOutput, hx, hy, S(40), hh, TRUE);
         hx -= gap + S(40);
         MoveWindow(g.bEditor, hx, hy, S(40), hh, TRUE);
+        hx -= gap + S(40);
+        MoveWindow(g.bProject, hx, hy, S(40), hh, TRUE);
         if (showTrialUi()) {  // version d'essai : bouton d'achat ; avec une licence valide il disparait
             hx -= gap + S(120);
             MoveWindow(g.bBuy, hx, hy, S(120), hh, TRUE);
@@ -333,6 +335,86 @@ static void setPreviewBitmap(int w, int h, const uint8_t* bgra, size_t bytes) {
     g.prevW = w;
     g.prevH = h;
     InvalidateRect(g.preview, nullptr, FALSE);
+    scopesUpdate(bgra, w, h);
+}
+
+// Zone de la fenetre d'apercu ou l'image est dessinee : ajustee (zoom 1) ou agrandie autour du point (cx, cy) de l'image ; elle peut depasser la zone visible
+static RECT previewDest(int cw, int ch) {
+    const int in = S(4), aw = cw - 2 * in, ah = ch - 2 * in;
+    const double fit = std::min((double)aw / std::max(1, g.prevW), (double)ah / std::max(1, g.prevH));
+    const double dw = std::max(1.0, g.prevW * fit * g.view.zoom), dh = std::max(1.0, g.prevH * fit * g.view.zoom);
+    const double left = cw / 2.0 - g.view.cx * dw, top = ch / 2.0 - g.view.cy * dh;
+    return {(int)std::lround(left), (int)std::lround(top), (int)std::lround(left + dw), (int)std::lround(top + dh)};
+}
+
+static void clampView() {
+    g.view.zoom = std::max(1.0, std::min(32.0, g.view.zoom));
+    if (g.view.zoom <= 1.0) {
+        g.view.cx = g.view.cy = 0.5;
+        return;
+    }
+    // l'image agrandie ne quitte jamais la zone : la partie visible reste dans l'image (centree si elle tient en entier)
+    RECT c;
+    GetClientRect(g.preview, &c);
+    const int in = S(4);
+    const double fit = std::min((double)(c.right - 2 * in) / std::max(1, g.prevW), (double)(c.bottom - 2 * in) / std::max(1, g.prevH));
+    const double vw = (c.right - 2 * in) / std::max(1.0, g.prevW * fit * g.view.zoom), vh = (c.bottom - 2 * in) / std::max(1.0, g.prevH * fit * g.view.zoom);
+    g.view.cx = vw >= 1.0 ? 0.5 : std::max(vw / 2, std::min(1.0 - vw / 2, g.view.cx));
+    g.view.cy = vh >= 1.0 ? 0.5 : std::max(vh / 2, std::min(1.0 - vh / 2, g.view.cy));
+}
+
+// Zoom autour d'un point de la zone d'apercu (coordonnees client) : le point de l'image sous le curseur y reste
+static void zoomPreviewAt(double factor, POINT mouse) {
+    if (!(g.prevBmp && g.prevW > 0 && g.prevH > 0)) return;
+    RECT c;
+    GetClientRect(g.preview, &c);
+    const RECT d = previewDest(c.right, c.bottom);
+    const double dw = std::max(1, (int)(d.right - d.left)), dh = std::max(1, (int)(d.bottom - d.top));
+    const double u = (mouse.x - d.left) / dw, v = (mouse.y - d.top) / dh;
+    g.view.zoom *= factor;
+    clampView();
+    if (g.view.zoom > 1.0) {
+        const double fit = std::min((double)(c.right - 2 * S(4)) / g.prevW, (double)(c.bottom - 2 * S(4)) / g.prevH);
+        const double ndw = g.prevW * fit * g.view.zoom, ndh = g.prevH * fit * g.view.zoom;
+        g.view.cx = u + (c.right / 2.0 - mouse.x) / ndw;
+        g.view.cy = v + (c.bottom / 2.0 - mouse.y) / ndh;
+        clampView();
+    }
+    InvalidateRect(g.preview, nullptr, FALSE);
+}
+
+void resetPreviewView() {
+    g.view.zoom = 1;
+    g.view.cx = g.view.cy = 0.5;
+    InvalidateRect(g.preview, nullptr, FALSE);
+}
+
+void zoomPreviewTo100() {
+    if (!(g.prevBmp && g.prevW > 0 && g.prevH > 0)) return;
+    RECT c;
+    GetClientRect(g.preview, &c);
+    const double fit = std::min((double)(c.right - 2 * S(4)) / g.prevW, (double)(c.bottom - 2 * S(4)) / g.prevH);
+    g.view.zoom = fit > 0 ? 1.0 / fit : 1.0;
+    clampView();
+    InvalidateRect(g.preview, nullptr, FALSE);
+}
+
+// Figer l'image affichee : le prochain apercu est montre en comparaison avec elle (rideau a glisser), jusqu'a ce qu'on la libere
+void toggleFreeze() {
+    if (g.frozen.on) {
+        g.frozen = App::Frozen();
+        setStatus(TX("status.unfrozen"));
+        return;
+    }
+    if (g.lastBgra.empty()) {
+        setStatus(TX("status.freeze_none"));
+        return;
+    }
+    g.frozen.on = true;
+    g.frozen.w = g.lastBgraW;
+    g.frozen.h = g.lastBgraH;
+    g.frozen.bgra = g.lastBgra;
+    setStatus(TX("status.frozen"));
 }
 
 // Rideau : l'image d'avant a gauche du trait, celle d'apres a droite
@@ -359,10 +441,8 @@ static LRESULT CALLBACK curtainProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT
     auto place = [&](int mx) {
         RECT r;
         GetClientRect(h, &r);
-        const int cw = r.right - r.left, ch = r.bottom - r.top, in = S(4);
-        const double sc = std::min((double)(cw - 2 * in) / std::max(1, g.prevW), (double)(ch - 2 * in) / std::max(1, g.prevH));
-        const int dw = std::max(1, (int)(g.prevW * sc)), left = (cw - dw) / 2;
-        g.curtain.x = std::max(0.0, std::min(1.0, (double)(mx - left) / dw));
+        const RECT d = previewDest(r.right - r.left, r.bottom - r.top);
+        g.curtain.x = std::max(0.0, std::min(1.0, (double)(mx - d.left) / std::max(1, (int)(d.right - d.left))));
         composeCurtain();
     };
     if (g.curtain.on) {
@@ -399,6 +479,36 @@ static LRESULT CALLBACK orbitProc(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_P
         if (msg == WM_LBUTTONDOWN && px->tools.guidesClick && previewImageRect(h, img) && px->tools.guidesClick(h, (short)LOWORD(lp), (short)HIWORD(lp), img)) return 0;
         if (msg == WM_RBUTTONUP) {
             px->tools.guidesMenu(GetParent(h));
+            return 0;
+        }
+    }
+    if (g.view.zoom > 1.0 && g.prevBmp) {  // image agrandie : glisser la deplace, le curseur est une main
+        if (msg == WM_SETCURSOR) {
+            SetCursor(LoadCursorW(nullptr, MAKEINTRESOURCEW(32649)));
+            return TRUE;
+        }
+        if (msg == WM_NCHITTEST) return HTCLIENT;
+        if (msg == WM_LBUTTONDOWN && (!g.curtain.on || (GetKeyState(VK_SHIFT) < 0))) {
+            g.view.panning = true;
+            g.view.last = {(short)LOWORD(lp), (short)HIWORD(lp)};
+            SetCapture(h);
+            return 0;
+        }
+        if (msg == WM_MOUSEMOVE && g.view.panning) {
+            const POINT p{(short)LOWORD(lp), (short)HIWORD(lp)};
+            RECT c;
+            GetClientRect(h, &c);
+            const RECT d = previewDest(c.right, c.bottom);
+            g.view.cx -= (p.x - g.view.last.x) / (double)std::max(1, (int)(d.right - d.left));
+            g.view.cy -= (p.y - g.view.last.y) / (double)std::max(1, (int)(d.bottom - d.top));
+            g.view.last = p;
+            clampView();
+            InvalidateRect(h, nullptr, FALSE);
+            return 0;
+        }
+        if (msg == WM_LBUTTONUP && g.view.panning) {
+            g.view.panning = false;
+            ReleaseCapture();
             return 0;
         }
     }
@@ -451,22 +561,43 @@ void drawPreview(const DRAWITEMSTRUCT* d) {
         f.present(d->hDC, r.left, r.top);
     }
     if (g.prevBmp && g.prevW > 0 && g.prevH > 0) {
-        int in = S(4), aw = cw - 2 * in, ah = ch - 2 * in;
-        double sc = std::min((double)aw / g.prevW, (double)ah / g.prevH);
-        int dw = std::max(1, (int)(g.prevW * sc)), dh = std::max(1, (int)(g.prevH * sc));
+        const int in = S(4);
+        const RECT dest = previewDest(cw, ch);
+        const double dw = std::max(1, (int)(dest.right - dest.left)), dh = std::max(1, (int)(dest.bottom - dest.top));
+        const double sx = dw / g.prevW, sy = dh / g.prevH;
+        const RECT clip{in, in, cw - in, ch - in};  // la partie visible de l'image
+        const RECT vis{std::max(dest.left, clip.left), std::max(dest.top, clip.top), std::min(dest.right, clip.right), std::min(dest.bottom, clip.bottom)};
         HDC mem = CreateCompatibleDC(d->hDC);
         HGDIOBJ old = SelectObject(mem, g.prevBmp);
-        SetStretchBltMode(d->hDC, HALFTONE);
-        SetBrushOrgEx(d->hDC, 0, 0, nullptr);
-        StretchBlt(d->hDC, r.left + (cw - dw) / 2, r.top + (ch - dh) / 2, dw, dh, mem, 0, 0, g.prevW, g.prevH, SRCCOPY);
+        const int saved = SaveDC(d->hDC);
+        IntersectClipRect(d->hDC, r.left + clip.left, r.top + clip.top, r.left + clip.right, r.top + clip.bottom);
+        if (vis.right > vis.left && vis.bottom > vis.top) {
+            // seules les colonnes et lignes de l'image visibles sont copiees (un zoom de 32 ne cree pas une image de plusieurs dizaines de milliers de pixels)
+            const int x0 = std::max(0, (int)std::floor((vis.left - dest.left) / sx)), x1 = std::min(g.prevW, (int)std::ceil((vis.right - dest.left) / sx));
+            const int y0 = std::max(0, (int)std::floor((vis.top - dest.top) / sy)), y1 = std::min(g.prevH, (int)std::ceil((vis.bottom - dest.top) / sy));
+            if (x1 > x0 && y1 > y0) {
+                SetStretchBltMode(d->hDC, sx >= 2.0 ? COLORONCOLOR : HALFTONE);  // fort zoom : les pixels restent des carres nets
+                SetBrushOrgEx(d->hDC, 0, 0, nullptr);
+                const int dx0 = (int)std::lround(dest.left + x0 * sx), dx1 = (int)std::lround(dest.left + x1 * sx);
+                const int dy0 = (int)std::lround(dest.top + y0 * sy), dy1 = (int)std::lround(dest.top + y1 * sy);
+                StretchBlt(d->hDC, r.left + dx0, r.top + dy0, std::max(1, dx1 - dx0), std::max(1, dy1 - dy0), mem, x0, y0, x1 - x0, y1 - y0, SRCCOPY);
+            }
+        }
         SelectObject(mem, old);
         DeleteDC(mem);
         if (const ProExt* px = proExt(); px && px->tools.drawGuides) {  // reperes d'ecran (edition Pro)
-            const RECT img{(cw - dw) / 2, (ch - dh) / 2, (cw - dw) / 2 + dw, (ch - dh) / 2 + dh};
-            const int saved = SaveDC(d->hDC);
             SetViewportOrgEx(d->hDC, r.left, r.top, nullptr);
-            px->tools.drawGuides(d->hDC, img, g.base);
-            RestoreDC(d->hDC, saved);
+            px->tools.drawGuides(d->hDC, dest, g.base);
+        }
+        RestoreDC(d->hDC, saved);
+        if (g.view.zoom > 1.0 || g.frozen.on) {  // pastille : niveau de zoom, image figee
+            std::wstring tag;
+            if (g.view.zoom > 1.0) tag = TXF("ui.preview.zoom", (int)std::lround(sx * 100.0));
+            if (g.frozen.on) tag += (tag.empty() ? L"" : L"  ") + TX("ui.preview.frozen");
+            ui::Frame f(std::min(cw, S(220)), S(20), ui::rgb(0x090A0D));
+            f.fillRound(ui::rectf(0, 0, (float)std::min(cw, S(220)), (float)S(20)), F(6), ui::rgb(0x1B1E26));
+            f.text(tag, ui::rectf(F(6), 0, (float)std::min(cw, S(220)) - F(6), (float)S(20)), F(11), true, ui::rgb(MUTED), ui::Left);
+            f.present(d->hDC, r.left + in, r.top + in);
         }
     }
 }
@@ -476,10 +607,7 @@ static bool previewImageRect(HWND h, RECT& img) {
     RECT c;
     GetClientRect(h, &c);
     if (!(g.prevBmp && g.prevW > 0 && g.prevH > 0)) return false;
-    const int cw = c.right, ch = c.bottom, in = S(4), aw = cw - 2 * in, ah = ch - 2 * in;
-    const double sc = std::min((double)aw / g.prevW, (double)ah / g.prevH);
-    const int dw = std::max(1, (int)(g.prevW * sc)), dh = std::max(1, (int)(g.prevH * sc));
-    img = {(cw - dw) / 2, (ch - dh) / 2, (cw - dw) / 2 + dw, (ch - dh) / 2 + dh};
+    img = previewDest(c.right, c.bottom);
     return true;
 }
 
@@ -489,6 +617,7 @@ COLORREF statusColor(int st) {
         case ST_DONE: return cref(OK);
         case ST_FAILED: return cref(ERR);
         case ST_CANCELLED: return cref(WARN);
+        case ST_HELD: return cref(FAINT);
         default: return cref(MUTED);
     }
 }
@@ -569,6 +698,7 @@ void createControls(HWND hw) {
     g.bParams = button(nullptr, ID_PARAMS, IC_SLIDERS, BtnStyle::Ghost, BG);
     g.bOutput = button(nullptr, ID_OUTPUT, IC_FILM, BtnStyle::Ghost, BG);
     g.bEditor = button(nullptr, ID_EDITOR, IC_EDIT, BtnStyle::Ghost, BG);  // dans l'ordre de l'en-tete : l'ordre de tabulation suit la creation
+    g.bProject = button(nullptr, ID_PROJECT, IC_PROJECT, BtnStyle::Ghost, BG);
     g.bBuy = button("ui.btn.buy", ID_BUY, IC_ZAP, BtnStyle::Secondary, BG);
     g.bFileScope = button("ui.btn.file_scope", ID_FILESCOPE, IC_SLIDERS, BtnStyle::Chip, CARD);
     g.bAdd = button("ui.btn.add", ID_ADD, IC_ADD, BtnStyle::Secondary, BG);
@@ -699,7 +829,7 @@ void createControls(HWND hw) {
             {g.cmbEncoder, "ui.lbl.encoder"}, {g.edBitrate, "ui.lbl.bitrate"}, {g.cmbColor, "ui.lbl.color"}, {g.cmbBlur, "ui.lbl.blur"},
             {g.edLoop, "ui.lbl.loop"}, {g.cmbDepth, "ui.lbl.depth"}, {g.edAudio, "ui.lbl.audio"}, {g.edFadeIn, "ui.lbl.fade_in"},
             {g.bAbout, "ui.tip.about"}, {g.bHelp, "ui.tip.help"}, {g.bGallery, "ui.tip.gallery"}, {g.bLang, "ui.tip.language"}, {g.bParams, "ui.tip.params_btn"}, {g.bOutput, "ui.tip.output_btn"},
-            {g.bEditor, "ui.tip.editor_btn"}, {g.bPause, "ui.tip.pause"},  // boutons a icone seule : nommes par leur info-bulle
+            {g.bEditor, "ui.tip.editor_btn"}, {g.bProject, "ui.tip.project_btn"}, {g.bPause, "ui.tip.pause"},  // boutons a icone seule : nommes par leur info-bulle
             {g.edFadeOut, "ui.tip.fade_out"}, {g.edOut, "ui.lbl.output"}, {g.trkPrev, "ui.tip.preview_time"},
             {g.list, "ui.card.shaders"}, {g.preview, "ui.card.preview"}, {g.prog, "ui.card.progress"}};
         for (const auto& n : names) setAccessibleName(n.c, n.key);
@@ -714,7 +844,7 @@ void createControls(HWND hw) {
     SendMessageW(g.tip, TTM_SETDELAYTIME, TTDT_INITIAL, 450);
     struct Tip { HWND c; const char* key; };
     const Tip tips[] = {
-        {g.bAbout, "ui.tip.about"}, {g.bHelp, "ui.tip.help"}, {g.bGallery, "ui.tip.gallery"}, {g.bLang, "ui.tip.language"}, {g.bParams, "ui.tip.params_btn"}, {g.bOutput, "ui.tip.output_btn"}, {g.bFileScope, "ui.tip.file_scope"}, {g.bEditor, "ui.tip.editor_btn"}, {g.bBuy, "ui.tip.buy"},
+        {g.bAbout, "ui.tip.about"}, {g.bHelp, "ui.tip.help"}, {g.bGallery, "ui.tip.gallery"}, {g.bLang, "ui.tip.language"}, {g.bParams, "ui.tip.params_btn"}, {g.bOutput, "ui.tip.output_btn"}, {g.bFileScope, "ui.tip.file_scope"}, {g.bEditor, "ui.tip.editor_btn"}, {g.bProject, "ui.tip.project_btn"}, {g.bBuy, "ui.tip.buy"},
         {g.bAdd, "ui.tip.add"}, {g.bRemove, "ui.tip.remove"}, {g.bClear, "ui.tip.clear"}, {g.bFolder, "ui.tip.folder"},
         {g.bSnap, "ui.tip.png"}, {g.bStart, "ui.tip.start"}, {g.bPause, "ui.tip.pause"}, {g.bCancel, "ui.tip.cancel"},
         {g.cmbRes, "ui.tip.resolution"}, {g.edW, "ui.tip.width"}, {g.edH, "ui.tip.height"}, {g.cmbFps, "ui.tip.fps"},
@@ -940,6 +1070,8 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                 } else if (nh->code == LVN_ITEMCHANGED) {
                     updateForced();
                     followSelection();  // autre shader selectionne : la lecture suit
+                } else if (nh->code == LVN_BEGINDRAG) {
+                    listDragBegin(((NMLISTVIEW*)lp)->iItem);
                 } else if (nh->code == NM_RCLICK) {
                     showListMenu();
                 } else if (nh->code == LVN_KEYDOWN) {
@@ -1031,8 +1163,35 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                 orbitScene(0, 0, std::pow(0.9, (double)GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA));
                 return 0;
             }
+            if (PtInRect(&pr, pt) && g.prevBmp) {  // apercu ordinaire : la molette zoome autour du curseur
+                POINT local = pt;
+                ScreenToClient(g.preview, &local);
+                zoomPreviewAt(std::pow(1.25, (double)GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA), local);
+                return 0;
+            }
             break;
         }
+        case WM_MOUSEMOVE:
+            if (listDragging()) {
+                listDragMove({(short)LOWORD(lp), (short)HIWORD(lp)});
+                return 0;
+            }
+            break;
+        case WM_LBUTTONUP:
+            if (listDragging()) {
+                listDragEnd(true);
+                return 0;
+            }
+            break;
+        case WM_CAPTURECHANGED:
+            if (listDragging() && (HWND)lp != hw) listDragEnd(false);
+            break;
+        case WM_SETCURSOR:
+            if (listDragging()) {
+                SetCursor(LoadCursorW(nullptr, MAKEINTRESOURCEW(32645)));
+                return TRUE;
+            }
+            break;
         case WM_APP_PREVIEW: {
             PreviewData* p = (PreviewData*)lp;
             if (p->t >= 0) {  // image du lecteur : la position suit le temps du shader
@@ -1047,8 +1206,22 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                     }
                 }
             }
-            g.curtain.on = false;  // une autre image remplace la comparaison
-            setPreviewBitmap(p->w, p->h, p->bgra.data(), p->bgra.size());
+            g.lastBgra = p->bgra;
+            g.lastBgraW = p->w;
+            g.lastBgraH = p->h;
+            if (g.frozen.on && g.frozen.w == p->w && g.frozen.h == p->h) {  // une image est figee : l'apercu s'affiche en comparaison A/B avec elle
+                if (!g.curtain.on) g.curtain.x = 0.5;
+                g.curtain.on = true;
+                g.curtain.w = p->w;
+                g.curtain.h = p->h;
+                g.curtain.before = g.frozen.bgra;
+                g.curtain.after = p->bgra;
+                composeCurtain();
+                setStatus(TX("status.compare_frozen"));
+            } else {
+                g.curtain.on = false;  // une autre image remplace la comparaison
+                setPreviewBitmap(p->w, p->h, p->bgra.data(), p->bgra.size());
+            }
             delete p;
             return 0;
         }
@@ -1130,6 +1303,27 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             switch (id) {
+                case ID_PROJECT: showProjectMenu(); break;
+                case ID_PROJ_NEW: newProject(); break;
+                case ID_PROJ_OPEN: openProjectDialog(); break;
+                case ID_PROJ_SAVE: saveProjectNow(false); break;
+                case ID_PROJ_SAVEAS: saveProjectNow(true); break;
+                case ID_HISTORY: showHistory(hw); break;
+                case ID_PALETTE: showPalette(hw); break;
+                case ID_SCOPES: showScopes(hw); break;
+                case ID_HOLD: toggleHoldSelected(); break;
+                case ID_RENDER_SEL: startJobs(false, 0, 0, 0, false, true); break;
+                case ID_JOBLOG: openJobLog(); break;
+                case ID_PRIO_UP: setPriorityOfSelected(1); break;
+                case ID_PRIO_NORMAL: setPriorityOfSelected(0); break;
+                case ID_PRIO_DOWN: setPriorityOfSelected(-1); break;
+                case ID_MOVE_UP: moveSelected(-1); break;
+                case ID_MOVE_DOWN: moveSelected(1); break;
+                case ID_FREEZE: toggleFreeze(); break;
+                case ID_ZOOMFIT: resetPreviewView(); break;
+                case ID_ZOOM100: zoomPreviewTo100(); break;
+                case ID_KEYS_EDIT: editShortcuts(); break;
+                case ID_KEYS_RELOAD: reloadShortcuts(); break;
                 case ID_ADD: browseFiles(); break;
                 case ID_REMOVE: removeSelected(); break;
                 case ID_CLEAR: clearAll(); break;
@@ -1139,6 +1333,10 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                 case ID_LOADP: loadProfile(); break;
                 case ID_SAVEP: saveProfile(); break;
                 case ID_CANCEL:
+                    if (listDragging()) {  // Echap annule d'abord le glisser-deposer en cours
+                        listDragEnd(false);
+                        break;
+                    }
                     if (!g.running) break;
                     g.cancel = true;
                     g.pause = false;
@@ -1204,20 +1402,22 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_APP_PROGRESS: {
             ProgressInfo* p = (ProgressInfo*)lp;
-            int idx = (int)wp;
+            int idx = indexOfId((int)wp);
+            g.lastSpeed = p->speed;
             int pct = (int)(p->n * 100 / std::max(1LL, p->total));
             SendMessageW(g.prog, PBM_SETPOS, (WPARAM)(p->n * 1000 / std::max(1LL, p->total)), 0);
             if (!g.pause) taskbar::normal();
             taskbar::progress(p->n, p->total);
             if (idx >= 0 && idx < (int)g.paths.size()) setItemText(idx, 1, TXF("status.running_pct", pct));
             std::wstring st = TXF("status.progress", p->n, p->total, pct, i18n::fixed(p->speed, 1).c_str(), fmtTime(p->remaining).c_str());
+            if (const std::wstring eta = queueEtaText(p->speed, p->remaining); !eta.empty()) st += L" · " + eta;  // fin de toute la file
             if (p->gpuImage > 0) st += TXF("status.gpu", i18n::fixed(p->gpuImage, 1).c_str(), i18n::fixed(p->gpuBuffers, 1).c_str(), i18n::fixed(p->gpuPost, 1).c_str());
             setStatus(st);
             delete p;
             return 0;
         }
         case WM_APP_FILE: {
-            int idx = (int)wp;
+            int idx = indexOfId((int)wp);
             if (idx >= 0 && idx < (int)g.paths.size()) {
                 if (g.snapshotRun && lp == ST_DONE) {  // l'image ne compte pas comme rendu video termine
                     if (!g.snapshotPath.empty()) ShellExecuteW(hw, L"open", g.snapshotPath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
@@ -1236,6 +1436,12 @@ LRESULT CALLBACK wndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_APP_DONE: {
             if (g.worker.joinable()) g.worker.join();
             g.running = false;
+            {
+                std::lock_guard<std::mutex> lk(g.jobMutex);
+                g.plan.clear();
+                g.runIds.clear();
+                g.startedIds.clear();
+            }
             SendMessageW(g.prog, ui::STPB_SETSTATE, 0, 0);
             if (g.previewRun) {
                 g.previewRun = false;

@@ -4,10 +4,28 @@
 #include "app.h"
 #include "core/i18n.h"
 #include "core/util.h"
+#include "core/batches.h"
+#include "ui_theme.h"
+
+int indexOfId(int id) {
+    for (size_t i = 0; i < g.ids.size(); i++)
+        if (g.ids[i] == id) return (int)i;
+    return -1;
+}
+
+std::wstring itemLabel(const std::wstring& path) {
+    const auto it = g.priority.find(path);
+    const std::wstring mark = it == g.priority.end() || it->second == 0 ? L"" : it->second > 0 ? L"\u25B2 " : L"\u25BC ";
+    return mark + batchLabel(g.batches, path);
+}
 
 void addFiles(const std::vector<std::wstring>& files) {
     if (g.running) return;
     for (const auto& f0 : files) {
+        if (f0.size() > wcslen(kProjectExt) && _wcsicmp(f0.c_str() + f0.size() - wcslen(kProjectExt), kProjectExt) == 0) {  // un fichier projet depose : on l'ouvre
+            openProjectFile(f0);
+            continue;
+        }
         std::wstring ie;  // un .json exporte de Shadertoy est importe, puis le shader obtenu est ajoute
         const std::wstring f = resolveShaderInput(g.exeDir, f0, [](const std::wstring& m) { appendLog(m); }, ie);
         if (f.empty()) {
@@ -20,10 +38,11 @@ void addFiles(const std::vector<std::wstring>& files) {
         if (dup || !fileExists(f)) continue;
         g.paths.push_back(f);
         g.state.push_back(ST_PENDING);
+        g.ids.push_back(g.nextId++);
         LVITEMW it{};
         it.mask = LVIF_TEXT;
         it.iItem = (int)g.paths.size() - 1;
-        const std::wstring shown = batchLabel(g.batches, f);
+        const std::wstring shown = itemLabel(f);
         it.pszText = const_cast<LPWSTR>(shown.c_str());
         SendMessageW(g.list, LVM_INSERTITEMW, 0, (LPARAM)&it);
         setItemText(it.iItem, 1, statusText(ST_PENDING));
@@ -40,13 +59,13 @@ void removeSelected() {
         SendMessageW(g.list, LVM_DELETEITEM, (WPARAM)*it, 0);
         g.paths.erase(g.paths.begin() + *it);
         g.state.erase(g.state.begin() + *it);
+        g.ids.erase(g.ids.begin() + *it);
     }
     updateButtons();
 }
 
 // Les shaders selectionnes montent, descendent ou passent en tete de file ; leur ordre relatif est conserve
 void moveSelected(int mode) {
-    if (g.running) return;
     const int n = (int)g.paths.size();
     std::vector<char> isSel((size_t)n, 0);
     bool any = false;
@@ -68,20 +87,22 @@ void moveSelected(int mode) {
             if (isSel[(size_t)order[(size_t)k]] && !isSel[(size_t)order[(size_t)k + 1]]) std::swap(order[(size_t)k], order[(size_t)k + 1]);
     }
     std::vector<std::wstring> paths;
-    std::vector<int> state;
+    std::vector<int> state, ids;
     for (int k : order) {
         paths.push_back(g.paths[(size_t)k]);
         state.push_back(g.state[(size_t)k]);
+        ids.push_back(g.ids[(size_t)k]);
     }
     g.paths = paths;
     g.state = state;
+    g.ids = ids;
     SendMessageW(g.list, WM_SETREDRAW, FALSE, 0);
     SendMessageW(g.list, LVM_DELETEALLITEMS, 0, 0);
     for (int k = 0; k < n; k++) {
         LVITEMW it{};
         it.mask = LVIF_TEXT;
         it.iItem = k;
-        const std::wstring shown = batchLabel(g.batches, g.paths[(size_t)k]);
+        const std::wstring shown = itemLabel(g.paths[(size_t)k]);
         it.pszText = const_cast<LPWSTR>(shown.c_str());
         SendMessageW(g.list, LVM_INSERTITEMW, 0, (LPARAM)&it);
         setItemText(k, 1, statusText(g.state[(size_t)k]));
@@ -95,6 +116,7 @@ void moveSelected(int mode) {
     SendMessageW(g.list, WM_SETREDRAW, TRUE, 0);
     InvalidateRect(g.list, nullptr, TRUE);
     saveQueueNow();
+    rebuildPlan();  // rendu en cours : le travail suivant suit le nouvel ordre
 }
 
 void setBatchOfSelected(int n) {
@@ -102,7 +124,7 @@ void setBatchOfSelected(int n) {
     while ((i = (int)SendMessageW(g.list, LVM_GETNEXTITEM, (WPARAM)i, LVNI_SELECTED)) != -1 && i < (int)g.paths.size()) {
         if (n > 0) g.batches[g.paths[(size_t)i]] = n;
         else g.batches.erase(g.paths[(size_t)i]);
-        setItemText(i, 0, batchLabel(g.batches, g.paths[(size_t)i]));
+        setItemText(i, 0, itemLabel(g.paths[(size_t)i]));
     }
     saveBatches(g.exeDir, g.batches);
 }
@@ -112,9 +134,18 @@ void showListMenu() {
     const bool busy = g.running;
     HMENU m = CreatePopupMenu();
     const UINT en = busy ? MF_GRAYED : MF_ENABLED;
-    AppendMenuW(m, MF_STRING | en, 1, TX("ui.menu.move_top").c_str());
-    AppendMenuW(m, MF_STRING | en, 2, TX("ui.menu.move_up").c_str());
-    AppendMenuW(m, MF_STRING | en, 3, TX("ui.menu.move_down").c_str());
+    AppendMenuW(m, MF_STRING, 1, TX("ui.menu.move_top").c_str());
+    AppendMenuW(m, MF_STRING, 2, TX("ui.menu.move_up").c_str());
+    AppendMenuW(m, MF_STRING, 3, TX("ui.menu.move_down").c_str());
+    AppendMenuW(m, MF_STRING, 9, TX("ui.menu.job_hold").c_str());
+    {  // priorite du travail : les plus hautes passent avant les autres
+        HMENU sub = CreatePopupMenu();
+        AppendMenuW(sub, MF_STRING, 51, TX("ui.menu.prio_high").c_str());
+        AppendMenuW(sub, MF_STRING, 52, TX("ui.menu.prio_normal").c_str());
+        AppendMenuW(sub, MF_STRING, 53, TX("ui.menu.prio_low").c_str());
+        AppendMenuW(m, MF_POPUP, (UINT_PTR)sub, TX("ui.menu.priority").c_str());
+    }
+    AppendMenuW(m, MF_STRING, 10, TX("ui.menu.job_log").c_str());
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING | en, 4, TX("ui.menu.render_selection").c_str());
     AppendMenuW(m, MF_STRING, 8, TX("ui.menu.edit").c_str());
@@ -151,6 +182,9 @@ void showListMenu() {
     } else if (cmd == 6) removeSelected();
     else if (cmd == 7) writeScopeIntoShader();
     else if (cmd == 8) showEditor(g.wnd);
+    else if (cmd == 9) toggleHoldSelected();
+    else if (cmd == 10) openJobLog();
+    else if (cmd >= 51 && cmd <= 53) setPriorityOfSelected(cmd == 51 ? 1 : cmd == 52 ? 0 : -1);
     else if (cmd > 20 && cmd <= 20 + kBatchCount) setBatchOfSelected(cmd - 20);
     else if (cmd == 30) setBatchOfSelected(0);
     else if (cmd > 40 && cmd <= 40 + kBatchCount) startJobs(false, 0, 0, 0, false, false, cmd - 40);
@@ -161,6 +195,7 @@ void clearAll() {
     SendMessageW(g.list, LVM_DELETEALLITEMS, 0, 0);
     g.paths.clear();
     g.state.clear();
+    g.ids.clear();
     updateButtons();
 }
 
@@ -226,3 +261,160 @@ void browseFiles() {
     addFiles(files);
 }
 
+
+// Suspendre ou reprendre : un travail en attente est mis de cote (« Suspendu ») ou remis dans la file ; celui qui tourne passe par le bouton Pause
+void toggleHoldSelected() {
+    int i = -1;
+    bool pausedRunning = false;
+    while ((i = (int)SendMessageW(g.list, LVM_GETNEXTITEM, (WPARAM)i, LVNI_SELECTED)) != -1 && i < (int)g.state.size()) {
+        int& st = g.state[(size_t)i];
+        if (st == ST_PENDING) st = ST_HELD;
+        else if (st == ST_HELD) st = ST_PENDING;
+        else if (st == ST_RUNNING && !pausedRunning) {
+            pausedRunning = true;
+            PostMessageW(g.wnd, WM_COMMAND, ID_PAUSE, 0);
+            continue;
+        } else {
+            continue;
+        }
+        setItemText(i, 1, statusText(st));
+    }
+    InvalidateRect(g.list, nullptr, FALSE);
+    saveQueueNow();
+    rebuildPlan();
+    updateButtons();
+}
+
+void setPriorityOfSelected(int p) {
+    int i = -1;
+    while ((i = (int)SendMessageW(g.list, LVM_GETNEXTITEM, (WPARAM)i, LVNI_SELECTED)) != -1 && i < (int)g.paths.size()) {
+        if (p == 0) g.priority.erase(g.paths[(size_t)i]);
+        else g.priority[g.paths[(size_t)i]] = p;
+        setItemText(i, 0, itemLabel(g.paths[(size_t)i]));
+    }
+    rebuildPlan();
+}
+
+// Journal du travail selectionne : le fichier ecrit pendant son dernier rendu s'ouvre dans l'editeur de texte du systeme
+void openJobLog() {
+    const std::wstring shader = selectedShaderPath();
+    if (shader.empty()) return;
+    const std::wstring log = jobLogPath(shader);
+    if (!fileExists(log)) {
+        appendLog(TXF("log.job_log_none", shader.c_str()));
+        return;
+    }
+    ShellExecuteW(g.wnd, L"open", L"notepad.exe", (L"\"" + log + L"\"").c_str(), nullptr, SW_SHOWNORMAL);
+}
+
+// Glisser les travaux selectionnes : un trait montre l'endroit ou ils seront deposes
+static bool gDrag = false;
+static int gDragTarget = -1;
+static bool gDragAfter = false;
+
+bool listDragging() { return gDrag; }
+
+static void showInsertMark(int item, bool after) {
+    LVINSERTMARK im{};
+    im.cbSize = sizeof(im);
+    im.dwFlags = after ? LVIM_AFTER : 0;
+    im.iItem = item;
+    SendMessageW(g.list, LVM_SETINSERTMARK, 0, (LPARAM)&im);
+}
+
+void listDragBegin(int item) {
+    if (item < 0 || item >= (int)g.paths.size()) return;
+    LVITEMW st{};
+    st.stateMask = LVIS_SELECTED;
+    if (!(SendMessageW(g.list, LVM_GETITEMSTATE, (WPARAM)item, LVIS_SELECTED) & LVIS_SELECTED)) {  // on glisse un travail non selectionne : il devient la selection
+        st.state = 0;
+        SendMessageW(g.list, LVM_SETITEMSTATE, (WPARAM)-1, (LPARAM)&st);
+        st.state = LVIS_SELECTED;
+        SendMessageW(g.list, LVM_SETITEMSTATE, (WPARAM)item, (LPARAM)&st);
+    }
+    SendMessageW(g.list, LVM_SETINSERTMARKCOLOR, 0, theme::cref(theme::ACCENT_A));
+    gDrag = true;
+    gDragTarget = -1;
+    SetCapture(g.wnd);
+    SetCursor(LoadCursorW(nullptr, MAKEINTRESOURCEW(32645)));
+}
+
+void listDragMove(POINT pt) {  // pt : coordonnees client de la fenetre principale
+    if (!gDrag) return;
+    POINT lp = pt;
+    MapWindowPoints(g.wnd, g.list, &lp, 1);
+    RECT lr;
+    GetClientRect(g.list, &lr);
+    if (lp.y < 12) SendMessageW(g.list, LVM_SCROLL, 0, -MulDiv(16, (int)g.dpi, 96));  // le bord de la liste fait defiler
+    else if (lp.y > lr.bottom - 12) SendMessageW(g.list, LVM_SCROLL, 0, MulDiv(16, (int)g.dpi, 96));
+    LVHITTESTINFO ht{};
+    ht.pt = {std::min<LONG>(std::max<LONG>(lp.x, 2), lr.right - 2), lp.y};
+    SendMessageW(g.list, LVM_HITTEST, 0, (LPARAM)&ht);
+    if (ht.iItem < 0) {  // sous le dernier : apres lui ; au-dessus du premier : avant lui
+        gDragTarget = lp.y > 0 ? (int)g.paths.size() - 1 : 0;
+        gDragAfter = lp.y > 0;
+    } else {
+        RECT ir{};
+        ir.left = LVIR_BOUNDS;
+        SendMessageW(g.list, LVM_GETITEMRECT, (WPARAM)ht.iItem, (LPARAM)&ir);
+        gDragTarget = ht.iItem;
+        gDragAfter = lp.y > (ir.top + ir.bottom) / 2;
+    }
+    showInsertMark(gDragTarget, gDragAfter);
+}
+
+void listDragEnd(bool apply) {
+    if (!gDrag) return;
+    gDrag = false;
+    ReleaseCapture();
+    showInsertMark(-1, false);
+    const int target = gDragTarget;
+    const bool after = gDragAfter;
+    gDragTarget = -1;
+    if (!apply || target < 0 || target >= (int)g.paths.size()) return;
+    const int n = (int)g.paths.size();
+    std::vector<char> isSel((size_t)n, 0);
+    int i = -1;
+    while ((i = (int)SendMessageW(g.list, LVM_GETNEXTITEM, (WPARAM)i, LVNI_SELECTED)) != -1 && i < n) isSel[(size_t)i] = 1;
+    // Les travaux selectionnes (ordre conserve) se placent avant ou apres la cible ; si la cible est elle-meme selectionnee, rien ne bouge
+    if (isSel[(size_t)target]) return;
+    std::vector<int> moved, rest;
+    for (int k = 0; k < n; k++) (isSel[(size_t)k] ? moved : rest).push_back(k);
+    std::vector<int> order;
+    for (int k : rest) {
+        if (k == target && !after) order.insert(order.end(), moved.begin(), moved.end());
+        order.push_back(k);
+        if (k == target && after) order.insert(order.end(), moved.begin(), moved.end());
+    }
+    std::vector<std::wstring> paths;
+    std::vector<int> state, ids;
+    for (int k : order) {
+        paths.push_back(g.paths[(size_t)k]);
+        state.push_back(g.state[(size_t)k]);
+        ids.push_back(g.ids[(size_t)k]);
+    }
+    g.paths = paths;
+    g.state = state;
+    g.ids = ids;
+    SendMessageW(g.list, WM_SETREDRAW, FALSE, 0);
+    SendMessageW(g.list, LVM_DELETEALLITEMS, 0, 0);
+    for (int k = 0; k < n; k++) {
+        LVITEMW it{};
+        it.mask = LVIF_TEXT;
+        it.iItem = k;
+        const std::wstring shown = itemLabel(g.paths[(size_t)k]);
+        it.pszText = const_cast<LPWSTR>(shown.c_str());
+        SendMessageW(g.list, LVM_INSERTITEMW, 0, (LPARAM)&it);
+        setItemText(k, 1, statusText(g.state[(size_t)k]));
+    }
+    for (int k = 0; k < n; k++) {
+        LVITEMW it{};
+        it.stateMask = LVIS_SELECTED | LVIS_FOCUSED;
+        it.state = isSel[(size_t)order[(size_t)k]] ? (LVIS_SELECTED | LVIS_FOCUSED) : 0;
+        SendMessageW(g.list, LVM_SETITEMSTATE, (WPARAM)k, (LPARAM)&it);
+    }
+    SendMessageW(g.list, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(g.list, nullptr, TRUE);
+    saveQueueNow();
+    rebuildPlan();
+}

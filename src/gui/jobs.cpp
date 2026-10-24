@@ -17,8 +17,59 @@
 #include "core/render.h"
 #include "core/vr.h"
 #include "core/util.h"
+#include "platform/platform.h"
 #include "ui_controls.h"
 #include "../../res/resource.h"
+
+std::wstring jobLogPath(const std::wstring& shaderPath) {
+    std::wstring name = fileSettingsPath(g.exeDir, shaderPath);  // .../jobs/<nom>-<empreinte>.ini
+    name = name.substr(name.find_last_of(L"/\\") + 1);
+    return g.exeDir + L"jobs/logs/" + name.substr(0, name.size() - 4) + L".log";
+}
+
+// Le plan suit la liste : les travaux en attente, dans l'ordre des priorites puis de la liste (appele par la fenetre quand elle change pendant un rendu)
+void rebuildPlan() {
+    if (!g.running || g.previewRun || g.snapshotRun) return;
+    std::vector<std::pair<int, std::wstring>> list;
+    {
+        std::lock_guard<std::mutex> lk(g.jobMutex);
+        for (size_t i = 0; i < g.paths.size(); i++)
+            if (g.state[i] == ST_PENDING && g.runIds.count(g.ids[i]) && !g.startedIds.count(g.ids[i])) list.push_back({g.ids[i], g.paths[i]});
+        std::stable_sort(list.begin(), list.end(), [](const std::pair<int, std::wstring>& a, const std::pair<int, std::wstring>& b) {
+            const auto pa = g.priority.find(a.second), pb = g.priority.find(b.second);
+            return (pa == g.priority.end() ? 0 : pa->second) > (pb == g.priority.end() ? 0 : pb->second);
+        });
+        for (const auto& j : list)
+            if (!g.jobFrames.count(j.first)) {  // travail repris apres une suspension : ses images ne sont pas encore connues
+                const Settings js = settingsForFile(g.runBase, g.exeDir, j.second);
+                g.jobFrames[j.first] = std::max<long long>(1, std::llround(js.duration * js.fps));
+            }
+        g.plan = list;
+    }
+}
+
+// Fin estimee de toute la file : temps restant du travail en cours + images des travaux a venir a la vitesse mesuree
+std::wstring queueEtaText(double speed, double remaining) {
+    if (g.snapshotRun || g.previewRun || speed <= 0) return L"";
+    long long frames = 0;
+    size_t count = 0;
+    {
+        std::lock_guard<std::mutex> lk(g.jobMutex);
+        for (const auto& j : g.plan) {
+            const auto it = g.jobFrames.find(j.first);
+            frames += it == g.jobFrames.end() ? 0 : it->second;
+            count++;
+        }
+    }
+    if (count == 0) return L"";
+    const double sec = remaining + (double)frames / speed;
+    const time_t endAt = time(nullptr) + (time_t)sec;
+    struct tm tmv;
+    localtime_s(&tmv, &endAt);
+    wchar_t clock[16];
+    wcsftime(clock, 16, L"%H:%M", &tmv);
+    return TXF("status.queue_eta", (int)count, fmtTime(sec).c_str(), clock);
+}
 
 static void postLog(const std::wstring& s) {
     PostMessageW(g.wnd, WM_APP_LOG, 0, (LPARAM) new std::wstring(s));
@@ -28,7 +79,7 @@ static void postLog(const std::wstring& s) {
 static std::atomic<double> gGpu[3];
 
 // Thread de rendu : cree son propre contexte OpenGL, traite le lot, le detruit.
-static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
+static void runJobs(std::vector<std::pair<int, std::wstring>> jobs, bool dynamic) {
     GLContext gl;
     std::wstring err;
     if (!createGLContext(gl, err)) {
@@ -44,7 +95,15 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
     }
 
     Hooks H;
-    H.log = postLog;
+    FILE* jobLog = nullptr;  // journal du travail en cours (jobs/logs/), ecrit par ce thread : chaque ligne va au bon travail
+    H.log = [&jobLog](const std::wstring& s) {
+        postLog(s);
+        if (jobLog) {
+            const std::string line = U8(s) + "\r\n";
+            fwrite(line.data(), 1, line.size(), jobLog);
+            fflush(jobLog);
+        }
+    };
     H.cancel = &g.cancel;
     H.pause = &g.pause;
     H.snapshot = g.snapshotRun && g.imageKind <= 1;  // la planche-contact n'est pas une image fixe pour le moteur ; les kinds 3 et 4 ont leur propre chemin
@@ -65,14 +124,38 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
         return;
     }
     double estLow = 0, estMid = 0, estHigh = 0;  // estimation de la file : somme des fichiers
-    for (size_t i = 0; i < jobs.size(); i++) {
-        const int idx = jobs[i].first;
+    size_t taken = 0;
+    for (;;) {
+        std::pair<int, std::wstring> job;  // identifiant du travail dans la liste, chemin du shader
+        size_t after = 0;                  // travaux qui restent apres celui-ci
+        if (dynamic) {  // la liste peut etre reordonnee pendant le rendu : le travail suivant est pris dans le plan que la fenetre tient a jour
+            std::lock_guard<std::mutex> lk(g.jobMutex);
+            if (g.plan.empty()) break;
+            job = g.plan.front();
+            g.plan.erase(g.plan.begin());
+            g.startedIds.insert(job.first);
+            after = g.plan.size();
+        } else {
+            if (taken >= jobs.size()) break;
+            job = jobs[taken];
+            after = jobs.size() - taken - 1;
+        }
+        taken++;
+        const int idx = job.first;
+        const std::wstring& shader = job.second;
         if (g.cancel) {
             PostMessageW(g.wnd, WM_APP_FILE, (WPARAM)idx, ST_CANCELLED);
             continue;
         }
         PostMessageW(g.wnd, WM_APP_FILE, (WPARAM)idx, ST_RUNNING);
-        postLog(wfmt(L"[%d/%d] ", (int)i + 1, (int)jobs.size()) + jobs[i].second);
+        if (jobLog) fclose(jobLog);
+        jobLog = nullptr;
+        if (!g.snapshotRun) {
+            platform::makeDir(g.exeDir + L"jobs");
+            platform::makeDir(g.exeDir + L"jobs/logs");
+            jobLog = platform::openFile(jobLogPath(shader), "wb");
+        }
+        postLog(wfmt(L"[%d/%d] ", (int)taken, (int)(taken + after)) + shader);
         gGpu[0] = gGpu[1] = gGpu[2] = 0;
         H.gpuTimes = [](double image, double buffers, double post) {
             gGpu[0] = image;
@@ -83,19 +166,19 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
             PostMessageW(g.wnd, WM_APP_PROGRESS, (WPARAM)idx, (LPARAM) new ProgressInfo{n, total, speed, remaining, gGpu[0].load(), gGpu[1].load(), gGpu[2].load()});
         };
         std::wstring e;
-        Settings run = settingsForFile(g.runBase, g.exeDir, jobs[i].second);  // reglages generaux + ceux de ce shader
+        Settings run = settingsForFile(g.runBase, g.exeDir, shader);  // reglages generaux + ceux de ce shader
         if (g.snapshotRun && g.snapshotAt >= 0) run.start = g.snapshotAt;  // image PNG au temps de l'apercu
         Result r = Result::Ok;
         if (g.snapshotRun && g.imageKind == 3) {  // vignette intelligente : les trois images les plus riches
             std::vector<std::wstring> made;
-            r = renderSmartThumbnails(jobs[i].second, g.exeDir, run, H, made, e) ? Result::Ok : g.cancel ? Result::Cancelled : Result::Failed;
+            r = renderSmartThumbnails(shader, g.exeDir, run, H, made, e) ? Result::Ok : g.cancel ? Result::Cancelled : Result::Failed;
             if (r == Result::Ok)  // les trois propositions s'ouvrent ensemble : on choisit en les voyant
                 for (const std::wstring& f : made) ShellExecuteW(nullptr, L"open", f.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         } else if (g.snapshotRun && g.imageKind == 7) {  // controle qualite : flashs, valeurs invalides, scintillement, aliasing, precision
             CheckReport cr;
             Hooks Hc = H;
             Hc.previewFrame = [](int w, int h, std::vector<uint8_t>&& px) { PostMessageW(g.wnd, WM_APP_PREVIEW, 0, (LPARAM) new PreviewData{w, h, std::move(px)}); };
-            if (runChecks(jobs[i].second, g.exeDir, run, CheckOptions(), Hc, cr, e)) {
+            if (runChecks(shader, g.exeDir, run, CheckOptions(), Hc, cr, e)) {
                 const std::string text = checkReportText(cr);
                 size_t pos = 0;
                 while (pos < text.size()) {
@@ -104,13 +187,13 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
                     if (nl > pos) postLog(L"  " + W(text.substr(pos, nl - pos)));
                     pos = nl + 1;
                 }
-                if (writeCheckReport(cr, outputPath(jobs[i].second, run.outdir, L""))) postLog(L"  " + TXF("log.report_written", (outputPath(jobs[i].second, run.outdir, L"") + L".check.txt").c_str()));
+                if (writeCheckReport(cr, outputPath(shader, run.outdir, L""))) postLog(L"  " + TXF("log.report_written", (outputPath(shader, run.outdir, L"") + L".check.txt").c_str()));
             } else {
                 r = g.cancel ? Result::Cancelled : Result::Failed;
             }
         } else if (g.snapshotRun && g.imageKind == 8) {  // estimation du temps de rendu
             Estimate est;
-            if (estimateRender(jobs[i].second, g.exeDir, run, H, est, e)) {
+            if (estimateRender(shader, g.exeDir, run, H, est, e)) {
                 estLow += est.secLow;
                 estMid += est.secMid;
                 estHigh += est.secHigh;
@@ -127,7 +210,7 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
             }
         } else if (g.snapshotRun && g.imageKind == 9) {  // version avant / apres edition : une image de chaque au temps de l'apercu
             CompareData* cd = new CompareData{0, 0, {}, {}};
-            if (compareVersions(jobs[i].second, g.cmpBeforeText, g.cmpAfterText, g.exeDir, run, run.start, cd->before, cd->after, cd->w, cd->h, e)) {
+            if (compareVersions(shader, g.cmpBeforeText, g.cmpAfterText, g.exeDir, run, run.start, cd->before, cd->after, cd->w, cd->h, e)) {
                 PostMessageW(g.wnd, WM_APP_COMPARE, 0, (LPARAM)cd);
             } else {
                 delete cd;
@@ -135,12 +218,12 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
             }
         } else if (g.imageKind == 10) {  // page HTML autonome a cote du shader, sans rendu
             std::wstring page;
-            if (exportHtmlBeside(jobs[i].second, g.exeDir, run, page, e)) postLog(L"  " + TXF("log.html_written", page.c_str()));
+            if (exportHtmlBeside(shader, g.exeDir, run, page, e)) postLog(L"  " + TXF("log.html_written", page.c_str()));
             else r = Result::Failed;
         } else if (g.imageKind == 11) {  // controle d'integrite de la video deja produite
             std::vector<std::wstring> lines;
             bool same = true;
-            const std::wstring video = outputFile(jobs[i].second, run, false);
+            const std::wstring video = outputFile(shader, run, false);
             if (!fileExists(video)) {
                 e = TXF("error.verify_read", video.c_str());
                 r = Result::Failed;
@@ -155,7 +238,7 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
             std::wstring heatFile;
             Hooks Hh = H;  // la carte s'affiche dans l'apercu
             Hh.previewFrame = [](int w, int h, std::vector<uint8_t>&& px) { PostMessageW(g.wnd, WM_APP_PREVIEW, 0, (LPARAM) new PreviewData{w, h, std::move(px)}); };
-            if (renderHeatmap(jobs[i].second, g.exeDir, run, 16, 9, -1, Hh, hs, heatFile, e)) {
+            if (renderHeatmap(shader, g.exeDir, run, 16, 9, -1, Hh, hs, heatFile, e)) {
                 postLog(L"  " + describeHeat(hs));
             } else {
                 r = g.cancel ? Result::Cancelled : Result::Failed;
@@ -164,20 +247,28 @@ static void runJobs(std::vector<std::pair<int, std::wstring>> jobs) {
             Settings sq = run;
             sq.width = sq.height = std::min(run.width, run.height);
             std::vector<std::wstring> made;
-            r = renderCubeFaces(jobs[i].second, g.exeDir, sq, H, made, e) ? Result::Ok : g.cancel ? Result::Cancelled : Result::Failed;
+            r = renderCubeFaces(shader, g.exeDir, sq, H, made, e) ? Result::Ok : g.cancel ? Result::Cancelled : Result::Failed;
         } else if (g.snapshotRun && g.imageKind == 4) {  // recherche de la periode du shader, sans rendu
             LoopFound lf;
-            if (findLoop(jobs[i].second, g.exeDir, run, 0, H, lf, e)) {
+            if (findLoop(shader, g.exeDir, run, 0, H, lf, e)) {
                 postLog(L"  " + describeLoop(lf));
                 if (lf.found && !lf.isStatic) PostMessageW(g.wnd, WM_APP_LOOP, 0, (LPARAM) new double(lf.period));
             } else {
                 r = g.cancel ? Result::Cancelled : Result::Failed;
             }
         } else {
-            r = convertFile(jobs[i].second, g.exeDir, run, H, e);
+            std::wstring produced;
+            H.output = [&produced](const std::wstring& o) { produced = o; };
+            const auto t0 = std::chrono::steady_clock::now();
+            r = convertFile(shader, g.exeDir, run, H, e);
+            H.output = nullptr;
+            appendHistory(g.exeDir, makeHistoryEntry(shader, run, r == Result::Ok ? produced : std::wstring(), std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(),
+                                                     r == Result::Ok ? "ok" : r == Result::Cancelled ? "cancelled" : "failed"));
         }
-        if (r == Result::Failed) postLog(L"  " + TXF("log.error", e.c_str()));
-        else if (r == Result::Cancelled) postLog(L"  " + TX("log.cancelled"));
+        if (r == Result::Failed) H.log(L"  " + TXF("log.error", e.c_str()));  // aussi dans le journal du travail
+        else if (r == Result::Cancelled) H.log(L"  " + TX("log.cancelled"));
+        if (jobLog) fclose(jobLog);
+        jobLog = nullptr;
         PostMessageW(g.wnd, WM_APP_FILE, (WPARAM)idx,
                      r == Result::Ok ? ST_DONE : r == Result::Cancelled ? ST_CANCELLED : ST_FAILED);
     }
@@ -252,12 +343,12 @@ void startJobs(bool snapshot, int imageKind, int cols, int rows, bool atPreview,
     std::vector<std::pair<int, std::wstring>> jobs;
     if (snapshot && imageKind == 8) {  // estimation : tous les fichiers pas encore faits, le total est donne a la fin
         for (size_t i = 0; i < g.paths.size(); i++)
-            if (g.state[i] != ST_DONE) jobs.push_back({(int)i, g.paths[i]});
+            if (g.state[i] != ST_DONE) jobs.push_back({g.ids[i], g.paths[i]});
     } else if (snapshot) {  // une image du fichier selectionne (sinon du premier)
         if (g.paths.empty()) return;
         int sel = (int)SendMessageW(g.list, LVM_GETNEXTITEM, (WPARAM)-1, LVNI_SELECTED);
         if (sel < 0) sel = 0;
-        jobs.push_back({sel, g.paths[sel]});
+        jobs.push_back({g.ids[(size_t)sel], g.paths[(size_t)sel]});
     } else {
         std::vector<char> chosen(g.paths.size(), selectedOnly || batch > 0 ? 0 : 1);  // « rendre la selection » ou un lot : seulement ceux-la
         if (batch > 0)
@@ -266,12 +357,24 @@ void startJobs(bool snapshot, int imageKind, int cols, int rows, bool atPreview,
             int k = -1;
             while ((k = (int)SendMessageW(g.list, LVM_GETNEXTITEM, (WPARAM)k, LVNI_SELECTED)) != -1 && k < (int)chosen.size()) chosen[(size_t)k] = 1;
         }
+        std::set<int> chosenIds;
         for (size_t i = 0; i < g.paths.size(); i++) {
             if (!chosen[i]) continue;
+            chosenIds.insert(g.ids[i]);
+            if (g.state[i] == ST_HELD) continue;  // un travail suspendu attend qu'on le reprenne
             if (!selectedOnly && batch == 0 && g.state[i] == ST_DONE) continue;
             g.state[i] = ST_PENDING;
             setItemText((int)i, 1, statusText(ST_PENDING));
-            jobs.push_back({(int)i, g.paths[i]});
+            jobs.push_back({g.ids[i], g.paths[i]});
+        }
+        std::stable_sort(jobs.begin(), jobs.end(), [](const std::pair<int, std::wstring>& a, const std::pair<int, std::wstring>& b) {
+            const auto pa = g.priority.find(a.second), pb = g.priority.find(b.second);
+            return (pa == g.priority.end() ? 0 : pa->second) > (pb == g.priority.end() ? 0 : pb->second);  // haute priorite d'abord, l'ordre de la liste sinon
+        });
+        {
+            std::lock_guard<std::mutex> lk(g.jobMutex);
+            g.runIds = chosenIds;
+            g.startedIds.clear();
         }
     }
     if (jobs.empty()) return;
@@ -285,6 +388,17 @@ void startJobs(bool snapshot, int imageKind, int cols, int rows, bool atPreview,
     saveSettings();
     flushFileScope();  // les reglages propres au shader courant sont lus sur le disque par le thread de rendu
     g.runBase = generalSettings();
+    g.runStart = std::chrono::steady_clock::now();
+    g.lastSpeed = 0;
+    if (!snapshot) {  // plan de la file et images de chaque travail pour l'estimation de la fin
+        std::lock_guard<std::mutex> lk(g.jobMutex);
+        g.plan = jobs;
+        g.jobFrames.clear();
+        for (const auto& j : jobs) {
+            const Settings js = settingsForFile(g.runBase, g.exeDir, j.second);
+            g.jobFrames[j.first] = std::max<long long>(1, std::llround(js.duration * js.fps));
+        }
+    }
     g.cancel = false;
     g.running = true;
     updateButtons();
@@ -299,7 +413,7 @@ void startJobs(bool snapshot, int imageKind, int cols, int rows, bool atPreview,
         g.snapshotPath = imageKind == 3 || imageKind == 4 || imageKind == 5 || imageKind == 6 || imageKind >= 7 ? std::wstring() : outputPath(jobs[0].second, cur.outdir, imageKind == 1 || imageKind == 3 ? L"_thumb.png" : imageKind == 2 ? L"_sheet.png" : imageKind == 6 ? L"_heat.png" : L".png");
     }
     setStatus(TX(snapshot && imageKind == 4 ? "status.finding_loop" : snapshot && imageKind == 7 ? "status.checking" : snapshot && imageKind == 8 ? "status.estimating" : snapshot && imageKind == 9 ? "status.comparing" : snapshot && imageKind == 10 ? "status.exporting_html" : snapshot && imageKind == 11 ? "status.verifying" : snapshot ? "status.rendering_image" : "status.rendering"));
-    g.worker = std::thread(runJobs, std::move(jobs));
+    g.worker = std::thread(runJobs, std::move(jobs), !snapshot);
 }
 
 static void refreshPrevMarks(double start, double dur);
@@ -444,7 +558,7 @@ void runPreview() {
     updateButtons();
     setStatus(TX("status.rendering_preview"));
     std::vector<std::pair<int, std::wstring>> jobs{{sel, g.paths[sel]}};
-    g.worker = std::thread(runJobs, std::move(jobs));
+    g.worker = std::thread(runJobs, std::move(jobs), false);
 }
 
 void openFolder() {

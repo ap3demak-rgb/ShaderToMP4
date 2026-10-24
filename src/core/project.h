@@ -13,6 +13,7 @@ extern const wchar_t* const kProjectExt;  // L".s2mproj"
 struct ProjectShader {
     std::wstring path;                  // chemin complet (relatif dans le fichier quand le shader est dans le dossier du projet)
     int batch = 0;                      // numero de lot, 0 = aucun
+    int priority = 0;                   // -1 basse, 0 normale, 1 haute : ordre de rendu
     bool ownSettings = false;           // reglages propres a ce shader
     std::vector<Override> own;          // ... et leurs valeurs
     std::vector<std::wstring> passes;   // fichiers des passes qui existent (Buffer A-D, Common, ...), chemins complets
@@ -35,7 +36,7 @@ void projectFiles(const std::wstring& shaderPath, std::vector<std::wstring>& pas
 
 // Un projet pour la liste de shaders donnee : reglages generaux, reglages propres (jobs/) et lots lus dans le dossier de l'application
 Project captureProject(const std::wstring& exeDir, const std::wstring& name, const Settings& general, const std::vector<std::wstring>& shaders,
-                       const std::map<std::wstring, int>& batches);
+                       const std::map<std::wstring, int>& batches, const std::map<std::wstring, int>& priorities = {});
 
 // JSON du projet ; `dir` = dossier du fichier (les chemins qu'il contient y deviennent relatifs)
 std::string projectToJson(const Project& p, const std::wstring& dir);
@@ -49,7 +50,7 @@ bool loadProject(const std::wstring& path, Project& out, std::wstring& err);
 std::vector<std::wstring> projectMissing(const Project& p);
 
 // Rend le projet actif : ecrit les reglages propres (jobs/) et les lots (jobs/batches.txt) de ses shaders. Renvoie les reglages generaux.
-Settings applyProject(const std::wstring& exeDir, const Project& p, const Settings& base, std::map<std::wstring, int>& batches);
+Settings applyProject(const std::wstring& exeDir, const Project& p, const Settings& base, std::map<std::wstring, int>& batches, std::map<std::wstring, int>* priorities = nullptr);
 
 // Projets recents (jobs/recent_projects.txt, dix au plus, le dernier ouvert en tete, ceux qui n'existent plus sont ignores)
 std::vector<std::wstring> recentProjects(const std::wstring& exeDir);

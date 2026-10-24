@@ -17,6 +17,7 @@ std::wstring statusText(int st) {
         case ST_DONE: return TX("status.done");
         case ST_FAILED: return TX("status.failed");
         case ST_CANCELLED: return TX("status.cancelled");
+        case ST_HELD: return TX("status.held");
         default: return TX("status.pending");
     }
 }

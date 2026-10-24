@@ -4211,6 +4211,22 @@ void runFormatTests(const std::wstring& exeDir, const std::wstring& dir, const s
                 applyFileOverrides(again, back.settings);
                 if (again.width != 640 || again.codec != st.codec) problem = bad("history settings redo");
             }
+            if (problem.empty()) {  // la liste des reglages des fenetres se relit a l'identique, aussi avec des valeurs non standard (« off », nombres negatifs...)
+                Settings odd;
+                odd.width = 1920;
+                odd.fps = 59.94;
+                odd.codec = "h265";
+                odd.loudnorm = -16;
+                odd.interp = 60;
+                odd.hdr = "pq";
+                odd.alpha = true;
+                odd.variants = {"draft", "final"};
+                for (const Settings* var : {&st, &odd}) {
+                    Settings copy;
+                    applyFileOverrides(copy, mainSettingValues(*var));
+                    if (mainSettingValues(copy) != mainSettingValues(*var)) problem = bad("main settings round trip");
+                }
+            }
             if (problem.empty()) {
                 clearHistory(hdir);
                 appendHistory(hdir, e1);

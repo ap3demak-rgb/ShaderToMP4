@@ -142,14 +142,19 @@ KeyMap parseKeys(const std::string& text, const std::vector<KeyAction>& actions,
             if (b.first == id) return b.second;
         return m.binding.front().second;  // inatteignable : l'identifiant a deja ete verifie
     };
-    for (const Assign& a : list) slot(a.id) = a.sc;  // d'abord tout appliquer : l'ordre des lignes ne compte pas, seul le resultat final doit etre sans conflit
+    // Les actions citees par le fichier perdent d'abord leur raccourci d'origine : un raccourci libere par une ligne peut servir a une autre, quel que soit l'ordre
+    // des lignes. Elles le recoivent ensuite dans l'ordre du fichier ; un raccourci deja pris (par une action non citee ou par une ligne plus haute) est refuse.
     std::sort(list.begin(), list.end(), [](const Assign& x, const Assign& y) { return x.line < y.line; });
+    for (const Assign& a : list) slot(a.id) = Shortcut();
     for (const Assign& a : list) {
         if (a.sc.empty()) continue;
         const std::string* taken = nullptr;
         for (const auto& b : m.binding)
             if (b.first != a.id && b.second == a.sc) taken = &b.first;
-        if (!taken) continue;
+        if (!taken) {
+            slot(a.id) = a.sc;
+            continue;
+        }
         problems.push_back("line " + std::to_string(a.line) + ": '" + shortcutText(a.sc) + "' is already used by '" + *taken + "', not given to '" + a.id + "'");
         Shortcut back = *defaults.find(a.id);  // le raccourci d'origine, s'il est libre
         for (const auto& b : m.binding)

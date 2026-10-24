@@ -29,6 +29,7 @@ struct Topic {
 
 const Topic kTopics[] = {
     {"start", "help.start.title", "help.start.body"},       {"main", "help.main.title", "help.main.body"},
+    {"projects", "help.projects.title", "help.projects.body"},
     {"output", "help.output.title", "help.output.body"},    {"params", "help.params.title", "help.params.body"},
     {"editor", "help.editor.title", "help.editor.body"},    {"shaders", "help.shaders.title", "help.shaders.body"},
     {"gallery", "help.gallery.title", "help.gallery.body"}, {"gloss", "help.gloss.title", nullptr},
@@ -201,6 +202,7 @@ const char* helpTopicForWindow(HWND root) {
     if (c == L"ShaderToMP4Params") return "params";
     if (c == L"ShaderToMP4Editor") return "editor";
     if (c == L"ShaderToMP4Gallery") return "gallery";
+    if (c == L"ShaderToMP4History" || c == L"ShaderToMP4Scopes" || c == L"ShaderToMP4Palette") return "projects";
     if (c == L"ShaderToMP4About" || c == L"ShaderToMP4Buy" || c == L"ShaderToMP4Tour") return "start";
     return "main";
 }

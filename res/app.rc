@@ -39,6 +39,9 @@ IC_EDIT     RCDATA "icons/edit.svg"
 IC_CURVE    RCDATA "icons/curve.svg"
 IC_HELP     RCDATA "icons/help.svg"
 IC_GALLERY  RCDATA "icons/gallery.svg"
+IC_PROJECT  RCDATA "icons/project.svg"
+IC_HISTORY  RCDATA "icons/history.svg"
+IC_SCOPE    RCDATA "icons/scope.svg"
 
 // Fichiers de langue (anglais et francais) embarques : un dossier lang/ a cote de l exe peut les completer
 IDR_LANG_EN RCDATA "../lang/en.json"

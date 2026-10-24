@@ -35,3 +35,6 @@
 #define IC_CURVE     227
 #define IC_HELP      228
 #define IC_GALLERY   229
+#define IC_PROJECT   230
+#define IC_HISTORY   231
+#define IC_SCOPE     232

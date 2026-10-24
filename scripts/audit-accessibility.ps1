@@ -33,7 +33,17 @@ try {
   $main = [AuditW]::FindWindow("ShaderToMP4Main", [NullString]::Value)
   if ($main -eq [IntPtr]::Zero) { throw "fenetre principale introuvable" }
   # (classe, identifiant de commande du bouton de la fenetre principale ; 0 = la fenetre principale elle-meme)
-  $targets = @(@("main", "ShaderToMP4Main", 0), @("about", "ShaderToMP4About", 157), @("help", "ShaderToMP4Help", 168), @("gallery", "ShaderToMP4Gallery", 169))
+  # identifiants des fenetres plus recentes : relus dans l'enumeration de src\gui\app.h
+  $hdr = Get-Content "src\gui\app.h" -Raw
+  $enum = [regex]::Match($hdr, 'enum \{\s*ID_LIST = 101(.*?)\n\};', 'Singleline').Value -replace '//[^\n]*', ''
+  $ID = @{}; $next = 101
+  foreach ($tok in ($enum -replace '^enum \{', '' -replace '\};$', '') -split ',') {
+    $t = $tok.Trim(); if (-not $t) { continue }
+    if ($t -match '^(ID_[A-Z0-9_]+)\s*=\s*(\d+)$') { $next = [int]$Matches[2]; $ID[$Matches[1]] = $next } elseif ($t -match '^(ID_[A-Z0-9_]+)$') { $ID[$Matches[1]] = $next } else { continue }
+    $next++
+  }
+  $targets = @(@("main", "ShaderToMP4Main", 0), @("about", "ShaderToMP4About", 157), @("help", "ShaderToMP4Help", 168), @("gallery", "ShaderToMP4Gallery", 169),
+               @("history", "ShaderToMP4History", $ID.ID_HISTORY), @("scopes", "ShaderToMP4Scopes", $ID.ID_SCOPES), @("palette", "ShaderToMP4Palette", $ID.ID_PALETTE))
   # controles interactifs reconnus par leur classe Windows (le type UI Automation « panneau » des controles systeme depend du client : la classe est sure)
   $interactive = @("Button", "Edit", "ComboBox", "ListBox", "SysListView32", "STSlider", "RICHEDIT50W")
   foreach ($t in $targets) {

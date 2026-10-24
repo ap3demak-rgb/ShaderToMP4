@@ -18,3 +18,5 @@ bin-llvm/
 bin-asan-llvm/
 *.map
 bin-shots/
+bin-queue/
+bin-shots2/

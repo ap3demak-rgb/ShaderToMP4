@@ -194,22 +194,9 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     UpdateWindow(wnd);
 
     // Raccourcis clavier
-    ACCEL acc[] = {
-        {FVIRTKEY | FCONTROL, 'O', ID_ADD},
-        {FVIRTKEY | FCONTROL, 'P', ID_PREVBTN},
-        {FVIRTKEY | FCONTROL, 'E', ID_EDITOR},
-        {FVIRTKEY, VK_F5, ID_START},
-        {FVIRTKEY, VK_F6, ID_PAUSE},
-        {FVIRTKEY, VK_ESCAPE, ID_CANCEL},
-    };
-    std::vector<ACCEL> accAll(acc, acc + sizeof(acc) / sizeof(acc[0]));
-    if (const ProExt* px = proExt(); px && px->tools.undoRedo) {  // annuler / retablir (edition Pro)
-        accAll.push_back({FVIRTKEY | FCONTROL, 'Z', ID_UNDO});
-        accAll.push_back({FVIRTKEY | FCONTROL, 'Y', ID_REDO});
-        accAll.push_back({FVIRTKEY | FCONTROL | FSHIFT, 'Z', ID_REDO});
-    }
-    if (const ProExt* px = proExt(); px && px->tools.guidesMenu) accAll.push_back({FVIRTKEY | FCONTROL, 'G', ID_GUIDES});  // reperes d'ecran de l'apercu (edition Pro)
-    HACCEL haccel = CreateAcceleratorTableW(accAll.data(), (int)accAll.size());
+    // (table des actions et de leurs raccourcis : actions.cpp ; keys.ini a cote du programme les change ; le journal annonce les refus)
+    loadShortcuts();
+    g.accel = buildAccelerators();
 
     // Cartes graphiques détectées (affichées s'il y en a plusieurs)
     {
@@ -228,9 +215,14 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     }
     appendLog(APP_NAME_WSTR L" " APP_VER_WSTR);
     // Fichiers glissés sur le .exe : ajoutés puis rendu lancé directement
+    bool openedProject = false;
+    for (const auto& f : files) {  // un fichier projet (.s2mproj) se charge sans lancer de rendu
+        const size_t n = wcslen(kProjectExt);
+        if (f.size() > n && _wcsicmp(f.c_str() + f.size() - n, kProjectExt) == 0) openedProject = true;
+    }
     if (!files.empty()) {
         addFiles(files);
-        startJobs();
+        if (!openedProject) startJobs();
     } else {
         const std::vector<std::wstring> restored = loadQueue(g.exeDir);  // shaders restes a rendre lors de la derniere session
         if (!restored.empty()) {
@@ -250,17 +242,17 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int show) {
     }
     installHelpKey();  // F1 : aide de la fenetre en cours
     g.tourEnabled = readSavedTour();
-    if (files.empty()) showTour(wnd, false);  // visite guidee du premier lancement, jamais bloquante
+    if (files.empty() || openedProject) showTour(wnd, false);  // visite guidee du premier lancement, jamais bloquante
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0) > 0) {
         const bool inMain = GetAncestor(m.hwnd, GA_ROOT) == wnd;  // l'éditeur et les autres fenêtres ont leurs propres touches
-        if (inMain && TranslateAcceleratorW(wnd, haccel, &m)) continue;
+        if (inMain && TranslateAcceleratorW(wnd, g.accel, &m)) continue;
         if (inMain && IsDialogMessageW(wnd, &m)) continue;  // Tab / Maj+Tab entre les contrôles
         if (!inMain && m.hwnd) {  // aide, galerie et visite : Tab, Entree et Echap comme dans une boite de dialogue
             HWND root = GetAncestor(m.hwnd, GA_ROOT);
             wchar_t cls[48] = L"";
             if (root) GetClassNameW(root, cls, 48);
-            if ((!wcscmp(cls, L"ShaderToMP4Help") || !wcscmp(cls, L"ShaderToMP4Gallery") || !wcscmp(cls, L"ShaderToMP4Tour")) && IsDialogMessageW(root, &m)) continue;
+            if ((!wcscmp(cls, L"ShaderToMP4Help") || !wcscmp(cls, L"ShaderToMP4Gallery") || !wcscmp(cls, L"ShaderToMP4Tour") || !wcscmp(cls, L"ShaderToMP4History")) && IsDialogMessageW(root, &m)) continue;
         }
         TranslateMessage(&m);
         DispatchMessageW(&m);
