@@ -7,7 +7,7 @@
 <p align="center"><b>English</b> · <a href="README.fr.md">Français</a></p>
 
 <p align="center">
-  <a href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest"><img alt="Download" src="https://img.shields.io/badge/Download-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-465AFF?style=for-the-badge"></a>
+  <a href="https://github.com/ap3demak-rgb/ShaderToMP4/releases/latest"><img alt="Download" src="https://img.shields.io/badge/Download-Windows-465AFF?style=for-the-badge"></a>
   &nbsp;
   <a href="https://ap3demak-rgb.github.io/ShaderToMP4"><img alt="Website" src="https://img.shields.io/badge/Website-ShaderToMP4-FF5A96?style=for-the-badge"></a>
 </p>
@@ -16,7 +16,7 @@
   <img alt="Version" src="https://img.shields.io/badge/version-3.0.0-FF5A96?style=flat-square">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20(Linux%20and%20macOS%20frozen)-0078D4?style=flat-square">
   <img alt="Portable" src="https://img.shields.io/badge/portable-installer%20optional-3DDC97?style=flat-square">
-  <img alt="Languages" src="https://img.shields.io/badge/languages-6-7C6CFF?style=flat-square">
+  <img alt="Languages" src="https://img.shields.io/badge/languages-9-7C6CFF?style=flat-square">
   <img alt="C++" src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0--or--later-3DDC97?style=flat-square"></a>
 </p>
@@ -27,7 +27,7 @@
 
 **ShaderToMP4** converts a [Shadertoy](https://www.shadertoy.com) shader (*Image* tab, with its Buffer A–D, Common, Cubemap A and Sound passes) into a video, **frame by frame**, with exact timing (`iTime = frame / fps`). No screen capture, so no stutter and no loss, whatever the power of your graphics card: a shader that runs at 5 frames per second in real time still gives a perfectly smooth video.
 
-One portable program for **Windows** (nothing to install; an optional **installer**), with a modern dark interface in English and French.
+One portable program for **Windows** (nothing to install; an optional **installer**), with a modern dark interface in nine languages, a built-in help (F1), a guided tour for the first launch and a gallery of sixty ready-to-use example shaders.
 
 > **Linux and macOS are frozen** (decision of 2026-10-22). Version **2.1.1** is the last one published with Linux (x86-64, ARM64) and macOS archives; they stay available on the [Releases](https://github.com/ap3demak-rgb/ShaderToMP4/releases) page and **remain under the GPL-3.0-or-later**. Their code stays in this repository (`src/ui_imgui/`, `src/platform/posix/`, `scripts/*.sh`, `CMakeLists.txt`), marked *frozen*: no fixes, no new tests, no continuous integration for them, and new features target Windows only.
 
@@ -73,6 +73,22 @@ One portable program for **Windows** (nothing to install; an optional **installe
   <sub>The queue with the status of each shader, and a <b>preview</b> at the time of your choice, without starting ffmpeg.</sub>
 </p>
 
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/en/examples.png" alt="Examples gallery"></td>
+    <td width="50%"><img src="docs/screenshots/en/help.png" alt="Built-in help"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Examples</b> button: sixty shaders in ten categories, each with a thumbnail and an explanation; one click adds it to the list.</sub></td>
+    <td align="center"><sub><b>Built-in help</b> (<code>F1</code> or the <code>?</code> button): the main windows, Shadertoy shaders and passes, a glossary and what to do when something goes wrong.</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screenshots/en/tour.png" alt="Guided tour" width="860"><br>
+  <sub>The <b>guided tour</b> of the first launch: five steps, skippable, available again from the help window.</sub>
+</p>
+
 <p align="center">
   <img src="docs/screenshots/en/about.png" alt="About window" width="420"><br>
   <sub>The “About” window (<code>i</code> button): version, copyright, license, contact and website. The globe button switches the language instantly.</sub>
@@ -94,7 +110,7 @@ The [`examples`](examples) folder contains four shaders ready to convert: plasma
 The [`examples/gallery`](examples/gallery) folder holds **sixty original shaders** in ten categories (maths, noise, fractals, ray marching, 2D, post-processing, loops, sound, VR, multiple passes), each with a 128 × 72 thumbnail (`.bmp`) and an explanation in French and English in the header of the file (`// fr:` and `// en:` lines; the other languages show the English one). The **Examples** button of the program opens them in a gallery. Every one is rendered as an image by the self-test, without error.
 
 <p align="center">
-  <img src="docs/screenshots/gallery.png" alt="Gallery: plasma, rings, tunnel, aurora" width="860">
+  <img src="docs/screenshots/gallery.png" alt="The sixty example shaders of the gallery" width="860">
 </p>
 
 ## Quick start
